@@ -3,6 +3,8 @@
 import React from 'react';
 import Link from 'next/link';
 import { TrendingUp, ArrowRight } from 'lucide-react';
+import WeeklyChart from '../../components/WeeklyChart';
+import TradingViewWidget from '../../components/TradingViewWidget';
 
 export default function TradesPage() {
   return (
@@ -23,16 +25,12 @@ export default function TradesPage() {
 
         <div className="mt-12 grid md:grid-cols-2 gap-8">
           {/* Weekly Charts */}
-          <section className="p-8 bg-white/5 backdrop-blur-lg rounded-2xl border border-white/10">
-            <h2 className="text-2xl font-bold mb-4">Weekly Charts</h2>
+          <section className="p-2 bg-transparent">
+            <h2 className="text-2xl font-bold mb-4 text-white">Weekly Charts</h2>
             <p className="text-gray-400 mb-6">A snapshot of weekly price action for highlighted symbols.</p>
             <div className="space-y-4">
-              <div className="h-40 bg-gradient-to-br from-slate-800 to-slate-700 rounded-lg border border-white/5 flex items-center justify-center text-gray-500">
-                Chart placeholder — integrate a charting library (e.g., TradingView, Chart.js) here.
-              </div>
-              <div className="h-40 bg-gradient-to-br from-slate-800 to-slate-700 rounded-lg border border-white/5 flex items-center justify-center text-gray-500">
-                Chart placeholder — add more symbols or interactivity as needed.
-              </div>
+              {/* Single interactive TradingView chart (user can change symbol) */}
+              <TradingViewWidget symbol="NASDAQ:AAPL" interval="W" containerId="tv_aapl_weekly" />
             </div>
           </section>
 
