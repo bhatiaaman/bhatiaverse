@@ -1,12 +1,32 @@
 "use client";
 
-import React from 'react';
+import React, { useState } from 'react';
 import Link from 'next/link';
 import { TrendingUp, ArrowRight } from 'lucide-react';
-import WeeklyChart from '../../components/WeeklyChart';
 import TradingViewWidget from '../../components/TradingViewWidget';
 
 export default function TradesPage() {
+  const [selectedSymbol, setSelectedSymbol] = useState('NASDAQ:AAPL');
+
+  const watchItem = (label, exchangeSymbol, price, change, changeClass) => (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={() => setSelectedSymbol(exchangeSymbol)}
+      onKeyDown={(e) => { if (e.key === 'Enter') setSelectedSymbol(exchangeSymbol); }}
+      className={`flex items-center justify-between p-3 rounded-md cursor-pointer transition ${selectedSymbol === exchangeSymbol ? 'ring-2 ring-yellow-400 bg-white/4' : 'bg-white/3 hover:bg-white/5'}`}
+    >
+      <div>
+        <div className="font-semibold">{label}</div>
+        <div className="text-sm text-gray-400">{exchangeSymbol.split(':')[1]}</div>
+      </div>
+      <div className="text-right">
+        <div className="font-semibold">{price}</div>
+        <div className={`text-sm ${changeClass}`}>{change}</div>
+      </div>
+    </div>
+  );
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white">
       <div className="container mx-auto px-6 py-16">
@@ -30,7 +50,7 @@ export default function TradesPage() {
             <p className="text-gray-400 mb-6">A snapshot of weekly price action for highlighted symbols.</p>
             <div className="space-y-4">
               {/* Single interactive TradingView chart (user can change symbol) */}
-              <TradingViewWidget symbol="NASDAQ:AAPL" interval="W" containerId="tv_aapl_weekly" />
+              <TradingViewWidget symbol={selectedSymbol} interval="W" containerId="tv_widget" />
             </div>
           </section>
 
@@ -39,38 +59,11 @@ export default function TradesPage() {
             <h2 className="text-2xl font-bold mb-4">Watchlist</h2>
             <p className="text-gray-400 mb-6">Track symbols you're interested in — price, change, and quick notes.</p>
             <div className="space-y-3">
-              <div className="flex items-center justify-between p-3 bg-white/3 rounded-md">
-                <div>
-                  <div className="font-semibold">AAPL</div>
-                  <div className="text-sm text-gray-400">Apple Inc.</div>
-                </div>
-                <div className="text-right">
-                  <div className="font-semibold">$194.23</div>
-                  <div className="text-sm text-green-400">+1.8%</div>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between p-3 bg-white/3 rounded-md">
-                <div>
-                  <div className="font-semibold">TSLA</div>
-                  <div className="text-sm text-gray-400">Tesla, Inc.</div>
-                </div>
-                <div className="text-right">
-                  <div className="font-semibold">$255.10</div>
-                  <div className="text-sm text-red-400">-0.6%</div>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between p-3 bg-white/3 rounded-md">
-                <div>
-                  <div className="font-semibold">MSFT</div>
-                  <div className="text-sm text-gray-400">Microsoft Corp.</div>
-                </div>
-                <div className="text-right">
-                  <div className="font-semibold">$360.75</div>
-                  <div className="text-sm text-green-400">+0.9%</div>
-                </div>
-              </div>
+              {watchItem('Apple Inc.', 'NASDAQ:AAPL', '$194.23', '+1.8%', 'text-green-400')}
+              {watchItem('Tesla, Inc.', 'NASDAQ:TSLA', '$255.10', '-0.6%', 'text-red-400')}
+              {watchItem('Microsoft Corp.', 'NASDAQ:MSFT', '$360.75', '+0.9%', 'text-green-400')}
+              {watchItem('Pegasystems Inc.', 'NASDAQ:PEGA', '$45.12', '+0.4%', 'text-green-400')}
+              {watchItem('ServiceNow', 'NYSE:NOW', '$635.20', '+0.2%', 'text-green-400')}
             </div>
           </section>
         </div>
