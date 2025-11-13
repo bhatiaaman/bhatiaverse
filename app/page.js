@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Sparkles, BookOpen, Lightbulb, Gamepad2, Github, Linkedin, Mail, ArrowRight } from 'lucide-react';
+import { Sparkles, BookOpen, Lightbulb, Gamepad2, TrendingUp, Github, Linkedin, Mail, ArrowRight } from 'lucide-react';
 
 export default function Home() {
   const [scrollY, setScrollY] = useState(0);
@@ -43,6 +43,7 @@ export default function Home() {
         <div className="hidden md:flex space-x-8">
           <a href="#articles" className="hover:text-purple-400 transition">Articles</a>
           <a href="#musings" className="hover:text-purple-400 transition">Musings</a>
+          <a href="#trades" className="hover:text-purple-400 transition">Trades</a>
           <a href="#games" className="hover:text-purple-400 transition">AI Games</a>
           <a href="#contact" className="hover:text-purple-400 transition">Contact</a>
         </div>
@@ -87,7 +88,7 @@ export default function Home() {
 
       {/* Features Grid */}
       <section className="relative z-10 container mx-auto px-6 py-20">
-        <div className="grid md:grid-cols-3 gap-8 max-w-6xl mx-auto">
+        <div className="grid md:grid-cols-4 gap-8 max-w-6xl mx-auto">
           {/* Articles Card */}
           <div
             id="articles"
@@ -121,6 +122,24 @@ export default function Home() {
             </p>
             <a href="#" className="text-pink-400 hover:text-pink-300 flex items-center gap-2 font-semibold">
               Explore Thoughts <ArrowRight className="w-4 h-4" />
+            </a>
+          </div>
+
+          {/* Trades Card */}
+          <div
+            id="trades"
+            className="group p-8 bg-white/5 backdrop-blur-lg rounded-2xl border border-white/10 hover:border-yellow-500/50 transition transform hover:scale-105 hover:bg-white/10"
+          >
+            <div className="w-16 h-16 bg-gradient-to-br from-yellow-500 to-amber-500 rounded-xl flex items-center justify-center mb-6 group-hover:rotate-12 transition">
+              <TrendingUp className="w-8 h-8" />
+            </div>
+            <h3 className="text-2xl font-bold mb-4">Trades</h3>
+            <p className="text-gray-400 mb-6">
+              Trading insights, market analysis, and financial perspectives. 
+              Strategies, tips, and lessons from the markets.
+            </p>
+            <a href="#" className="text-yellow-400 hover:text-yellow-300 flex items-center gap-2 font-semibold">
+              View Trades <ArrowRight className="w-4 h-4" />
             </a>
           </div>
 
