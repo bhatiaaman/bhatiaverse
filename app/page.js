@@ -43,7 +43,7 @@ export default function Home() {
         <div className="hidden md:flex space-x-8">
           <a href="#articles" className="hover:text-purple-400 transition">Articles</a>
           <a href="#musings" className="hover:text-purple-400 transition">Musings</a>
-          <a href="#trades" className="hover:text-purple-400 transition">Trades</a>
+          <a href="/trades" className="hover:text-purple-400 transition">Trades</a>
           <a href="#games" className="hover:text-purple-400 transition">AI Games</a>
           <a href="#contact" className="hover:text-purple-400 transition">Contact</a>
         </div>
@@ -138,7 +138,7 @@ export default function Home() {
               Trading insights, market analysis, and financial perspectives. 
               Strategies, tips, and lessons from the markets.
             </p>
-            <a href="#" className="text-yellow-400 hover:text-yellow-300 flex items-center gap-2 font-semibold">
+            <a href="/trades" className="text-yellow-400 hover:text-yellow-300 flex items-center gap-2 font-semibold">
               View Trades <ArrowRight className="w-4 h-4" />
             </a>
           </div>
