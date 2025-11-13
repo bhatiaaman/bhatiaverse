@@ -1,31 +1,124 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { TrendingUp, ArrowRight } from 'lucide-react';
+import { TrendingUp, ArrowRight, X, Plus } from 'lucide-react';
 import TradingViewWidget from '../../components/TradingViewWidget';
+import { fetchStockPrice, getMockPrice } from '../../lib/stockPrices';
+
+const DEFAULT_WATCHLIST = [
+  { name: 'Apple Inc.', symbol: 'NASDAQ:AAPL' },
+  { name: 'Tesla, Inc.', symbol: 'NASDAQ:TSLA' },
+  { name: 'Microsoft Corp.', symbol: 'NASDAQ:MSFT' },
+  { name: 'Pegasystems Inc.', symbol: 'NASDAQ:PEGA' },
+  { name: 'ServiceNow', symbol: 'NYSE:NOW' },
+];
 
 export default function TradesPage() {
   const [selectedSymbol, setSelectedSymbol] = useState('NASDAQ:AAPL');
+  const [watchlist, setWatchlist] = useState(DEFAULT_WATCHLIST);
+  const [prices, setPrices] = useState({});
+  const [newSymbolInput, setNewSymbolInput] = useState('');
+  const [mounted, setMounted] = useState(false);
 
-  const watchItem = (label, exchangeSymbol, price, change, changeClass) => (
-    <div
-      role="button"
-      tabIndex={0}
-      onClick={() => setSelectedSymbol(exchangeSymbol)}
-      onKeyDown={(e) => { if (e.key === 'Enter') setSelectedSymbol(exchangeSymbol); }}
-      className={`flex items-center justify-between p-3 rounded-md cursor-pointer transition ${selectedSymbol === exchangeSymbol ? 'ring-2 ring-yellow-400 bg-white/4' : 'bg-white/3 hover:bg-white/5'}`}
-    >
-      <div>
-        <div className="font-semibold">{label}</div>
-        <div className="text-sm text-gray-400">{exchangeSymbol.split(':')[1]}</div>
+  // Load watchlist from localStorage on mount
+  useEffect(() => {
+    setMounted(true);
+    const saved = localStorage.getItem('tradingWatchlist');
+    if (saved) {
+      try {
+        setWatchlist(JSON.parse(saved));
+      } catch (e) {
+        console.warn('Failed to load watchlist from localStorage', e);
+      }
+    }
+  }, []);
+
+  // Save watchlist to localStorage whenever it changes
+  useEffect(() => {
+    if (mounted) {
+      localStorage.setItem('tradingWatchlist', JSON.stringify(watchlist));
+    }
+  }, [watchlist, mounted]);
+
+  // Fetch prices for all items in watchlist
+  useEffect(() => {
+    const fetchAllPrices = async () => {
+      const newPrices = {};
+      for (const item of watchlist) {
+        const priceData = await fetchStockPrice(item.symbol);
+        newPrices[item.symbol] = priceData;
+      }
+      setPrices(newPrices);
+    };
+    fetchAllPrices();
+  }, [watchlist]);
+
+  const addToWatchlist = () => {
+    if (!newSymbolInput.trim()) return;
+
+    // Format symbol (assume NASDAQ if no exchange given)
+    let formattedSymbol = newSymbolInput.toUpperCase().trim();
+    if (!formattedSymbol.includes(':')) {
+      formattedSymbol = `NASDAQ:${formattedSymbol}`;
+    }
+
+    // Check for duplicates
+    if (watchlist.some((item) => item.symbol === formattedSymbol)) {
+      alert('Symbol already in watchlist');
+      return;
+    }
+
+    // Add to watchlist
+    const cleanSymbol = formattedSymbol.split(':')[1];
+    const newItem = { name: cleanSymbol, symbol: formattedSymbol };
+    setWatchlist([...watchlist, newItem]);
+    setNewSymbolInput('');
+  };
+
+  const removeFromWatchlist = (symbol) => {
+    setWatchlist(watchlist.filter((item) => item.symbol !== symbol));
+  };
+
+  const watchItem = (item) => {
+    const priceData = prices[item.symbol] || { price: 0, change: 0, changePercent: 0 };
+    const changeClass = priceData.change >= 0 ? 'text-green-400' : 'text-red-400';
+    const changeSign = priceData.change >= 0 ? '+' : '';
+
+    return (
+      <div
+        key={item.symbol}
+        role="button"
+        tabIndex={0}
+        onClick={() => setSelectedSymbol(item.symbol)}
+        onKeyDown={(e) => { if (e.key === 'Enter') setSelectedSymbol(item.symbol); }}
+        className={`flex items-center justify-between p-3 rounded-md cursor-pointer transition group ${
+          selectedSymbol === item.symbol ? 'ring-2 ring-yellow-400 bg-white/4' : 'bg-white/3 hover:bg-white/5'
+        }`}
+      >
+        <div className="flex-1 min-w-0">
+          <div className="font-semibold text-sm">{item.name}</div>
+          <div className="text-xs text-gray-400">{item.symbol.split(':')[1]}</div>
+        </div>
+        <div className="text-right flex-1">
+          <div className="font-semibold text-sm">${priceData.price.toFixed(2)}</div>
+          <div className={`text-xs ${changeClass}`}>
+            {changeSign}{priceData.change.toFixed(2)} ({changeSign}{priceData.changePercent.toFixed(2)}%)
+          </div>
+        </div>
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            removeFromWatchlist(item.symbol);
+          }}
+          className="ml-2 p-1 opacity-0 group-hover:opacity-100 transition hover:bg-red-500/20 rounded"
+          title="Remove from watchlist"
+        >
+          <X className="w-4 h-4 text-red-400" />
+        </button>
       </div>
-      <div className="text-right">
-        <div className="font-semibold">{price}</div>
-        <div className={`text-sm ${changeClass}`}>{change}</div>
-      </div>
-    </div>
-  );
+    );
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white">
@@ -58,12 +151,32 @@ export default function TradesPage() {
           <section className="p-8 bg-white/5 backdrop-blur-lg rounded-2xl border border-white/10">
             <h2 className="text-2xl font-bold mb-4">Watchlist</h2>
             <p className="text-gray-400 mb-6">Track symbols you're interested in — price, change, and quick notes.</p>
-            <div className="space-y-3">
-              {watchItem('Apple Inc.', 'NASDAQ:AAPL', '$194.23', '+1.8%', 'text-green-400')}
-              {watchItem('Tesla, Inc.', 'NASDAQ:TSLA', '$255.10', '-0.6%', 'text-red-400')}
-              {watchItem('Microsoft Corp.', 'NASDAQ:MSFT', '$360.75', '+0.9%', 'text-green-400')}
-              {watchItem('Pegasystems Inc.', 'NASDAQ:PEGA', '$45.12', '+0.4%', 'text-green-400')}
-              {watchItem('ServiceNow', 'NYSE:NOW', '$635.20', '+0.2%', 'text-green-400')}
+
+            {/* Add new symbol form */}
+            <div className="mb-6 flex gap-2">
+              <input
+                type="text"
+                placeholder="Add symbol (e.g., GOOGL, NVDA)"
+                value={newSymbolInput}
+                onChange={(e) => setNewSymbolInput(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') addToWatchlist(); }}
+                className="flex-1 px-3 py-2 bg-white/10 border border-white/20 rounded-md text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-yellow-400"
+              />
+              <button
+                onClick={addToWatchlist}
+                className="px-3 py-2 bg-yellow-500/20 border border-yellow-500/30 rounded-md hover:bg-yellow-500/30 transition flex items-center gap-1 text-sm"
+              >
+                <Plus className="w-4 h-4" /> Add
+              </button>
+            </div>
+
+            {/* Watchlist items */}
+            <div className="space-y-2">
+              {watchlist.length > 0 ? (
+                watchlist.map((item) => watchItem(item))
+              ) : (
+                <p className="text-gray-400 text-sm py-4">No symbols in watchlist. Add one above!</p>
+              )}
             </div>
           </section>
         </div>
