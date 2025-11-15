@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef } from 'react';
 
-export default function TradingViewWidget({ symbol = 'NASDAQ:AAPL', interval = 'W', containerId }) {
+export default function TradingViewWidget({ symbol = 'NASDAQ:AAPL', interval = 'D', containerId, isDark = false }) {
   const ref = useRef(null);
   const id = containerId || `tv_${symbol.replace(/[:.]/g, '_')}`;
 
@@ -22,10 +22,10 @@ export default function TradingViewWidget({ symbol = 'NASDAQ:AAPL', interval = '
           symbol,
           interval,
           timezone: 'Etc/UTC',
-          theme: 'dark',
+          theme: isDark ? 'dark' : 'light',
           style: '1',
           locale: 'en',
-          toolbar_bg: '#0f172a',
+          toolbar_bg: isDark ? '#0f172a' : '#ffffff',
           enable_publishing: false,
           allow_symbol_change: true,
           container_id: id,
@@ -63,7 +63,7 @@ export default function TradingViewWidget({ symbol = 'NASDAQ:AAPL', interval = '
   }, [symbol, interval, id]);
 
   return (
-    <div className="rounded-lg overflow-hidden border border-white/5 bg-slate-800">
+    <div className={`rounded-lg overflow-hidden border transition-colors ${isDark ? 'border-slate-700 bg-slate-800' : 'border-gray-200 bg-white'} `}>
       <div id={id} ref={ref} />
     </div>
   );
