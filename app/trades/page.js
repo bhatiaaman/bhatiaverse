@@ -279,8 +279,26 @@ export default function TradesPage() {
                 <a href="#" className="text-gray-500">GitHub</a>
               </div>
             </div>
-            <div className="rounded-2xl bg-white border border-gray-200 p-4 shadow-sm text-sm">
-              <div className="inline-block px-3 py-1 rounded bg-green-50 text-green-700">Staging</div>
+            <div className="rounded-2xl bg-white border border-gray-200 p-4 shadow-sm">
+              <h4 className="font-semibold mb-3">Visitor Stats</h4>
+              <div className="space-y-2 text-sm">
+                <div className="flex items-center justify-between">
+                  <span className="text-gray-600">Total Visits</span>
+                  <span className="font-semibold text-slate-900">12,458</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-gray-600">This Month</span>
+                  <span className="font-semibold text-slate-900">3,421</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-gray-600">This Week</span>
+                  <span className="font-semibold text-blue-600">892</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-gray-600">Today</span>
+                  <span className="font-semibold text-emerald-600">142</span>
+                </div>
+              </div>
             </div>
           </aside>
         </div>

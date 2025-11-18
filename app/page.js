@@ -1,18 +1,71 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Sparkles, BookOpen, Lightbulb, Gamepad2, TrendingUp, Github, Linkedin, Mail, ArrowRight, Sun, Moon } from 'lucide-react';
 import Link from 'next/link';
 import { useTheme } from '../lib/theme-context';
+import dynamic from 'next/dynamic';
+
+// Dynamically import GSAP to avoid SSR issues
+const gsap = dynamic(() => import('gsap').then(mod => mod.default), { ssr: false });
 
 export default function Home() {
   const { isDark, toggleTheme } = useTheme();
   const [scrollY, setScrollY] = useState(0);
+  const cardRefs = useRef([]);
+  const exploreButtonRef = useRef(null);
 
   useEffect(() => {
     const handleScroll = () => setScrollY(window.scrollY);
     window.addEventListener('scroll', handleScroll);
     return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  useEffect(() => {
+    // Import GSAP dynamically to avoid SSR issues
+    import('gsap').then(({ default: gsapLib }) => {
+      import('gsap/ScrollTrigger').then(({ default: ScrollTrigger }) => {
+        gsapLib.registerPlugin(ScrollTrigger);
+
+        // Animate cards with stagger effect on scroll
+        cardRefs.current.forEach((card, index) => {
+          gsapLib.fromTo(
+            card,
+            { opacity: 0, y: 100 },
+            {
+              opacity: 1,
+              y: 0,
+              duration: 0.8,
+              delay: index * 0.1,
+              scrollTrigger: {
+                trigger: card,
+                start: 'top 80%',
+                toggleActions: 'play none none reverse',
+              },
+            }
+          );
+        });
+
+        // Animate explore button with bounce
+        if (exploreButtonRef.current) {
+          gsapLib.fromTo(
+            exploreButtonRef.current,
+            { opacity: 0, y: 50, scale: 0.8 },
+            {
+              opacity: 1,
+              y: 0,
+              scale: 1,
+              duration: 0.8,
+              scrollTrigger: {
+                trigger: exploreButtonRef.current,
+                start: 'top 85%',
+                toggleActions: 'play none none reverse',
+              },
+            }
+          );
+        }
+      });
+    });
   }, []);
 
   return (
@@ -45,9 +98,9 @@ export default function Home() {
         </div>
         <div className="hidden md:flex space-x-8 items-center">
           <a href="#articles" className={`transition hover:text-blue-500 ${isDark ? 'text-gray-300' : 'text-slate-700'}`}>Articles</a>
-          <a href="#musings" className={`transition hover:text-blue-500 ${isDark ? 'text-gray-300' : 'text-slate-700'}`}>Musings</a>
+          <a href="/musings" className={`transition hover:text-blue-500 ${isDark ? 'text-gray-300' : 'text-slate-700'}`}>Musings</a>
           <a href="/trades" className={`transition hover:text-blue-500 ${isDark ? 'text-gray-300' : 'text-slate-700'}`}>Trades</a>
-          <a href="#games" className={`transition hover:text-blue-500 ${isDark ? 'text-gray-300' : 'text-slate-700'}`}>AI Games</a>
+          <a href="/aigames" className={`transition hover:text-blue-500 ${isDark ? 'text-gray-300' : 'text-slate-700'}`}>AI Games</a>
           <a href="#contact" className={`transition hover:text-blue-500 ${isDark ? 'text-gray-300' : 'text-slate-700'}`}>Contact</a>
           <button
             onClick={toggleTheme}
@@ -89,6 +142,7 @@ export default function Home() {
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <a
+              ref={exploreButtonRef}
               href="#articles"
               className="px-8 py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold hover:scale-105 transition transform flex items-center justify-center gap-2"
             >
@@ -113,6 +167,7 @@ export default function Home() {
         <div className="grid md:grid-cols-4 gap-8 max-w-6xl mx-auto">
           {/* Articles Card */}
           <div
+            ref={(el) => (cardRefs.current[0] = el)}
             id="articles"
             className={`group p-8 rounded-2xl border transition transform hover:scale-105 ${
               isDark
@@ -135,6 +190,7 @@ export default function Home() {
 
           {/* Musings Card */}
           <div
+            ref={(el) => (cardRefs.current[1] = el)}
             id="musings"
             className={`group p-8 rounded-2xl border transition transform hover:scale-105 ${
               isDark
@@ -150,13 +206,14 @@ export default function Home() {
               Random thoughts, observations, and reflections on life, tech, and the universe. 
               Sometimes profound, sometimes just fun.
             </p>
-            <a href="#" className={`flex items-center gap-2 font-semibold transition hover:gap-3 ${isDark ? 'text-emerald-400 hover:text-emerald-300' : 'text-emerald-600 hover:text-emerald-700'}`}>
+            <Link href="/musings" className={`flex items-center gap-2 font-semibold transition hover:gap-3 ${isDark ? 'text-emerald-400 hover:text-emerald-300' : 'text-emerald-600 hover:text-emerald-700'}`}>
               Explore Thoughts <ArrowRight className="w-4 h-4" />
-            </a>
+            </Link>
           </div>
 
           {/* Trades Card */}
           <div
+            ref={(el) => (cardRefs.current[2] = el)}
             id="trades"
             className={`group p-8 rounded-2xl border transition transform hover:scale-105 ${
               isDark
@@ -179,6 +236,7 @@ export default function Home() {
 
           {/* AI Games Card */}
           <div
+            ref={(el) => (cardRefs.current[3] = el)}
             id="games"
             className={`group p-8 rounded-2xl border transition transform hover:scale-105 ${
               isDark
@@ -194,9 +252,9 @@ export default function Home() {
               Interactive experiences powered by artificial intelligence. 
               Play, learn, and explore the possibilities of AI.
             </p>
-            <a href="#" className={`flex items-center gap-2 font-semibold transition hover:gap-3 ${isDark ? 'text-violet-400 hover:text-violet-300' : 'text-violet-600 hover:text-violet-700'}`}>
+            <Link href="/aigames" className={`flex items-center gap-2 font-semibold transition hover:gap-3 ${isDark ? 'text-violet-400 hover:text-violet-300' : 'text-violet-600 hover:text-violet-700'}`}>
               Start Playing <ArrowRight className="w-4 h-4" />
-            </a>
+            </Link>
           </div>
         </div>
       </section>
