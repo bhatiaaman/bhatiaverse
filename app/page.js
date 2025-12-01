@@ -97,8 +97,8 @@ export default function Home() {
           </span>
         </div>
         <div className="hidden md:flex space-x-8 items-center">
-          <a href="#articles" className={`transition hover:text-blue-500 ${isDark ? 'text-gray-300' : 'text-slate-700'}`}>Articles</a>
-          <a href="/musings" className={`transition hover:text-blue-500 ${isDark ? 'text-gray-300' : 'text-slate-700'}`}>Musings</a>
+          <a href="/articles" className={`transition hover:text-blue-500 ${isDark ? 'text-gray-300' : 'text-slate-700'}`}>Articles</a>
+          <a href="/spirituality" className={`transition hover:text-blue-500 ${isDark ? 'text-gray-300' : 'text-slate-700'}`}>Spirituality</a>
           <a href="/trades" className={`transition hover:text-blue-500 ${isDark ? 'text-gray-300' : 'text-slate-700'}`}>Trades</a>
           <a href="/aigames" className={`transition hover:text-blue-500 ${isDark ? 'text-gray-300' : 'text-slate-700'}`}>AI Games</a>
           <a href="#contact" className={`transition hover:text-blue-500 ${isDark ? 'text-gray-300' : 'text-slate-700'}`}>Contact</a>
@@ -143,7 +143,7 @@ export default function Home() {
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <a
               ref={exploreButtonRef}
-              href="#articles"
+              href="/articles"
               className="px-8 py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold hover:scale-105 transition transform flex items-center justify-center gap-2"
             >
               Explore Content <ArrowRight className="w-5 h-5" />
@@ -183,15 +183,15 @@ export default function Home() {
               Deep dives into technology, AI, development, and everything in between. 
               Thoughtful analysis and practical insights.
             </p>
-            <a href="#" className={`flex items-center gap-2 font-semibold transition hover:gap-3 ${isDark ? 'text-blue-400 hover:text-blue-300' : 'text-blue-600 hover:text-blue-700'}`}>
+            <Link href="/articles" className={`flex items-center gap-2 font-semibold transition hover:gap-3 ${isDark ? 'text-blue-400 hover:text-blue-300' : 'text-blue-600 hover:text-blue-700'}`}>
               Read Articles <ArrowRight className="w-4 h-4" />
-            </a>
+            </Link>
           </div>
 
-          {/* Musings Card */}
+          {/* Spirituality Card */}
           <div
             ref={(el) => (cardRefs.current[1] = el)}
-            id="musings"
+            id="spirituality"
             className={`group p-8 rounded-2xl border transition transform hover:scale-105 ${
               isDark
                 ? 'bg-slate-800 border-slate-700 hover:border-emerald-600 hover:bg-slate-700/80'
@@ -201,13 +201,12 @@ export default function Home() {
             <div className="w-16 h-16 bg-emerald-600 rounded-xl flex items-center justify-center mb-6 group-hover:rotate-12 transition text-white">
               <Lightbulb className="w-8 h-8" />
             </div>
-            <h3 className={`text-2xl font-bold mb-4 font-serif ${isDark ? 'text-white' : 'text-slate-900'}`}>Musings</h3>
+            <h3 className={`text-2xl font-bold mb-4 font-serif ${isDark ? 'text-white' : 'text-slate-900'}`}>Spirituality</h3>
             <p className={`mb-6 ${isDark ? 'text-gray-400' : 'text-gray-700'}`}>
-              Random thoughts, observations, and reflections on life, tech, and the universe. 
-              Sometimes profound, sometimes just fun.
+              Reflections on life, consciousness, and inner growth.
             </p>
-            <Link href="/musings" className={`flex items-center gap-2 font-semibold transition hover:gap-3 ${isDark ? 'text-emerald-400 hover:text-emerald-300' : 'text-emerald-600 hover:text-emerald-700'}`}>
-              Explore Thoughts <ArrowRight className="w-4 h-4" />
+            <Link href="/spirituality" className={`flex items-center gap-2 font-semibold transition hover:gap-3 ${isDark ? 'text-emerald-400 hover:text-emerald-300' : 'text-emerald-600 hover:text-emerald-700'}`}>
+              Explore Spirituality <ArrowRight className="w-4 h-4" />
             </Link>
           </div>
 
@@ -270,7 +269,7 @@ export default function Home() {
           <p className={`text-lg leading-relaxed mb-8 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
             The Bhatiaverse is my personal corner of the internet where I share my journey through 
             technology, artificial intelligence, and creative thinking. Whether you're here for 
-            technical insights, philosophical musings, or just to play with some cool AI-powered 
+            technical insights, spiritual reflections, or just to play with some cool AI-powered 
             experiences, there's something for everyone.
           </p>
           <p className={`text-lg leading-relaxed ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>

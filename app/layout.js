@@ -6,7 +6,7 @@ const inter = Inter({ subsets: ['latin'] })
 
 export const metadata = {
   title: 'Bhatiaverse - A Universe of Ideas',
-  description: 'Articles, musings, and interactive AI experiences by Amandeep Bhatia',
+  description: 'Articles, spirituality, and interactive AI experiences by Amandeep Bhatia',
 }
 
 const envLabel = process.env.NEXT_PUBLIC_ENV_LABEL

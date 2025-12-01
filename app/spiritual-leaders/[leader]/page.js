@@ -46,7 +46,7 @@ export default function SpiritualLeaderPage() {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center">
         <h1 className="text-3xl font-bold mb-4">Spiritual Leader Not Found</h1>
-        <Link href="/musings" className="text-blue-600 underline">Back to Musings</Link>
+  <Link href="/spirituality" className="text-blue-600 underline">Back to Spirituality</Link>
       </div>
     );
   }
@@ -60,10 +60,10 @@ export default function SpiritualLeaderPage() {
             <h1 className={`text-2xl font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>{leader.name}</h1>
           </div>
           <Link
-            href="/musings"
-            className={`flex items-center gap-2 px-4 py-2 text-sm rounded-lg transition-colors border ${isDark ? 'bg-slate-800 border-slate-700 hover:bg-slate-700 text-white' : 'bg-gray-100 border-gray-300 hover:bg-gray-200 text-slate-900'}`}
-          >
-            <ArrowLeft className="w-4 h-4" /> Back to Musings
+            href="/spirituality"
+              className={`flex items-center gap-2 px-4 py-2 text-sm rounded-lg transition-colors border ${isDark ? 'bg-slate-800 border-slate-700 hover:bg-slate-700 text-white' : 'bg-gray-100 border-gray-300 hover:bg-gray-200 text-slate-900'}`}
+            >
+              <ArrowLeft className="w-4 h-4" /> Back to Spirituality
           </Link>
         </div>
       </header>
