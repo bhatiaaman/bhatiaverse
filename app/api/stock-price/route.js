@@ -1,4 +1,13 @@
-// Cache prices for 5 minutes to reduce API calls
+// Mock stock prices data
+const MOCK_PRICES = {
+  'AAPL': { price: 194.23, change: 1.8, changePercent: 0.93 },
+  'TSLA': { price: 255.10, change: -1.54, changePercent: -0.6 },
+  'MSFT': { price: 360.75, change: 3.24, changePercent: 0.9 },
+  'PEGA': { price: 45.12, change: 0.18, changePercent: 0.4 },
+  'NOW': { price: 635.20, change: 1.27, changePercent: 0.2 },
+};
+
+// Cache prices for 5 minutes to reduce redundant returns
 const priceCache = new Map();
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
@@ -12,43 +21,6 @@ function getCachedPrice(symbol) {
 
 function setCachedPrice(symbol, data) {
   priceCache.set(symbol, { data, timestamp: Date.now() });
-}
-
-// Fetch from Yahoo Finance using query1 endpoint
-async function fetchYahooQuote(symbol) {
-  try {
-    const url = `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${symbol}?modules=price`;
-    const response = await fetch(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-      },
-    });
-
-    if (!response.ok) {
-      throw new Error(`Yahoo Finance returned ${response.status}`);
-    }
-
-    const data = await response.json();
-    const priceData = data?.quoteSummary?.result?.[0]?.price;
-
-    if (!priceData || priceData.regularMarketPrice === undefined) {
-      throw new Error('No price data in response');
-    }
-
-    const currentPrice = priceData.regularMarketPrice.raw;
-    const previousClose = priceData.regularMarketPreviousClose?.raw || currentPrice;
-    const change = currentPrice - previousClose;
-    const changePercent = previousClose > 0 ? (change / previousClose) * 100 : 0;
-
-    return {
-      price: parseFloat(currentPrice.toFixed(2)),
-      change: parseFloat(change.toFixed(2)),
-      changePercent: parseFloat(changePercent.toFixed(2)),
-    };
-  } catch (error) {
-    console.error(`Yahoo Finance API error for ${symbol}:`, error.message);
-    return null;
-  }
 }
 
 export async function GET(request) {
@@ -69,22 +41,19 @@ export async function GET(request) {
       return Response.json(cached);
     }
 
-    // Fetch from Yahoo Finance
-    const priceData = await fetchYahooQuote(cleanSymbol);
+    // Return mock data
+    const mockData = MOCK_PRICES[cleanSymbol] || {
+      price: 100.0,
+      change: 0,
+      changePercent: 0,
+    };
 
-    if (!priceData) {
-      return Response.json(
-        { error: 'Stock data not found or API unavailable' },
-        { status: 404 }
-      );
-    }
-
-    setCachedPrice(cleanSymbol, priceData);
-    return Response.json(priceData);
+    setCachedPrice(cleanSymbol, mockData);
+    return Response.json(mockData);
   } catch (error) {
-    console.error('Error fetching stock price:', error);
+    console.error('Error processing stock price request:', error);
     return Response.json(
-      { error: 'Failed to fetch stock data', details: error.message },
+      { error: 'Failed to process request', details: error.message },
       { status: 500 }
     );
   }
