@@ -1,4 +1,4 @@
-import { setLatestScan } from '@/app/lib/scanStore';
+import { setLatestScan } from '../../lib/scanStore';
 
 export async function POST(request) {
   try {
