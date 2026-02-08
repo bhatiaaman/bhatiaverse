@@ -29,65 +29,66 @@ export default function ScannerPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-xl">Loading scanner data...</div>
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center">
+        <div className="text-xl text-white">Loading scanner data...</div>
       </div>
     );
   }
 
   return (
-    <div className="container mx-auto px-4 py-8 max-w-6xl">
-      <header className="mb-8">
-        <h1 className="text-4xl font-bold mb-2">📊 ChartInk Scanner Results</h1>
-        {lastUpdate && (
-          <p className="text-gray-600">
-            Last updated: {lastUpdate.toLocaleTimeString()}
-          </p>
+    <div className="min-h-screen bg-slate-900 text-white">
+      <div className="container mx-auto px-4 py-8 max-w-6xl">
+        <header className="mb-8">
+          <h1 className="text-4xl font-bold mb-2 text-white">📊 ChartInk Scanner Results</h1>
+          {lastUpdate && (
+            <p className="text-slate-400">
+              Last updated: {lastUpdate.toLocaleTimeString()}
+            </p>
+          )}
+        </header>
+
+        {scans.latest ? (
+          <div className="bg-slate-800 rounded-lg p-6 mb-8 border border-slate-700">
+            <h2 className="text-2xl font-semibold mb-4 text-white">Latest Scan</h2>
+            <div className="text-sm text-slate-400 mb-4">
+              Received: {new Date(scans.latest.receivedAt).toLocaleString()}
+            </div>
+            <div className="bg-slate-950 rounded p-4 overflow-x-auto border border-slate-700">
+              <pre className="text-sm text-green-400">{JSON.stringify(scans.latest, null, 2)}</pre>
+            </div>
+          </div>
+        ) : (
+          <div className="bg-slate-800 rounded-lg p-12 text-center border border-slate-700">
+            <p className="text-xl mb-2 text-white">⏳ Waiting for scanner data...</p>
+            <p className="text-slate-400 text-sm">
+              Webhook URL: https://bhatiaverse.com/api/chartink-webhook
+            </p>
+          </div>
         )}
-      </header>
 
-      {scans.latest ? (
-        <div className="bg-gray-100 rounded-lg p-6 mb-8">
-          <h2 className="text-2xl font-semibold mb-4">Latest Scan</h2>
-          <div className="text-sm text-gray-600 mb-4">
-            Received: {new Date(scans.latest.receivedAt).toLocaleString()}
+        {scans.history.length > 0 && (
+          <div className="mt-8">
+            <h2 className="text-2xl font-semibold mb-4 text-white">
+              Recent Scans ({scans.history.length})
+            </h2>
+            <div className="space-y-4">
+              {scans.history.map((scan) => (
+                <div 
+                  key={scan.id} 
+                  className="bg-slate-800 border border-slate-700 rounded-lg p-4 hover:bg-slate-750 transition-colors"
+                >
+                  <span className="font-semibold mr-4 text-white">
+                    {new Date(scan.receivedAt).toLocaleTimeString()}
+                  </span>
+                  <span className="text-slate-400 text-sm">
+                    {JSON.stringify(scan).substring(0, 100)}...
+                  </span>
+                </div>
+              ))}
+            </div>
           </div>
-          <div className="bg-white rounded p-4 overflow-x-auto">
-            <pre className="text-sm">{JSON.stringify(scans.latest, null, 2)}</pre>
-          </div>
-        </div>
-      ) : (
-        <div className="bg-gray-50 rounded-lg p-12 text-center">
-          <p className="text-xl mb-2">⏳ Waiting for scanner data...</p>
-          <p className="text-gray-600 text-sm">
-            Webhook URL: https://bhatiaverse.com/api/chartink-webhook
-          </p>
-        </div>
-      )}
-
-      {scans.history.length > 0 && (
-        <div className="mt-8">
-          <h2 className="text-2xl font-semibold mb-4">
-            Recent Scans ({scans.history.length})
-          </h2>
-          <div className="space-y-4">
-            {scans.history.map((scan) => (
-              <div 
-                key={scan.id} 
-                className="bg-white border border-gray-200 rounded-lg p-4"
-              >
-                <span className="font-semibold mr-4">
-                  {new Date(scan.receivedAt).toLocaleTimeString()}
-                </span>
-                <span className="text-gray-600 text-sm">
-                  {JSON.stringify(scan).substring(0, 100)}...
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }
-
