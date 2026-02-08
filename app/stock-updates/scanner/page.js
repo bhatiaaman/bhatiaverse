@@ -283,17 +283,97 @@ export default function ScannerPage() {
                 >
                   {/* Top Analytics Section: 4 Equal Rectangular Sections */}
                   <div className="grid grid-cols-4 gap-2 p-4 bg-slate-750 border-b border-slate-700">
-                    {[1, 2, 3, 4].map((section) => (
-                      <div 
-                        key={section}
-                        className="bg-slate-800 border border-slate-700 rounded-lg p-4 flex items-center justify-center min-h-24"
-                      >
-                        <div className="text-center">
-                          <p className="text-slate-400 text-sm">Section {section}</p>
-                          <p className="text-slate-500 text-xs mt-1">Analytics</p>
+                    {/* Section 1: Market Indices */}
+                    <div 
+                      key="section-1"
+                      className="bg-slate-800 border border-slate-700 rounded-lg p-4 flex flex-col justify-center min-h-24"
+                    >
+                      <h4 className="text-slate-300 text-xs font-semibold mb-3 text-center">Market Indices</h4>
+                      <div className="space-y-2">
+                        <div className="flex justify-between items-center">
+                          <span className="text-slate-500 text-xs">Nifty</span>
+                          <span className="text-white text-sm font-mono">24,850.35</span>
+                        </div>
+                        <div className="flex justify-between items-center">
+                          <span className="text-slate-500 text-xs">SGX Nifty</span>
+                          <span className="text-white text-sm font-mono">24,865.00</span>
+                        </div>
+                        <div className="flex justify-between items-center">
+                          <span className="text-slate-500 text-xs">India VIX</span>
+                          <span className="text-orange-400 text-sm font-mono">15.42</span>
                         </div>
                       </div>
-                    ))}
+                    </div>
+
+                    {/* Section 2 */}
+                    <div 
+                      key="section-2"
+                      className="bg-slate-800 border border-slate-700 rounded-lg p-4 flex flex-col justify-center min-h-24"
+                    >
+                      <h4 className="text-slate-300 text-xs font-semibold mb-3 text-center">Global Indices</h4>
+                      <div className="space-y-2">
+                        <div className="flex justify-between items-center">
+                          <span className="text-slate-500 text-xs">DOW</span>
+                          <span className="text-white text-sm font-mono">42,847.24</span>
+                        </div>
+                        <div className="flex justify-between items-center">
+                          <span className="text-slate-500 text-xs">NASDAQ</span>
+                          <span className="text-white text-sm font-mono">19,285.68</span>
+                        </div>
+                        <div className="flex justify-between items-center">
+                          <span className="text-slate-500 text-xs">DAX</span>
+                          <span className="text-white text-sm font-mono">21,456.82</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Section 3 */}
+                    <div 
+                      key="section-3"
+                      className="bg-slate-800 border border-slate-700 rounded-lg p-4 flex flex-col justify-center min-h-24"
+                    >
+                      <h4 className="text-slate-300 text-xs font-semibold mb-3 text-center">Market Sentiment</h4>
+                      <div className="space-y-2">
+                        <div className="flex justify-between items-center">
+                          <span className="text-slate-500 text-xs">Nifty Bias</span>
+                          <span className="text-green-400 text-sm font-mono">Bullish</span>
+                        </div>
+                        <div className="flex justify-between items-center">
+                          <span className="text-slate-500 text-xs">Adv/Decline</span>
+                          <span className="text-white text-sm font-mono">1,245/852</span>
+                        </div>
+                        <div className="flex justify-between items-center">
+                          <span className="text-slate-500 text-xs">Nifty Fut PCR</span>
+                          <span className="text-white text-sm font-mono">1.32</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Section 4 */}
+                    <div 
+                      key="section-4"
+                      className="bg-slate-800 border border-slate-700 rounded-lg p-4 flex flex-col justify-center min-h-24"
+                    >
+                      <h4 className="text-slate-300 text-xs font-semibold mb-3 text-center">Commodities</h4>
+                      <div className="space-y-2">
+                        <div className="flex justify-between items-center">
+                          <span className="text-slate-500 text-xs">Crude Oil</span>
+                          <span className="text-white text-sm font-mono">$82.45</span>
+                        </div>
+                        <div className="flex justify-between items-center">
+                          <span className="text-slate-500 text-xs">Silver</span>
+                          <span className="text-white text-sm font-mono">₹71,240</span>
+                        </div>
+                        <div className="flex justify-between items-center">
+                          <span className="text-slate-500 text-xs">Gold</span>
+                          <span className="text-yellow-400 text-sm font-mono">₹76,850</span>
+                        </div>
+                        <div className="flex justify-between items-center">
+                          <span className="text-slate-500 text-xs">Nat. Gas</span>
+                          <span className="text-white text-sm font-mono">₹248.50</span>
+                        </div>
+                      </div>
+                    </div>
                   </div>
 
                   <div className="flex flex-1 overflow-hidden">
