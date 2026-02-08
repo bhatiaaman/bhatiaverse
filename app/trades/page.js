@@ -200,15 +200,15 @@ export default function TradesPage() {
       </header>
 
       {/* Main Content */}
-      <div className="container mx-auto px-6 py-8">
+      <div className="container mx-auto px-3 sm:px-6 py-4 sm:py-8">
         {/* Maximized Chart Full Screen */}
         {chartMaximized && (
           <div className={`fixed inset-0 z-50 flex flex-col ${isDark ? 'bg-slate-950' : 'bg-white'}`}>
-            <div className={`flex items-center justify-between p-6 border-b transition-colors ${isDark ? 'border-slate-800' : 'border-gray-200'}`}>
-              <h2 className={`text-2xl font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>{selectedSymbol} - Weekly Chart</h2>
+            <div className={`flex items-center justify-between p-4 sm:p-6 border-b transition-colors ${isDark ? 'border-slate-800' : 'border-gray-200'}`}>
+              <h2 className={`text-lg sm:text-2xl font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>{selectedSymbol} - Weekly Chart</h2>
               <button
                 onClick={() => setChartMaximized(false)}
-                className={`px-4 py-2 rounded transition-colors ${
+                className={`px-3 sm:px-4 py-2 rounded text-sm sm:text-base transition-colors ${
                   isDark
                     ? 'bg-slate-800 hover:bg-slate-700 text-white'
                     : 'bg-gray-200 hover:bg-gray-300 text-slate-900'
@@ -217,7 +217,7 @@ export default function TradesPage() {
                 Exit Fullscreen
               </button>
             </div>
-            <div className="flex-1 overflow-auto p-6">
+            <div className="flex-1 overflow-auto p-4 sm:p-6">
               <div className="h-full">
                 <TradingViewWidget symbol={selectedSymbol} interval="D" containerId="tv_widget_max" isDark={isDark} />
               </div>
@@ -225,23 +225,23 @@ export default function TradesPage() {
           </div>
         )}
 
-        {/* Main grid: Watchlist (left) / Features & Articles (center) / Sidebar (right) */}
-        <div className="grid grid-cols-12 gap-6">
-          {/* Left: Watchlist, Charts */}
-          <aside className="col-span-3 flex flex-col gap-6">
+        {/* Main grid: Responsive layout - stacks on mobile, 3 columns on desktop */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3 sm:gap-6">
+          {/* Left: Watchlist, Charts - Hidden on mobile, visible on tablet+ */}
+          <aside className="col-span-1 sm:col-span-2 lg:col-span-3 flex flex-col gap-3 sm:gap-6">
             <div className="rounded-2xl bg-white border border-gray-200 p-4 shadow-sm">
-              <h4 className="text-lg font-semibold mb-3">Watchlist</h4>
+              <h4 className="text-base sm:text-lg font-semibold mb-3">Watchlist</h4>
               <WatchlistTabs groups={watchlistGroup} selectedTab={selectedWatchTab} setSelectedTab={setSelectedWatchTab} onSelect={(s) => setSelectedSymbol(s)} isDark={false} prices={prices} />
             </div>
             <Link href="/stock-updates/scanner" className="rounded-2xl bg-blue-500 hover:bg-blue-600 border border-blue-600 p-4 shadow-sm text-white transition-colors">
               <div className="flex items-center gap-2">
                 <BarChart3 className="w-5 h-5" />
-                <h4 className="font-semibold">Stock Scanner</h4>
+                <h4 className="font-semibold text-sm sm:text-base">Stock Scanner</h4>
               </div>
-              <p className="text-sm text-blue-100 mt-2">View stock scans and technical analysis</p>
+              <p className="text-xs sm:text-sm text-blue-100 mt-2">View stock scans and technical analysis</p>
             </Link>
             <div className="rounded-2xl bg-white border border-gray-200 p-4 shadow-sm">
-              <h4 className="text-md font-semibold mb-3">Charts</h4>
+              <h4 className="text-sm sm:text-md font-semibold mb-3">Charts</h4>
               <ChartExplorer onSearch={(q) => { const fq = q && q.includes(':') ? q : `NASDAQ:${q}`; setSelectedSymbol(fq); }} isDark={false} />
               <div className="mt-4 rounded overflow-hidden border relative">
                 <TradingViewWidget symbol={selectedSymbol} interval="D" containerId="small_tv" isDark={false} />
@@ -256,39 +256,39 @@ export default function TradesPage() {
             </div>
           </aside>
 
-          {/* Center: Featured Article + Articles grid */}
-          <main className="col-span-6 flex flex-col gap-6" id="articles-list">
+          {/* Center: Featured Article + Articles grid - Full width on mobile, col-span-6 on desktop */}
+          <main className="col-span-1 sm:col-span-2 lg:col-span-6 flex flex-col gap-3 sm:gap-6" id="articles-list">
             <FeaturedArticles articles={ARTICLES} isDark={false} />
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
               {ARTICLES.map((article) => (
                 <article key={article.id} onClick={() => setOpenArticle(article)} className="cursor-pointer rounded-lg bg-white border border-gray-200 p-4 shadow-sm">
-                  <div className="font-serif font-semibold text-lg mb-2">{article.title}</div>
-                  <div className="text-sm text-gray-500">{article.excerpt}</div>
+                  <div className="font-serif font-semibold text-base sm:text-lg mb-2">{article.title}</div>
+                  <div className="text-xs sm:text-sm text-gray-500">{article.excerpt}</div>
                   <div className="text-xs text-gray-400 mt-3">{article.date} • {article.readTime}</div>
                 </article>
               ))}
             </div>
-            <div className="mt-6 text-right">
-              <a href="#articles-list" className="px-3 py-2 bg-white border border-gray-200 rounded shadow-sm text-sm">View All Articles</a>
+            <div className="mt-4 sm:mt-6 text-right">
+              <a href="#articles-list" className="px-3 py-2 bg-white border border-gray-200 rounded shadow-sm text-xs sm:text-sm">View All Articles</a>
             </div>
           </main>
 
-          {/* Right: Ads, Contact, Environment - true sidebar */}
-          <aside className="col-span-3 flex flex-col gap-4">
-            <div className="rounded-2xl bg-white border border-gray-200 p-6 shadow-sm flex items-center justify-center min-h-[120px]">
-              <span className="text-gray-400">Advertise</span>
+          {/* Right: Ads, Contact, Environment - Hidden on mobile, visible on desktop */}
+          <aside className="col-span-1 sm:col-span-2 lg:col-span-3 flex flex-col gap-3 sm:gap-4">
+            <div className="rounded-2xl bg-white border border-gray-200 p-4 sm:p-6 shadow-sm flex items-center justify-center min-h-[100px] sm:min-h-[120px]">
+              <span className="text-gray-400 text-sm sm:text-base">Advertise</span>
             </div>
-            <div className="rounded-2xl bg-white border border-gray-200 p-4 shadow-sm">
-              <h4 className="font-semibold mb-2">Contact</h4>
-              <div className="text-sm text-gray-600">ame@bhatiiverse.com</div>
+            <div className="rounded-2xl bg-white border border-gray-200 p-3 sm:p-4 shadow-sm">
+              <h4 className="font-semibold mb-2 text-sm sm:text-base">Contact</h4>
+              <div className="text-xs sm:text-sm text-gray-600">ame@bhatiiverse.com</div>
               <div className="mt-3 flex gap-2">
-                <a href="#" className="text-gray-500">Twitter</a>
-                <a href="#" className="text-gray-500">GitHub</a>
+                <a href="#" className="text-gray-500 text-xs sm:text-sm">Twitter</a>
+                <a href="#" className="text-gray-500 text-xs sm:text-sm">GitHub</a>
               </div>
             </div>
-            <div className="rounded-2xl bg-white border border-gray-200 p-4 shadow-sm">
-              <h4 className="font-semibold mb-3">Visitor Stats</h4>
-              <div className="space-y-2 text-sm">
+            <div className="rounded-2xl bg-white border border-gray-200 p-3 sm:p-4 shadow-sm">
+              <h4 className="font-semibold mb-3 text-sm sm:text-base">Visitor Stats</h4>
+              <div className="space-y-2 text-xs sm:text-sm">
                 <div className="flex items-center justify-between">
                   <span className="text-gray-600">Total Visits</span>
                   <span className="font-semibold text-slate-900">12,458</span>
@@ -313,17 +313,17 @@ export default function TradesPage() {
         {watchlistModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center">
             <div className="fixed inset-0 bg-black/40" onClick={() => setWatchlistModalOpen(false)} />
-            <div className="relative bg-white max-w-lg w-full mx-4 rounded-2xl shadow-lg p-6">
-              <button onClick={() => setWatchlistModalOpen(false)} className="absolute top-4 right-4 p-2 rounded text-gray-500">
+            <div className="relative bg-white max-w-lg w-full mx-3 sm:mx-4 rounded-2xl shadow-lg p-4 sm:p-6">
+              <button onClick={() => setWatchlistModalOpen(false)} className="absolute top-3 sm:top-4 right-3 sm:right-4 p-2 rounded text-gray-500">
                 <X className="w-5 h-5" />
               </button>
-              <h2 className="text-xl font-bold mb-4">All Watchlist Symbols</h2>
+              <h2 className="text-lg sm:text-xl font-bold mb-4">All Watchlist Symbols</h2>
               <div className="space-y-2 max-h-[60vh] overflow-y-auto">
                 {watchlist.map((item) => (
-                  <div key={item.symbol} className="flex items-center justify-between p-2 rounded hover:bg-gray-50 cursor-pointer" onClick={() => { setSelectedSymbol(item.symbol); setWatchlistModalOpen(false); }}>
+                  <div key={item.symbol} className="flex items-center justify-between p-2 rounded hover:bg-gray-50 cursor-pointer text-xs sm:text-sm" onClick={() => { setSelectedSymbol(item.symbol); setWatchlistModalOpen(false); }}>
                     <div className="font-medium">{item.symbol.replace(/^.*:/,'')}</div>
                     <div className="text-right text-gray-700">{prices[item.symbol]?.price ? `$${prices[item.symbol].price.toFixed(2)}` : '--'}</div>
-                    <div className={`text-right text-sm ${prices[item.symbol]?.changePercent >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>{prices[item.symbol]?.changePercent ? `${prices[item.symbol].changePercent.toFixed(2)}%` : '--'}</div>
+                    <div className={`text-right text-xs sm:text-sm ${prices[item.symbol]?.changePercent >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>{prices[item.symbol]?.changePercent ? `${prices[item.symbol].changePercent.toFixed(2)}%` : '--'}</div>
                   </div>
                 ))}
               </div>
@@ -333,15 +333,15 @@ export default function TradesPage() {
 
         {/* Article Detail Modal */}
         {openArticle && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
             <div className="fixed inset-0 bg-black/40" onClick={() => setOpenArticle(null)} />
-            <div className="relative bg-white max-w-3xl w-full mx-4 rounded-2xl shadow-lg p-6">
-              <button onClick={() => setOpenArticle(null)} className="absolute top-4 right-4 p-2 rounded text-gray-500">
+            <div className="relative bg-white max-w-3xl w-full rounded-2xl shadow-lg p-4 sm:p-6 max-h-[90vh] overflow-y-auto">
+              <button onClick={() => setOpenArticle(null)} className="absolute top-3 sm:top-4 right-3 sm:right-4 p-2 rounded text-gray-500">
                 <X className="w-5 h-5" />
               </button>
-              <h2 className="text-2xl font-serif font-bold mb-2">{openArticle.title}</h2>
-              <div className="text-sm text-gray-500 mb-4">{openArticle.date} • {openArticle.readTime} • {openArticle.author}</div>
-              <div className="prose prose-sm max-w-none text-gray-700">
+              <h2 className="text-xl sm:text-2xl font-serif font-bold mb-2">{openArticle.title}</h2>
+              <div className="text-xs sm:text-sm text-gray-500 mb-4">{openArticle.date} • {openArticle.readTime} • {openArticle.author}</div>
+              <div className="prose prose-sm max-w-none text-gray-700 text-xs sm:text-sm">
                 {openArticle.content || openArticle.excerpt || 'Full article content will appear here.'}
               </div>
             </div>
