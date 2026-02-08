@@ -1,42 +1,87 @@
-'use client';
+"use client";
 
-import { useState } from 'react';
+import { useState } from "react";
 
-export default function TestWebhook() {
-  const [response, setResponse] = useState(null);
+export default function TestWebhookPage() {
+  const [result, setResult] = useState(null);
+  const [loading, setLoading] = useState(false);
 
-  const testWebhook = async () => {
-    const res = await fetch('/api/chartink-webhook', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        stocks: ['RELIANCE', 'TCS', 'INFY'],
-        condition: 'breakout',
-        timestamp: new Date().toISOString()
-      })
-    });
-    const data = await res.json();
-    setResponse(data);
-  };
+  async function sendTestWebhook() {
+    setLoading(true);
+    setResult(null);
+
+    const payload = {
+      scan_name: "TEST - Chartink Scan",
+      stocks: ["RELIANCE", "TCS", "INFY"],
+      triggeredAt: new Date().toISOString(),
+    };
+
+    try {
+      const res = await fetch("/api/chartink-webhook", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json();
+      setResult({ status: res.status, data });
+    } catch (err) {
+      setResult({ error: err.message });
+    }
+
+    setLoading(false);
+  }
 
   return (
-    <div className="p-8">
-      <h1 className="text-2xl mb-4">Test ChartInk Webhook</h1>
-      <button 
-        onClick={testWebhook}
-        className="bg-blue-500 text-white px-4 py-2 rounded"
+    <div
+      style={{
+        minHeight: "100vh",
+        padding: 24,
+        background: "#0b0b0b",
+        color: "white",
+        fontFamily: "system-ui, Arial",
+      }}
+    >
+      <h1 style={{ fontSize: 22, marginBottom: 12 }}>
+        Test Chartink Webhook
+      </h1>
+
+      <p style={{ opacity: 0.8, marginBottom: 20 }}>
+        Click button to send a fake webhook payload to{" "}
+        <code>/api/chartink-webhook</code>
+      </p>
+
+      <button
+        onClick={sendTestWebhook}
+        disabled={loading}
+        style={{
+          padding: "14px 18px",
+          borderRadius: 10,
+          border: "1px solid #333",
+          background: loading ? "#222" : "#16a34a",
+          color: "white",
+          fontWeight: 600,
+          cursor: loading ? "not-allowed" : "pointer",
+        }}
       >
-        Send Test Data
+        {loading ? "Sending..." : "Send Test Webhook"}
       </button>
-      {response && (
-        <pre className="mt-4 p-4 bg-gray-100 rounded">
-          {JSON.stringify(response, null, 2)}
+
+      <div style={{ marginTop: 20 }}>
+        <h3 style={{ fontSize: 16, marginBottom: 8 }}>Response</h3>
+
+        <pre
+          style={{
+            background: "#111",
+            padding: 14,
+            borderRadius: 10,
+            border: "1px solid #333",
+            overflowX: "auto",
+            maxWidth: "100%",
+          }}
+        >
+          {result ? JSON.stringify(result, null, 2) : "No result yet"}
         </pre>
-      )}
-      <div className="mt-4">
-        <a href="/stock-updates/scanner" className="text-blue-500">
-          → View Scanner Page
-        </a>
       </div>
     </div>
   );

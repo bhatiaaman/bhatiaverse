@@ -129,8 +129,14 @@ export default function ScannerPage() {
   const parseChartInkData = (scan) => {
     if (!scan || !scan.stocks) return null;
 
-    const stocks = scan.stocks.split(',').map(s => s.trim());
-    const prices = scan.trigger_prices ? scan.trigger_prices.split(',').map(p => p.trim()) : [];
+    const stocks = Array.isArray(scan.stocks)
+  ? scan.stocks.map(s => String(s).trim())
+  : String(scan.stocks).split(",").map(s => s.trim());
+    const prices = scan.trigger_prices
+  ? (Array.isArray(scan.trigger_prices)
+      ? scan.trigger_prices.map(p => String(p).trim())
+      : String(scan.trigger_prices).split(",").map(p => p.trim()))
+  : [];
     
     return {
       alertName: scan.alert_name || 'Unknown Alert',
