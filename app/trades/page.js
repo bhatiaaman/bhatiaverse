@@ -186,6 +186,16 @@ export default function TradesPage() {
               {isDark ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
             </button>
             <Link
+              href="/stock-updates"
+              className={`px-4 py-2 text-sm rounded-lg transition-colors border ${
+                isDark
+                  ? 'bg-slate-800 border-slate-700 hover:bg-slate-700 text-white'
+                  : 'bg-gray-100 border-gray-300 hover:bg-gray-200 text-slate-900'
+              }`}
+            >
+              Stock Updates
+            </Link>
+            <Link
               href="/"
               className={`px-4 py-2 text-sm rounded-lg transition-colors border ${
                 isDark
