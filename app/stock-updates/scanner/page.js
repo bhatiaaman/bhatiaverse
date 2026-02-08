@@ -281,26 +281,26 @@ export default function ScannerPage() {
                   className="bg-slate-800 border border-slate-700 overflow-hidden flex flex-col"
                   style={{ width: `${100 - leftWidth}%` }}
                 >
-                  {/* Top Analytics Section: 4 Equal Rectangular Sections */}
-                  <div className="grid grid-cols-4 gap-2 p-4 bg-slate-750 border-b border-slate-700">
+                  {/* Top Analytics Section: 4 Equal Rectangular Sections - Responsive */}
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 p-2 sm:p-4 bg-slate-750 border-b border-slate-700">
                     {/* Section 1: Market Indices */}
                     <div 
                       key="section-1"
-                      className="bg-slate-800 border border-slate-700 rounded-lg p-4 flex flex-col justify-center min-h-24"
+                      className="bg-slate-800 border border-slate-700 rounded-lg p-3 lg:p-4 flex flex-col justify-center min-h-20 lg:min-h-24"
                     >
-                      <h4 className="text-slate-300 text-xs font-semibold mb-3 text-center">Market Indices</h4>
-                      <div className="space-y-2">
+                      <h4 className="text-slate-300 text-xs font-semibold mb-2 lg:mb-3 text-center">Market Indices</h4>
+                      <div className="space-y-1 lg:space-y-2">
                         <div className="flex justify-between items-center">
                           <span className="text-slate-500 text-xs">Nifty</span>
-                          <span className="text-white text-sm font-mono">24,850.35</span>
+                          <span className="text-white text-xs lg:text-sm font-mono">24,850.35</span>
                         </div>
                         <div className="flex justify-between items-center">
                           <span className="text-slate-500 text-xs">SGX Nifty</span>
-                          <span className="text-white text-sm font-mono">24,865.00</span>
+                          <span className="text-white text-xs lg:text-sm font-mono">24,865.00</span>
                         </div>
                         <div className="flex justify-between items-center">
                           <span className="text-slate-500 text-xs">India VIX</span>
-                          <span className="text-orange-400 text-sm font-mono">15.42</span>
+                          <span className="text-orange-400 text-xs lg:text-sm font-mono">15.42</span>
                         </div>
                       </div>
                     </div>
@@ -308,21 +308,21 @@ export default function ScannerPage() {
                     {/* Section 2 */}
                     <div 
                       key="section-2"
-                      className="bg-slate-800 border border-slate-700 rounded-lg p-4 flex flex-col justify-center min-h-24"
+                      className="bg-slate-800 border border-slate-700 rounded-lg p-3 lg:p-4 flex flex-col justify-center min-h-20 lg:min-h-24"
                     >
-                      <h4 className="text-slate-300 text-xs font-semibold mb-3 text-center">Global Indices</h4>
-                      <div className="space-y-2">
+                      <h4 className="text-slate-300 text-xs font-semibold mb-2 lg:mb-3 text-center">Global Indices</h4>
+                      <div className="space-y-1 lg:space-y-2">
                         <div className="flex justify-between items-center">
                           <span className="text-slate-500 text-xs">DOW</span>
-                          <span className="text-white text-sm font-mono">42,847.24</span>
+                          <span className="text-white text-xs lg:text-sm font-mono">42,847.24</span>
                         </div>
                         <div className="flex justify-between items-center">
                           <span className="text-slate-500 text-xs">NASDAQ</span>
-                          <span className="text-white text-sm font-mono">19,285.68</span>
+                          <span className="text-white text-xs lg:text-sm font-mono">19,285.68</span>
                         </div>
                         <div className="flex justify-between items-center">
                           <span className="text-slate-500 text-xs">DAX</span>
-                          <span className="text-white text-sm font-mono">21,456.82</span>
+                          <span className="text-white text-xs lg:text-sm font-mono">21,456.82</span>
                         </div>
                       </div>
                     </div>
@@ -330,21 +330,21 @@ export default function ScannerPage() {
                     {/* Section 3 */}
                     <div 
                       key="section-3"
-                      className="bg-slate-800 border border-slate-700 rounded-lg p-4 flex flex-col justify-center min-h-24"
+                      className="bg-slate-800 border border-slate-700 rounded-lg p-3 lg:p-4 flex flex-col justify-center min-h-20 lg:min-h-24"
                     >
-                      <h4 className="text-slate-300 text-xs font-semibold mb-3 text-center">Market Sentiment</h4>
-                      <div className="space-y-2">
+                      <h4 className="text-slate-300 text-xs font-semibold mb-2 lg:mb-3 text-center">Market Sentiment</h4>
+                      <div className="space-y-1 lg:space-y-2">
                         <div className="flex justify-between items-center">
                           <span className="text-slate-500 text-xs">Nifty Bias</span>
-                          <span className="text-green-400 text-sm font-mono">Bullish</span>
+                          <span className="text-green-400 text-xs lg:text-sm font-mono">Bullish</span>
                         </div>
                         <div className="flex justify-between items-center">
                           <span className="text-slate-500 text-xs">Adv/Decline</span>
-                          <span className="text-white text-sm font-mono">1,245/852</span>
+                          <span className="text-white text-xs lg:text-sm font-mono">1,245/852</span>
                         </div>
                         <div className="flex justify-between items-center">
                           <span className="text-slate-500 text-xs">Nifty Fut PCR</span>
-                          <span className="text-white text-sm font-mono">1.32</span>
+                          <span className="text-white text-xs lg:text-sm font-mono">1.32</span>
                         </div>
                       </div>
                     </div>
@@ -352,25 +352,25 @@ export default function ScannerPage() {
                     {/* Section 4 */}
                     <div 
                       key="section-4"
-                      className="bg-slate-800 border border-slate-700 rounded-lg p-4 flex flex-col justify-center min-h-24"
+                      className="bg-slate-800 border border-slate-700 rounded-lg p-3 lg:p-4 flex flex-col justify-center min-h-20 lg:min-h-24"
                     >
-                      <h4 className="text-slate-300 text-xs font-semibold mb-3 text-center">Commodities</h4>
-                      <div className="space-y-2">
+                      <h4 className="text-slate-300 text-xs font-semibold mb-2 lg:mb-3 text-center">Commodities</h4>
+                      <div className="space-y-1 lg:space-y-2">
                         <div className="flex justify-between items-center">
                           <span className="text-slate-500 text-xs">Crude Oil</span>
-                          <span className="text-white text-sm font-mono">$82.45</span>
+                          <span className="text-white text-xs lg:text-sm font-mono">$82.45</span>
                         </div>
                         <div className="flex justify-between items-center">
                           <span className="text-slate-500 text-xs">Silver</span>
-                          <span className="text-white text-sm font-mono">₹71,240</span>
+                          <span className="text-white text-xs lg:text-sm font-mono">₹71,240</span>
                         </div>
                         <div className="flex justify-between items-center">
                           <span className="text-slate-500 text-xs">Gold</span>
-                          <span className="text-yellow-400 text-sm font-mono">₹76,850</span>
+                          <span className="text-yellow-400 text-xs lg:text-sm font-mono">₹76,850</span>
                         </div>
                         <div className="flex justify-between items-center">
                           <span className="text-slate-500 text-xs">Nat. Gas</span>
-                          <span className="text-white text-sm font-mono">₹248.50</span>
+                          <span className="text-white text-xs lg:text-sm font-mono">₹248.50</span>
                         </div>
                       </div>
                     </div>
@@ -412,11 +412,11 @@ export default function ScannerPage() {
                       </div>
                     </div>
 
-                    {/* Divider */}
-                    <div className="w-1 bg-slate-700"></div>
+                    {/* Divider - Hidden on mobile/tablet */}
+                    <div className="hidden lg:block w-1 bg-slate-700"></div>
 
-                    {/* Rightmost Section: Chart Buttons with Labels */}
-                    <div className="w-48 bg-slate-800 flex flex-col items-center py-4 gap-3 overflow-y-auto px-3">
+                    {/* Rightmost Section: Chart Buttons with Labels - Hidden on mobile/tablet */}
+                    <div className="hidden lg:flex w-48 bg-slate-800 flex-col items-center py-4 gap-3 overflow-y-auto px-3">
                       {selectedStock ? (
                         <>
                           <button
@@ -484,6 +484,98 @@ export default function ScannerPage() {
                     </a>
                   )}
                 </div>
+
+                {/* Analytics Boxes - Mobile */}
+                <div className="grid grid-cols-2 gap-2">
+                  {/* Section 1: Market Indices */}
+                  <div className="bg-slate-800 border border-slate-700 rounded-lg p-3 flex flex-col justify-center">
+                    <h4 className="text-slate-300 text-xs font-semibold mb-2 text-center">Market Indices</h4>
+                    <div className="space-y-1">
+                      <div className="flex justify-between items-center">
+                        <span className="text-slate-500 text-xs">Nifty</span>
+                        <span className="text-white text-xs font-mono">24,850</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-slate-500 text-xs">SGX</span>
+                        <span className="text-white text-xs font-mono">24,865</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-slate-500 text-xs">VIX</span>
+                        <span className="text-orange-400 text-xs font-mono">15.42</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Section 2: Global */}
+                  <div className="bg-slate-800 border border-slate-700 rounded-lg p-3 flex flex-col justify-center">
+                    <h4 className="text-slate-300 text-xs font-semibold mb-2 text-center">Global</h4>
+                    <div className="space-y-1">
+                      <div className="flex justify-between items-center">
+                        <span className="text-slate-500 text-xs">DOW</span>
+                        <span className="text-white text-xs font-mono">42,847</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-slate-500 text-xs">NASDAQ</span>
+                        <span className="text-white text-xs font-mono">19,285</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-slate-500 text-xs">DAX</span>
+                        <span className="text-white text-xs font-mono">21,456</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Section 3: Sentiment */}
+                  <div className="bg-slate-800 border border-slate-700 rounded-lg p-3 flex flex-col justify-center">
+                    <h4 className="text-slate-300 text-xs font-semibold mb-2 text-center">Sentiment</h4>
+                    <div className="space-y-1">
+                      <div className="flex justify-between items-center">
+                        <span className="text-slate-500 text-xs">Bias</span>
+                        <span className="text-green-400 text-xs font-mono">Bullish</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-slate-500 text-xs">Adv/Dec</span>
+                        <span className="text-white text-xs font-mono">1245/852</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-slate-500 text-xs">PCR</span>
+                        <span className="text-white text-xs font-mono">1.32</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Section 4: Commodities */}
+                  <div className="bg-slate-800 border border-slate-700 rounded-lg p-3 flex flex-col justify-center">
+                    <h4 className="text-slate-300 text-xs font-semibold mb-2 text-center">Commodities</h4>
+                    <div className="space-y-1">
+                      <div className="flex justify-between items-center">
+                        <span className="text-slate-500 text-xs">Crude</span>
+                        <span className="text-white text-xs font-mono">$82.45</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-slate-500 text-xs">Gold</span>
+                        <span className="text-yellow-400 text-xs font-mono">₹76,850</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-slate-500 text-xs">Silver</span>
+                        <span className="text-white text-xs font-mono">₹71,240</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Selected Stock Info - Mobile */}
+                {selectedStock && (
+                  <div className="bg-slate-800 rounded-lg border border-slate-700 p-4">
+                    <div className="text-center">
+                      <h2 className="text-3xl font-bold text-green-400 mb-3">{selectedStock}</h2>
+                      <div className="bg-slate-900 rounded p-3">
+                        <p className="text-xs text-slate-500 mb-1">Total Stocks in Scan</p>
+                        <p className="text-4xl font-bold text-blue-400">{latestData.stocks.length}</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {/* Stock List */}
                 <div className="bg-slate-800 rounded-lg border border-slate-700 overflow-hidden">

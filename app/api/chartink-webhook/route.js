@@ -1,4 +1,6 @@
-import { setLatestScan } from '../../lib/scanStore';
+//import { setLatestScan } from '../../lib/scanStore';
+
+import { setLatestScan } from "@/app/lib/scanStore";
 
 export async function POST(request) {
   try {
@@ -28,4 +30,8 @@ export async function POST(request) {
       { status: 500 }
     );
   }
+}
+
+export async function GET() {
+  return Response.json({ ok: true, msg: "webhook route alive" });
 }
