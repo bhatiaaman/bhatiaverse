@@ -233,6 +233,13 @@ export default function TradesPage() {
               <h4 className="text-lg font-semibold mb-3">Watchlist</h4>
               <WatchlistTabs groups={watchlistGroup} selectedTab={selectedWatchTab} setSelectedTab={setSelectedWatchTab} onSelect={(s) => setSelectedSymbol(s)} isDark={false} prices={prices} />
             </div>
+            <Link href="/stock-updates/scanner" className="rounded-2xl bg-blue-500 hover:bg-blue-600 border border-blue-600 p-4 shadow-sm text-white transition-colors">
+              <div className="flex items-center gap-2">
+                <BarChart3 className="w-5 h-5" />
+                <h4 className="font-semibold">Stock Scanner</h4>
+              </div>
+              <p className="text-sm text-blue-100 mt-2">View stock scans and technical analysis</p>
+            </Link>
             <div className="rounded-2xl bg-white border border-gray-200 p-4 shadow-sm">
               <h4 className="text-md font-semibold mb-3">Charts</h4>
               <ChartExplorer onSearch={(q) => { const fq = q && q.includes(':') ? q : `NASDAQ:${q}`; setSelectedSymbol(fq); }} isDark={false} />
