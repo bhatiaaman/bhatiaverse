@@ -278,70 +278,105 @@ export default function ScannerPage() {
                 </div>
 
                 <div 
-                  className="bg-slate-800 rounded-r-lg border border-slate-700 overflow-hidden flex flex-col"
+                  className="bg-slate-800 border border-slate-700 overflow-hidden flex flex-col"
                   style={{ width: `${100 - leftWidth}%` }}
                 >
-                  <div className="p-4 border-b border-slate-700 bg-slate-750">
-                    <div className="flex items-center justify-between">
-                      <h3 className="text-lg font-semibold text-white">
-                        {selectedStock ? `${selectedStock}` : 'Select a stock'}
-                      </h3>
-                      
-                      {selectedStock && (
-                        <button
-                          onClick={() => openTradingViewChart(selectedStock)}
-                          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded text-sm font-semibold transition-colors"
-                        >
-                          Open in TradingView ↗
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                  
-                  <div className="flex-1 flex items-center justify-center bg-slate-900">
-                    {selectedStock ? (
-                      <div className="text-center p-8">
-                        <div className="mb-6">
-                          <h2 className="text-3xl font-bold text-white mb-2">{selectedStock}</h2>
-                          <p className="text-slate-400">Click button above to view chart on TradingView</p>
+                  {/* Top Analytics Section: 4 Equal Rectangular Sections */}
+                  <div className="grid grid-cols-4 gap-2 p-4 bg-slate-750 border-b border-slate-700">
+                    {[1, 2, 3, 4].map((section) => (
+                      <div 
+                        key={section}
+                        className="bg-slate-800 border border-slate-700 rounded-lg p-4 flex items-center justify-center min-h-24"
+                      >
+                        <div className="text-center">
+                          <p className="text-slate-400 text-sm">Section {section}</p>
+                          <p className="text-slate-500 text-xs mt-1">Analytics</p>
                         </div>
-                        
-                        <div className="space-y-3">
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="flex flex-1 overflow-hidden">
+                    {/* Centre Section: Context Messages */}
+                    <div className="flex-1 flex flex-col bg-slate-900">
+                      <div className="p-4 border-b border-slate-700 bg-slate-800">
+                        <h3 className="text-lg font-semibold text-white">
+                          {selectedStock ? `${selectedStock}` : 'Scanner Context'}
+                        </h3>
+                      </div>
+                      
+                      <div className="flex-1 flex items-center justify-center p-6">
+                        {selectedStock ? (
+                          <div className="text-center">
+                            <h2 className="text-4xl font-bold text-green-400 mb-4">{selectedStock}</h2>
+                            <div className="space-y-4 text-slate-300">
+                              <div>
+                                <p className="text-sm text-slate-500">Total Stocks in Current Scan</p>
+                                <p className="text-5xl font-bold text-blue-400 mt-2">{latestData.stocks.length}</p>
+                              </div>
+                              <div className="pt-4 border-t border-slate-700">
+                                <p className="text-xs text-slate-500">Alert: {latestData.alertName}</p>
+                                <p className="text-xs text-slate-500">Triggered: {latestData.triggeredAt}</p>
+                              </div>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="text-slate-400 text-center">
+                            <p className="text-xl mb-2">👈 Select a stock from the list</p>
+                            <div className="mt-4 p-4 bg-slate-800 rounded">
+                              <p className="text-sm text-slate-400">Total Stocks Available</p>
+                              <p className="text-3xl font-bold text-blue-400 mt-2">{latestData.stocks.length}</p>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Divider */}
+                    <div className="w-1 bg-slate-700"></div>
+
+                    {/* Rightmost Section: Chart Buttons with Labels */}
+                    <div className="w-48 bg-slate-800 flex flex-col items-center py-4 gap-3 overflow-y-auto px-3">
+                      {selectedStock ? (
+                        <>
                           <button
                             onClick={() => window.open(`https://www.tradingview.com/chart/?symbol=NSE:${selectedStock}`, '_blank')}
-                            className="block w-full px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors"
+                            className="w-full px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-semibold transition-colors flex items-center justify-center gap-2"
+                            title="TradingView (NSE)"
                           >
-                            📊 TradingView (NSE)
+                            📊 TradingView
                           </button>
                           
                           <button
                             onClick={() => window.open(`https://www.tradingview.com/chart/?symbol=BSE:${selectedStock}`, '_blank')}
-                            className="block w-full px-6 py-3 bg-slate-700 hover:bg-slate-600 text-white rounded-lg font-semibold transition-colors"
+                            className="w-full px-4 py-3 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-sm font-semibold transition-colors flex items-center justify-center gap-2"
+                            title="TradingView (BSE)"
                           >
-                            📊 TradingView (BSE)
+                            📋 TradingView BSE
                           </button>
                           
                           <button
                             onClick={() => window.open(`https://www.google.com/finance/quote/${selectedStock}:NSE`, '_blank')}
-                            className="block w-full px-6 py-3 bg-slate-700 hover:bg-slate-600 text-white rounded-lg font-semibold transition-colors"
+                            className="w-full px-4 py-3 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-sm font-semibold transition-colors flex items-center justify-center gap-2"
+                            title="Google Finance"
                           >
                             💹 Google Finance
                           </button>
                           
                           <button
                             onClick={() => window.open(`https://chartink.com/stocks/${selectedStock.toLowerCase()}.html`, '_blank')}
-                            className="block w-full px-6 py-3 bg-slate-700 hover:bg-slate-600 text-white rounded-lg font-semibold transition-colors"
+                            className="w-full px-4 py-3 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-sm font-semibold transition-colors flex items-center justify-center gap-2"
+                            title="ChartInk"
                           >
                             📈 ChartInk
                           </button>
+                        </>
+                      ) : (
+                        <div className="text-slate-400 text-center text-xs py-4">
+                          <p>👈 Select a stock</p>
                         </div>
-                      </div>
-                    ) : (
-                      <div className="text-slate-400 text-center">
-                        <p className="text-xl mb-2">👈 Select a stock from the list</p>
-                        <p className="text-sm">Click on any stock to view chart options</p>
-                      </div>
-                    )}
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
