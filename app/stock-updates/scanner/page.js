@@ -397,30 +397,53 @@ export default function ScannerPage() {
                         </h3>
                       </div>
                       
-                      <div className="flex-1 flex items-center justify-center p-6">
-                        {selectedStock ? (
-                          <div className="text-center">
-                            <h2 className="text-4xl font-bold text-green-400 mb-4">{selectedStock}</h2>
-                            <div className="space-y-4 text-slate-300">
-                              <div>
-                                <p className="text-sm text-slate-500">Total Stocks in Current Scan</p>
-                                <p className="text-5xl font-bold text-blue-400 mt-2">{latestData.stocks.length}</p>
-                              </div>
-                              <div className="pt-4 border-t border-slate-700">
-                                <p className="text-xs text-slate-500">Alert: {latestData.alertName}</p>
-                                <p className="text-xs text-slate-500">Triggered: {latestData.triggeredAt}</p>
-                              </div>
-                            </div>
+                      <div className="flex-1 flex flex-col overflow-y-auto p-6">
+                        {/* Analytics Section - Always Visible */}
+                        <div className="grid grid-cols-2 gap-3 mb-6">
+                          {/* Latest Scan Stats */}
+                          <div className="bg-slate-800 rounded-lg p-4 border border-slate-700">
+                            <p className="text-xs text-slate-500 mb-2">Latest Scan</p>
+                            <p className="text-3xl font-bold text-blue-400">{latestData.stocks.length}</p>
+                            <p className="text-xs text-slate-600 mt-1">Stocks</p>
                           </div>
-                        ) : (
-                          <div className="text-slate-400 text-center">
-                            <p className="text-xl mb-2">👈 Select a stock from the list</p>
-                            <div className="mt-4 p-4 bg-slate-800 rounded">
-                              <p className="text-sm text-slate-400">Total Stocks Available</p>
-                              <p className="text-3xl font-bold text-blue-400 mt-2">{latestData.stocks.length}</p>
-                            </div>
+                          
+                          {/* Average Stats */}
+                          <div className="bg-slate-800 rounded-lg p-4 border border-slate-700">
+                            <p className="text-xs text-slate-500 mb-2">Last 20 Scans</p>
+                            <p className="text-3xl font-bold text-emerald-400">
+                              {scans.history && scans.history.length > 0
+                                ? (
+                                    scans.history.slice(0, 20).reduce((sum, scan) => {
+                                      const parsed = parseChartInkData(scan);
+                                      return sum + (parsed ? parsed.stocks.length : 0);
+                                    }, latestData.stocks.length) / Math.min(scans.history.length + 1, 21)
+                                  ).toFixed(1)
+                                : latestData.stocks.length
+                              }
+                            </p>
+                            <p className="text-xs text-slate-600 mt-1">Avg Stocks</p>
                           </div>
-                        )}
+                        </div>
+
+                        {/* Divider */}
+                        <div className="border-t border-slate-700 my-4"></div>
+
+                        {/* Stock Details Section */}
+                        <div className="text-center">
+                          {selectedStock ? (
+                            <>
+                              <h2 className="text-3xl font-bold text-green-400 mb-3">{selectedStock}</h2>
+                              <div className="space-y-2 text-slate-300 text-sm">
+                                <div>
+                                  <p className="text-xs text-slate-500">Alert: {latestData.alertName}</p>
+                                  <p className="text-xs text-slate-500">Triggered: {latestData.triggeredAt}</p>
+                                </div>
+                              </div>
+                            </>
+                          ) : (
+                            <p className="text-slate-400 text-sm">👈 Select a stock from the list to view details</p>
+                          )}
+                        </div>
                       </div>
                     </div>
 
