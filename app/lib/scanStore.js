@@ -1,36 +1,53 @@
-// Use globalThis to persist across hot reloads in development
-if (!globalThis.scanData) {
-  globalThis.scanData = {
-    latestScan: null,
-    scanHistory: []
-  };
+import { redis } from "./redis";
+
+const KEY_LATEST = "latest_scan";
+const KEY_HISTORY = "scan_history";
+const MAX_HISTORY = 20;
+
+function getDedupeKey(scan) {
+  const alert = (scan?.alert_name || "").trim().toLowerCase();
+  const trig = (scan?.triggered_at || "").trim().toLowerCase();
+  return `${alert}__${trig}`;
 }
 
-export function setLatestScan(scan) {
-  globalThis.scanData.latestScan = scan;
-  globalThis.scanData.scanHistory.unshift(scan);
-  
-  if (globalThis.scanData.scanHistory.length > 20) {
-    globalThis.scanData.scanHistory = globalThis.scanData.scanHistory.slice(0, 20);
+export async function setLatestScan(scan) {
+  // Always store latest
+  await redis.set(KEY_LATEST, scan);
+
+  const history = (await redis.get(KEY_HISTORY)) || [];
+
+  // New scan always goes first
+  const combined = [scan, ...history].filter(Boolean);
+
+  // Dedupe by alert_name + triggered_at
+  const seen = new Set();
+  const deduped = [];
+
+  for (const item of combined) {
+    const key = getDedupeKey(item);
+
+    // If missing fields, don't dedupe too aggressively
+    if (!item?.alert_name || !item?.triggered_at) {
+      deduped.push(item);
+      continue;
+    }
+
+    if (!seen.has(key)) {
+      seen.add(key);
+      deduped.push(item);
+    }
   }
-  
-  console.log('✅ Scan stored:', globalThis.scanData.latestScan);
+
+  // Keep only last 20
+  const finalHistory = deduped.slice(0, MAX_HISTORY);
+
+  await redis.set(KEY_HISTORY, finalHistory);
 }
 
-export function getLatestScan() {
-  console.log('📖 Reading latest scan:', globalThis.scanData.latestScan);
-  return globalThis.scanData.latestScan;
+export async function getLatestScan() {
+  return await redis.get(KEY_LATEST);
 }
 
-export function getScanHistory() {
-  console.log('📖 Reading history:', globalThis.scanData.scanHistory.length, 'scans');
-  return globalThis.scanData.scanHistory;
-}
-
-export function getAllScans() {
-  return {
-    latest: globalThis.scanData.latestScan,
-    history: globalThis.scanData.scanHistory,
-    count: globalThis.scanData.scanHistory.length
-  };
+export async function getAllScans() {
+  return (await redis.get(KEY_HISTORY)) || [];
 }

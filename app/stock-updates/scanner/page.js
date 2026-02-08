@@ -139,15 +139,16 @@ export default function ScannerPage() {
   : [];
     
     return {
-      alertName: scan.alert_name || 'Unknown Alert',
-      scanName: scan.scan_name || 'Scan',
-      triggeredAt: scan.triggered_at || scan.receivedAt,
-      scanUrl: scan.scan_url,
-      stocks: stocks.map((stock, idx) => ({
+    alertName: scan.alert_name || 'Unknown Alert',
+    scanName: scan.scan_name || 'Scan',
+    triggeredAt: scan.triggered_at || "N/A",
+    receivedAt: scan.receivedAt || null,
+    scanUrl: scan.scan_url,
+    stocks: stocks.map((stock, idx) => ({
         symbol: stock,
         price: prices[idx] || 'N/A'
-      }))
-    };
+    }))
+};
   };
 
   const openTradingViewChart = (symbol) => {
@@ -217,7 +218,12 @@ export default function ScannerPage() {
                         )}
                       </div>
                       <span className="text-slate-400 text-sm whitespace-nowrap ml-4">
-                        ⏰ {latestData.triggeredAt}
+                        ⏰ Triggered: {latestData.triggeredAt}
+                        {latestData.receivedAt && (
+                        <div className="text-slate-500 text-xs mt-1">
+                        Received: {new Date(latestData.receivedAt).toLocaleString()}
+                        </div>
+                )}
                       </span>
                     </div>
                     <div className="text-slate-400 text-xs mt-2">
@@ -653,10 +659,10 @@ export default function ScannerPage() {
             )}
 
             {/* History Section */}
-            {scans.history.length > 1 && (
+            {scans.history.length > 0 && (
               <div className="mt-4">
                 <h2 className="text-lg sm:text-xl font-semibold mb-3 text-white">
-                  Previous Alerts ({scans.history.length - 1})
+                  Previous Alerts ({Math.max(scans.history.length - 1, 0)})
                 </h2>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                   {scans.history.slice(1).map((scan) => {

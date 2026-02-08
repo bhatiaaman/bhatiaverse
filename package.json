@@ -9,6 +9,7 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@upstash/redis": "^1.36.2",
     "gsap": "^3.13.0",
     "lightweight-charts": "^4.0.0",
     "lucide-react": "^0.553.0",

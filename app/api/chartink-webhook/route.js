@@ -13,7 +13,7 @@ export async function POST(request) {
     };
 
     // Store in shared module
-    setLatestScan(enrichedData);
+    await setLatestScan(enrichedData);
 
     console.log('📊 Scan received:', enrichedData);
 
