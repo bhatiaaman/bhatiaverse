@@ -1,9 +1,12 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { useRouter } from 'next/navigation';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { ArrowLeft } from 'lucide-react';
 
 export default function ScannerPage() {
+  const router = useRouter();
   const [scans, setScans] = useState({ latest: null, history: [] });
   const [loading, setLoading] = useState(true);
   const [lastUpdate, setLastUpdate] = useState(null);
@@ -208,12 +211,24 @@ export default function ScannerPage() {
 
       <div className="container mx-auto px-2 sm:px-4 py-4 max-w-full">
         <header className="mb-4">
-          <h1 className="text-2xl sm:text-3xl font-bold text-white">📊 ChartInk Scanner</h1>
-          {lastUpdate && (
-            <p className="text-slate-400 text-xs sm:text-sm">
-              Last updated: {lastUpdate.toLocaleTimeString()}
-            </p>
-          )}
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => router.push('/trades')}
+              className="flex items-center gap-2 px-3 py-2 hover:bg-slate-700 rounded-lg transition-colors text-slate-300 hover:text-white text-sm"
+              title="Go back to trades"
+            >
+              <ArrowLeft size={18} />
+              <span>Back to Trades</span>
+            </button>
+            <div>
+              <h1 className="text-2xl sm:text-3xl font-bold text-white">📊 ChartInk Scanner</h1>
+              {lastUpdate && (
+                <p className="text-slate-400 text-xs sm:text-sm">
+                  Last updated: {lastUpdate.toLocaleTimeString()}
+                </p>
+              )}
+            </div>
+          </div>
         </header>
 
         {latestData ? (
