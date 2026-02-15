@@ -5,10 +5,18 @@
 const REDIS_URL = process.env.UPSTASH_REDIS_REST_URL;
 const REDIS_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
 
-async function redisGet(key) {
+// Namespace keys by environment so staging and prod don't clash in same Redis db
+// Set REDIS_NAMESPACE=staging or REDIS_NAMESPACE=prod in Vercel env vars
+const NS = process.env.REDIS_NAMESPACE || 'default';
+
+function key(name) {
+  return `${NS}:kite:${name}`;
+}
+
+async function redisGet(k) {
   if (!REDIS_URL || !REDIS_TOKEN) return null;
   try {
-    const res = await fetch(`${REDIS_URL}/get/${key}`, {
+    const res = await fetch(`${REDIS_URL}/get/${k}`, {
       headers: { Authorization: `Bearer ${REDIS_TOKEN}` },
     });
     const data = await res.json();
@@ -19,13 +27,12 @@ async function redisGet(key) {
 }
 
 export async function getKiteCredentials() {
-  const redisApiKey      = await redisGet('kite:api_key');
-  const redisAccessToken = await redisGet('kite:access_token');
-  const disconnected     = await redisGet('kite:disconnected');
+  const redisApiKey      = await redisGet(key('api_key'));
+  const redisAccessToken = await redisGet(key('access_token'));
+  const disconnected     = await redisGet(key('disconnected'));
 
   const apiKey = redisApiKey || process.env.KITE_API_KEY || '';
 
-  // If explicitly disconnected, don't fall back to process.env token
   const accessToken = (disconnected === '1')
     ? ''
     : (redisAccessToken || process.env.KITE_ACCESS_TOKEN || '');

@@ -3,6 +3,9 @@ import crypto from 'crypto';
 
 const REDIS_URL = process.env.UPSTASH_REDIS_REST_URL;
 const REDIS_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
+const NS = process.env.REDIS_NAMESPACE || 'default';
+
+function nsKey(name) { return `${NS}:kite:${name}`; }
 
 async function redisGet(key) {
   if (!REDIS_URL || !REDIS_TOKEN) return null;
@@ -41,7 +44,7 @@ export async function POST(request) {
     }
 
     // Read API key from Redis first, fall back to process.env
-    const apiKey = (await redisGet('kite:api_key')) || process.env.KITE_API_KEY;
+    const apiKey = (await redisGet(nsKey('api_key'))) || process.env.KITE_API_KEY;
     if (!apiKey) {
       return NextResponse.json({ success: false, error: 'API Key must be configured first' }, { status: 400 });
     }
@@ -85,8 +88,8 @@ export async function POST(request) {
       const accessToken = data.data.access_token;
 
       // Save token to Redis and clear disconnected flag
-      const saved = await redisSet('kite:access_token', accessToken);
-      await redisDel('kite:disconnected');
+      const saved = await redisSet(nsKey('access_token'), accessToken);
+      await redisDel(nsKey('disconnected'));
 
       return NextResponse.json({
         success: true,

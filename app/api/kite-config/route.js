@@ -2,28 +2,30 @@ import { NextResponse } from 'next/server';
 
 const REDIS_URL = process.env.UPSTASH_REDIS_REST_URL;
 const REDIS_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
+const NS = process.env.REDIS_NAMESPACE || 'default';
 
-// Redis GET - returns null if key doesn't exist, or the stored value
-async function redisGet(key) {
-  const res = await fetch(`${REDIS_URL}/get/${key}`, {
+function key(name) {
+  return `${NS}:kite:${name}`;
+}
+
+async function redisGet(k) {
+  const res = await fetch(`${REDIS_URL}/get/${k}`, {
     headers: { Authorization: `Bearer ${REDIS_TOKEN}` },
   });
   const data = await res.json();
   return data.result ?? null;
 }
 
-// Redis SET
-async function redisSet(key, value) {
-  const res = await fetch(`${REDIS_URL}/set/${key}/${encodeURIComponent(value)}`, {
+async function redisSet(k, value) {
+  const res = await fetch(`${REDIS_URL}/set/${k}/${encodeURIComponent(value)}`, {
     headers: { Authorization: `Bearer ${REDIS_TOKEN}` },
   });
   const data = await res.json();
   return data.result === 'OK';
 }
 
-// Redis DEL
-async function redisDel(key) {
-  const res = await fetch(`${REDIS_URL}/del/${key}`, {
+async function redisDel(k) {
+  const res = await fetch(`${REDIS_URL}/del/${k}`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${REDIS_TOKEN}` },
   });
@@ -31,7 +33,6 @@ async function redisDel(key) {
   return data.result >= 0;
 }
 
-// Validate access token by calling Kite profile endpoint
 async function validateAccessToken(apiKey, accessToken) {
   if (!apiKey || !accessToken) return false;
   try {
@@ -48,16 +49,14 @@ async function validateAccessToken(apiKey, accessToken) {
   }
 }
 
-// GET: Fetch current config
 export async function GET() {
   try {
-    const redisApiKey = await redisGet('kite:api_key');
-    const redisAccessToken = await redisGet('kite:access_token');
-    const disconnected = await redisGet('kite:disconnected');
+    const redisApiKey      = await redisGet(key('api_key'));
+    const redisAccessToken = await redisGet(key('access_token'));
+    const disconnected     = await redisGet(key('disconnected'));
 
     const apiKey = redisApiKey || process.env.KITE_API_KEY || '';
 
-    // If explicitly disconnected, never fall back to process.env token
     const accessToken = (disconnected === '1')
       ? ''
       : (redisAccessToken || process.env.KITE_ACCESS_TOKEN || '');
@@ -66,7 +65,7 @@ export async function GET() {
 
     return NextResponse.json({
       success: true,
-      config: { apiKey }, // accessToken never sent to browser
+      config: { apiKey },
       tokenValid,
       hasApiSecretInEnv: !!(process.env.KITE_SECRET || process.env.KITE_API_SECRET),
     });
@@ -76,7 +75,6 @@ export async function GET() {
   }
 }
 
-// POST: Save config
 export async function POST(request) {
   try {
     const body = await request.json();
@@ -84,21 +82,19 @@ export async function POST(request) {
 
     if (apiKey !== undefined) {
       if (apiKey === '') {
-        await redisDel('kite:api_key');
+        await redisDel(key('api_key'));
       } else {
-        await redisSet('kite:api_key', apiKey);
+        await redisSet(key('api_key'), apiKey);
       }
     }
 
     if (accessToken !== undefined) {
       if (accessToken === '') {
-        // Explicit disconnect — delete token and set disconnected flag
-        await redisDel('kite:access_token');
-        await redisSet('kite:disconnected', '1');
+        await redisDel(key('access_token'));
+        await redisSet(key('disconnected'), '1');
       } else {
-        // New valid token — save it and clear disconnected flag
-        await redisSet('kite:access_token', accessToken);
-        await redisDel('kite:disconnected');
+        await redisSet(key('access_token'), accessToken);
+        await redisDel(key('disconnected'));
       }
     }
 
