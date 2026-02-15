@@ -145,7 +145,6 @@ export default function OrdersPage() {
     try {
       const res = await fetch(`/api/search-instruments?q=${encodeURIComponent(query)}`);
       const data = await res.json();
-      // FIXED - matches what the route actually returns
       if (data.instruments && data.instruments.length > 0) {
         setSearchResults(data.instruments.slice(0, 10));
         setShowDropdown(true);
@@ -157,17 +156,20 @@ export default function OrdersPage() {
     }
   };
 
-  const selectStock = async (selectedSymbol) => {
+  const selectStock = async (selectedSymbol, knownLotSize = null) => {
     setSymbol(selectedSymbol);
     setShowDropdown(false);
     setSearchResults([]);
+    // Apply lot size from search result immediately if available
+    if (knownLotSize && knownLotSize > 1) setLotSize(knownLotSize);
     setLtpLoading(true);
     try {
       const res = await fetch(`/api/ltp?symbol=${selectedSymbol}`);
       const data = await res.json();
       if (data.success && data.ltp) {
         setSpotPrice(data.ltp);
-        if (data.lotSize) setLotSize(data.lotSize);
+        // Only use ltp lotSize if we don't already have one from search
+        if (data.lotSize && data.lotSize > 1 && !knownLotSize) setLotSize(data.lotSize);
       }
     } catch (err) {
       console.error('Error:', err);
@@ -215,7 +217,7 @@ export default function OrdersPage() {
       };
       if (orderType === 'LIMIT' || orderType === 'SL') payload.price = parseFloat(price);
       if (orderType === 'SL' || orderType === 'SL-M') payload.trigger_price = parseFloat(triggerPrice);
-      const res = await fetch('/api/place-order', {
+      const res = await fetch('/api/kite-order', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -293,10 +295,10 @@ export default function OrdersPage() {
                 </div>
                 {showDropdown && searchResults.length > 0 && (
                   <div className="absolute z-10 w-full mt-1 bg-slate-800 border border-white/10 rounded-xl shadow-xl max-h-64 overflow-y-auto">
-                    {searchResults.map((inst) => (
+                    {searchResults.map((inst, idx) => (
                       <button
-                        key={inst.symbol}
-                        onClick={() => selectStock(inst.symbol)}
+                        key={`${inst.symbol}-${idx}`}
+                        onClick={() => selectStock(inst.symbol, inst.lotSize)}
                         className="w-full px-4 py-2.5 text-left hover:bg-white/5 flex items-center justify-between border-b border-white/5 last:border-0"
                       >
                         <div>

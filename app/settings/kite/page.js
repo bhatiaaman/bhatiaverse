@@ -47,12 +47,11 @@ function KiteSettingsContent() {
         setConfig(prev => ({
           ...prev,
           apiKey: data.config.apiKey || '',
-          accessToken: data.config.accessToken || '',
-          // apiSecret is never fetched from server
+          // accessToken not fetched from server for security
         }));
         setTokenStatus(data.tokenValid ? 'valid' : 'invalid');
         setHasApiSecretInEnv(data.hasApiSecretInEnv || false);
-        setUseEnvSecret(data.hasApiSecretInEnv || false); // Auto-select env secret if available
+        setUseEnvSecret(data.hasApiSecretInEnv || false);
       }
     } catch (error) {
       console.error('Failed to fetch config:', error);
@@ -390,7 +389,7 @@ function KiteSettingsContent() {
             <div className="flex gap-2">
               <input
                 type="text"
-                value={config.accessToken}
+                value={tokenStatus === 'valid' ? '••••••••••••••••••••' : ''}
                 readOnly
                 disabled={tokenStatus === 'invalid'}
                 className={`flex-1 border rounded-lg px-4 py-2.5 font-mono text-sm ${

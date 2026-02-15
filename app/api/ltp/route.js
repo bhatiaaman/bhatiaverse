@@ -10,11 +10,80 @@ const INDEX_INSTRUMENTS = {
   'BANKEX':     'BSE:BANKEX',
 };
 
-const LOT_SIZES = {
-  NIFTY: 75, BANKNIFTY: 30, FINNIFTY: 40, MIDCPNIFTY: 120,
+// Hardcoded fallback lot sizes
+const FALLBACK_LOT_SIZES = {
+  NIFTY: 65, BANKNIFTY: 30, FINNIFTY: 40, MIDCPNIFTY: 120,
   SENSEX: 10, BANKEX: 15, RELIANCE: 250, TCS: 150, INFY: 300,
-  HDFCBANK: 550, ICICIBANK: 700, SBIN: 1500, HDFC: 300, BHARTIARTL: 500,
+  HDFCBANK: 550, ICICIBANK: 700, SBIN: 1500, HDFC: 300,
+  BHARTIARTL: 500, COFORGE: 375, LT: 175, HAVELLS: 500,
 };
+
+// Cache lot sizes for 24 hours
+let lotSizeCache = null;
+let lotSizeCacheTime = null;
+const CACHE_DURATION = 24 * 60 * 60 * 1000;
+
+function parseCSVLine(line) {
+  const result = [];
+  let current = '';
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') {
+      inQuotes = !inQuotes;
+    } else if (ch === ',' && !inQuotes) {
+      result.push(current.trim());
+      current = '';
+    } else {
+      current += ch;
+    }
+  }
+  result.push(current.trim());
+  return result;
+}
+
+async function getLotSizeMap(apiKey, accessToken) {
+  const now = Date.now();
+  if (lotSizeCache && lotSizeCacheTime && (now - lotSizeCacheTime) < CACHE_DURATION) {
+    return lotSizeCache;
+  }
+
+  try {
+    const nfoRes = await fetch('https://api.kite.trade/instruments/NFO', {
+      headers: { 'Authorization': `token ${apiKey}:${accessToken}` },
+    });
+    if (!nfoRes.ok) return FALLBACK_LOT_SIZES;
+
+    const nfoCsv  = await nfoRes.text();
+    const lines   = nfoCsv.trim().split('\n');
+    const headers = parseCSVLine(lines[0]);
+    const nameIdx = headers.indexOf('name');
+    const typeIdx = headers.indexOf('instrument_type');
+    const lotIdx  = headers.indexOf('lot_size');
+
+    const nfoMap = {};
+    for (let i = 1; i < lines.length; i++) {
+      const cols = parseCSVLine(lines[i]);
+      if (cols[typeIdx] === 'FUT') {
+        const name = cols[nameIdx]?.trim();
+        const lot  = parseInt(cols[lotIdx]) || 0;
+        // Only store first occurrence (nearest expiry = current lot size)
+        if (name && lot > 0 && !nfoMap[name]) {
+          nfoMap[name] = lot;
+        }
+      }
+    }
+    // NFO data wins over hardcoded fallback
+    const map = { ...FALLBACK_LOT_SIZES, ...nfoMap };
+
+    lotSizeCache     = map;
+    lotSizeCacheTime = now;
+    return map;
+  } catch (err) {
+    console.error('getLotSizeMap error:', err);
+    return FALLBACK_LOT_SIZES;
+  }
+}
 
 export async function GET(request) {
   try {
@@ -35,15 +104,16 @@ export async function GET(request) {
 
     const instrument = INDEX_INSTRUMENTS[upper] || `NSE:${upper}`;
 
-    const kiteRes = await fetch(
-      `https://api.kite.trade/quote/ltp?i=${encodeURIComponent(instrument)}`,
-      {
+    // Fetch LTP and lot size map in parallel
+    const [kiteRes, lotSizeMap] = await Promise.all([
+      fetch(`https://api.kite.trade/quote/ltp?i=${encodeURIComponent(instrument)}`, {
         headers: {
           'Authorization': `token ${apiKey}:${accessToken}`,
           'X-Kite-Version': '3',
         },
-      }
-    );
+      }),
+      getLotSizeMap(apiKey, accessToken),
+    ]);
 
     if (!kiteRes.ok) {
       const err = await kiteRes.text();
@@ -61,7 +131,7 @@ export async function GET(request) {
     return NextResponse.json({
       success: true,
       ltp,
-      lotSize: LOT_SIZES[upper] || 1,
+      lotSize: lotSizeMap[upper] || 1,
       symbol: upper,
     });
 

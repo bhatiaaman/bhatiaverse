@@ -66,7 +66,7 @@ export async function GET() {
 
     return NextResponse.json({
       success: true,
-      config: { apiKey, accessToken },
+      config: { apiKey }, // accessToken never sent to browser
       tokenValid,
       hasApiSecretInEnv: !!(process.env.KITE_SECRET || process.env.KITE_API_SECRET),
     });
