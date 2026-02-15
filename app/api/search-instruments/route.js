@@ -1,21 +1,11 @@
 import { NextResponse } from 'next/server';
+import { getKiteCredentials } from '@/app/lib/kite-credentials';
 
 // Cache for NSE instruments (refreshed daily)
 let instrumentsCache = null;
 let cacheTimestamp = null;
 const CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours
 
-// Get Kite credentials
-async function getKiteCredentials() {
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
-  const configRes = await fetch(`${baseUrl}/api/kite-config`);
-  const configData = await configRes.json();
-  return {
-    apiKey: configData.config?.apiKey || process.env.KITE_API_KEY,
-    accessToken: configData.config?.accessToken || process.env.KITE_ACCESS_TOKEN,
-    tokenValid: configData.tokenValid,
-  };
-}
 
 // Fetch and cache NSE instruments from Kite
 async function getInstruments(apiKey, accessToken) {

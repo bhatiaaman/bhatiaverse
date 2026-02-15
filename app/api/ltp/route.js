@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { getKiteCredentials } from '@/app/lib/kite-credentials';
 
 const INDEX_INSTRUMENTS = {
   'NIFTY':      'NSE:NIFTY 50',
@@ -9,34 +10,11 @@ const INDEX_INSTRUMENTS = {
   'BANKEX':     'BSE:BANKEX',
 };
 
-// F&O lot sizes - update as SEBI revises them
 const LOT_SIZES = {
-  NIFTY:       75,
-  BANKNIFTY:   30,
-  FINNIFTY:    40,
-  MIDCPNIFTY:  120,
-  SENSEX:      10,
-  BANKEX:      15,
-  RELIANCE:    250,
-  TCS:         150,
-  INFY:        300,
-  HDFCBANK:    550,
-  ICICIBANK:   700,
-  SBIN:        1500,
-  HDFC:        300,
-  BHARTIARTL:  500,
+  NIFTY: 75, BANKNIFTY: 30, FINNIFTY: 40, MIDCPNIFTY: 120,
+  SENSEX: 10, BANKEX: 15, RELIANCE: 250, TCS: 150, INFY: 300,
+  HDFCBANK: 550, ICICIBANK: 700, SBIN: 1500, HDFC: 300, BHARTIARTL: 500,
 };
-
-async function getKiteCredentials() {
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
-  const configRes = await fetch(`${baseUrl}/api/kite-config`);
-  const configData = await configRes.json();
-  return {
-    apiKey:       configData.config?.apiKey       || process.env.KITE_API_KEY,
-    accessToken:  configData.config?.accessToken  || process.env.KITE_ACCESS_TOKEN,
-    tokenValid:   configData.tokenValid,
-  };
-}
 
 export async function GET(request) {
   try {
@@ -50,8 +28,8 @@ export async function GET(request) {
     const clean = symbol.includes(':') ? symbol.split(':')[1] : symbol;
     const upper = clean.toUpperCase();
 
-    const { apiKey, accessToken, tokenValid } = await getKiteCredentials();
-    if (!accessToken || !tokenValid) {
+    const { apiKey, accessToken } = await getKiteCredentials();
+    if (!apiKey || !accessToken) {
       return NextResponse.json({ success: false, error: 'Kite not authenticated' }, { status: 401 });
     }
 

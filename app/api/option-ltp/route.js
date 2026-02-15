@@ -1,17 +1,6 @@
 import { NextResponse } from 'next/server';
 import { nseStrikeSteps } from '@/app/lib/nseStrikeSteps';
-
-// Get Kite credentials from config
-async function getKiteCredentials() {
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
-  const configRes = await fetch(`${baseUrl}/api/kite-config`);
-  const configData = await configRes.json();
-  return {
-    apiKey: configData.config?.apiKey || process.env.KITE_API_KEY,
-    accessToken: configData.config?.accessToken || process.env.KITE_ACCESS_TOKEN,
-    tokenValid: configData.tokenValid,
-  };
-}
+import { getKiteCredentials } from '@/app/lib/kite-credentials';
 
 // Indices that have Thursday expiry (monthly)
 const INDICES = ['NIFTY', 'BANKNIFTY', 'FINNIFTY', 'MIDCPNIFTY', 'SENSEX', 'BANKEX'];

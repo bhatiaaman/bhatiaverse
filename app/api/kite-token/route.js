@@ -4,13 +4,15 @@ import crypto from 'crypto';
 const REDIS_URL = process.env.UPSTASH_REDIS_REST_URL;
 const REDIS_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
 
-// Redis helpers
 async function redisGet(key) {
-  const res = await fetch(`${REDIS_URL}/get/${key}`, {
-    headers: { Authorization: `Bearer ${REDIS_TOKEN}` },
-  });
-  const data = await res.json();
-  return data.result || null;
+  if (!REDIS_URL || !REDIS_TOKEN) return null;
+  try {
+    const res = await fetch(`${REDIS_URL}/get/${key}`, {
+      headers: { Authorization: `Bearer ${REDIS_TOKEN}` },
+    });
+    const data = await res.json();
+    return data.result ?? null;
+  } catch { return null; }
 }
 
 async function redisSet(key, value) {
@@ -21,7 +23,15 @@ async function redisSet(key, value) {
   return data.result === 'OK';
 }
 
-// Exchange request_token for access_token
+async function redisDel(key) {
+  const res = await fetch(`${REDIS_URL}/del/${key}`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${REDIS_TOKEN}` },
+  });
+  const data = await res.json();
+  return data.result >= 0;
+}
+
 export async function POST(request) {
   try {
     const { requestToken, apiSecret, useEnvSecret } = await request.json();
@@ -30,14 +40,13 @@ export async function POST(request) {
       return NextResponse.json({ success: false, error: 'Request token is required' }, { status: 400 });
     }
 
-    // Get API key from Redis first, fall back to process.env
+    // Read API key from Redis first, fall back to process.env
     const apiKey = (await redisGet('kite:api_key')) || process.env.KITE_API_KEY;
-
     if (!apiKey) {
       return NextResponse.json({ success: false, error: 'API Key must be configured first' }, { status: 400 });
     }
 
-    // Get secret: from request body OR from process.env if useEnvSecret
+    // Get secret from request or process.env
     const secretToUse = useEnvSecret
       ? (process.env.KITE_SECRET || process.env.KITE_API_SECRET)
       : apiSecret;
@@ -51,13 +60,12 @@ export async function POST(request) {
       }, { status: 400 });
     }
 
-    // Generate checksum: SHA256(api_key + request_token + api_secret)
+    // SHA256(api_key + request_token + api_secret)
     const checksum = crypto
       .createHash('sha256')
       .update(apiKey + requestToken + secretToUse)
       .digest('hex');
 
-    // Exchange request_token for access_token via Kite API
     const response = await fetch('https://api.kite.trade/session/token', {
       method: 'POST',
       headers: {
@@ -67,7 +75,7 @@ export async function POST(request) {
       body: new URLSearchParams({
         api_key: apiKey,
         request_token: requestToken,
-        checksum: checksum,
+        checksum,
       }),
     });
 
@@ -76,20 +84,15 @@ export async function POST(request) {
     if (data.status === 'success' && data.data?.access_token) {
       const accessToken = data.data.access_token;
 
-      // Save access token to Redis and clear disconnected flag
+      // Save token to Redis and clear disconnected flag
       const saved = await redisSet('kite:access_token', accessToken);
-      await fetch(`${REDIS_URL}/del/kite:disconnected`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${REDIS_TOKEN}` },
-      });
+      await redisDel('kite:disconnected');
 
       return NextResponse.json({
         success: true,
         accessToken,
         user: data.data.user_name || data.data.user_id,
-        message: saved
-          ? 'Access token saved successfully'
-          : 'Token generated but could not be saved',
+        message: saved ? 'Access token saved successfully' : 'Token generated but could not be saved',
       });
     } else {
       return NextResponse.json({

@@ -1,16 +1,6 @@
 import { NextResponse } from 'next/server';
+import { getKiteCredentials } from '@/app/lib/kite-credentials';
 
-// Get Kite credentials from config
-async function getKiteCredentials() {
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
-  const configRes = await fetch(`${baseUrl}/api/kite-config`);
-  const configData = await configRes.json();
-  return {
-    apiKey: configData.config?.apiKey || process.env.KITE_API_KEY,
-    accessToken: configData.config?.accessToken || process.env.KITE_ACCESS_TOKEN,
-    tokenValid: configData.tokenValid,
-  };
-}
 
 export async function GET(request) {
   try {
