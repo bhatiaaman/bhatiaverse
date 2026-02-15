@@ -1,6 +1,6 @@
 //import { setLatestScan } from '../../lib/scanStore';
 
-import { setLatestScan } from "@/app/lib/scanStore";
+import { setLatestScan, setScannerScan } from "@/app/lib/scanStore";
 
 export async function POST(request) {
   try {
@@ -14,6 +14,12 @@ export async function POST(request) {
 
     // Store in shared module
     await setLatestScan(enrichedData);
+    // Also store per-scanner (if scan_url or scan_name present)
+    try {
+      await setScannerScan(enrichedData);
+    } catch (e) {
+      console.error('Failed to set scanner-specific scan:', e);
+    }
 
     console.log('📊 Scan received:', enrichedData);
 

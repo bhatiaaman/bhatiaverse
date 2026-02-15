@@ -1,56 +1,387 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
-import { TrendingUp, Moon, Sun } from 'lucide-react';
+import { TrendingUp, Moon, Sun, RefreshCw } from 'lucide-react';
 import { useTheme } from '../../lib/theme-context';
 import Card from '../../components/ui/cards';
 
 export default function TradesPage() {
   const { isDark, toggleTheme } = useTheme();
+  const [marketData, setMarketData] = useState(null);
+  const [sectorData, setSectorData] = useState([]);
+  const [sectorError, setSectorError] = useState('');
+  const [sectorLoading, setSectorLoading] = useState(true);
+  const [newsData, setNewsData] = useState([]);
+  const [eventsData, setEventsData] = useState([]);
+  const [newsLoading, setNewsLoading] = useState(true);
+  const [optionChainData, setOptionChainData] = useState(null);
+  const [optionLoading, setOptionLoading] = useState(true);
+  const [optionUnderlying, setOptionUnderlying] = useState('NIFTY');
+  const [optionExpiry, setOptionExpiry] = useState('weekly');
+  const [sentimentData, setSentimentData] = useState(null);
+  const [sentimentLoading, setSentimentLoading] = useState(true);
+  const [kiteAuth, setKiteAuth] = useState({ isLoggedIn: false, checking: true });
+  
+  // Chart state
+  const [chartSymbol, setChartSymbol] = useState('NIFTY');
+  const [chartInterval, setChartInterval] = useState('15minute');
+  const [emaPeriod, setEmaPeriod] = useState(9);
+  const chartRef = useRef(null);
+  const chartInstanceRef = useRef(null);
+  const candleSeriesRef = useRef(null);
+
+  // Check Kite auth status
+  useEffect(() => {
+    const checkKiteAuth = async () => {
+      try {
+        const res = await fetch('/api/kite-config');
+        const data = await res.json();
+        setKiteAuth({
+          isLoggedIn: data.tokenValid === true,
+          checking: false,
+        });
+      } catch (error) {
+        setKiteAuth({ isLoggedIn: false, checking: false });
+      }
+    };
+    checkKiteAuth();
+
+    // Listen for login/logout success from settings popup
+    const handleMessage = (event) => {
+      if (event.data?.type === 'KITE_LOGIN_SUCCESS' || event.data?.type === 'KITE_LOGOUT_SUCCESS') {
+        checkKiteAuth();
+      }
+    };
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, []);
+
+  const openKiteSettings = () => {
+    window.open('/settings/kite', 'kite-settings', 'width=600,height=700,scrollbars=yes');
+  };
+
+  // Fetch market data
+  useEffect(() => {
+    const fetchMarketData = async () => {
+      try {
+        const response = await fetch('/api/market-data');
+        const data = await response.json();
+        setMarketData(data);
+      } catch (error) {
+        console.error('Failed to fetch market data:', error);
+      }
+    };
+
+    fetchMarketData();
+    // Refresh every 5 minutes
+    const interval = setInterval(fetchMarketData, 300000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Fetch sector performance data
+  useEffect(() => {
+    const fetchSectorData = async () => {
+      setSectorLoading(true);
+      try {
+        const response = await fetch('/api/sector-performance');
+        const data = await response.json();
+        if (data?.error) {
+          setSectorError(data.error);
+        } else {
+          setSectorError('');
+        }
+        if (data.sectors) {
+          setSectorData(data.sectors);
+        }
+      } catch (error) {
+        console.error('Failed to fetch sector data:', error);
+        setSectorError('Failed to fetch sector data');
+      } finally {
+        setSectorLoading(false);
+      }
+    };
+
+    fetchSectorData();
+    // Refresh every 5 minutes
+    const interval = setInterval(fetchSectorData, 300000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Fetch option chain data
+  useEffect(() => {
+    const fetchOptionChain = async () => {
+      setOptionLoading(true);
+      try {
+        const response = await fetch(`/api/option-chain?underlying=${optionUnderlying}&expiry=${optionExpiry}`);
+        const data = await response.json();
+        setOptionChainData(data);
+      } catch (error) {
+        console.error('Failed to fetch option chain:', error);
+      } finally {
+        setOptionLoading(false);
+      }
+    };
+
+    fetchOptionChain();
+    // Refresh every 1 minute for options
+    const interval = setInterval(fetchOptionChain, 60000);
+    return () => clearInterval(interval);
+  }, [optionUnderlying, optionExpiry]);
+
+  // Fetch market news and events
+  useEffect(() => {
+    const fetchNewsAndEvents = async () => {
+      try {
+        const response = await fetch('/api/market-events');
+        const data = await response.json();
+        if (data.news) {
+          setNewsData(data.news);
+        }
+        if (data.events) {
+          setEventsData(data.events);
+        }
+      } catch (error) {
+        console.error('Error fetching news:', error);
+      } finally {
+        setNewsLoading(false);
+      }
+    };
+
+    fetchNewsAndEvents();
+    const interval = setInterval(fetchNewsAndEvents, 5 * 60 * 1000); // Refresh every 5 minutes
+    return () => clearInterval(interval);
+  }, []);
+
+  // Fetch sentiment data (FII/DII + TradingView)
+  useEffect(() => {
+    const fetchSentiment = async () => {
+      setSentimentLoading(true);
+      try {
+        const pcr = optionChainData?.pcr;
+        const url = pcr ? `/api/sentiment?pcr=${pcr}` : '/api/sentiment';
+        const response = await fetch(url);
+        const data = await response.json();
+        setSentimentData(data);
+      } catch (error) {
+        console.error('Error fetching sentiment:', error);
+      } finally {
+        setSentimentLoading(false);
+      }
+    };
+
+    fetchSentiment();
+    const interval = setInterval(fetchSentiment, 15 * 60 * 1000); // Refresh every 15 minutes
+    return () => clearInterval(interval);
+  }, [optionChainData?.pcr]);
+
+  // Calculate EMA from candle data
+  const calculateEMA = (candles, period) => {
+    if (!candles || candles.length < period) return [];
+    
+    const k = 2 / (period + 1);
+    const emaData = [];
+    
+    // Start with SMA for first EMA value
+    let sum = 0;
+    for (let i = 0; i < period; i++) {
+      sum += candles[i].close;
+    }
+    let ema = sum / period;
+    emaData.push({ time: candles[period - 1].time, value: ema });
+    
+    // Calculate EMA for remaining candles
+    for (let i = period; i < candles.length; i++) {
+      ema = (candles[i].close * k) + (ema * (1 - k));
+      emaData.push({ time: candles[i].time, value: ema });
+    }
+    
+    return emaData;
+  };
+
+  // Initialize and update chart when symbol/interval changes
+  useEffect(() => {
+    const el = chartRef.current;
+    if (!el) return;
+
+    let chart = null;
+    let candleSeries = null;
+    let emaSeries = null;
+    let refreshInterval = null;
+    let resizeObserver = null;
+
+    const initChart = async () => {
+      // Wait for lightweight-charts to load
+      if (typeof window.LightweightCharts === 'undefined') {
+        const script = document.createElement('script');
+        script.src = 'https://unpkg.com/lightweight-charts@4.1.0/dist/lightweight-charts.standalone.production.js';
+        script.onload = () => initChart();
+        document.head.appendChild(script);
+        return;
+      }
+
+      // Clear previous chart
+      el.innerHTML = '';
+
+      chart = window.LightweightCharts.createChart(el, {
+        layout: {
+          background: { type: 'solid', color: '#112240' },
+          textColor: '#94a3b8',
+        },
+        grid: {
+          vertLines: { color: 'rgba(66, 99, 235, 0.1)' },
+          horzLines: { color: 'rgba(66, 99, 235, 0.1)' },
+        },
+        width: el.clientWidth,
+        height: el.clientHeight || 400,
+        crosshair: {
+          mode: window.LightweightCharts.CrosshairMode.Normal,
+        },
+        rightPriceScale: {
+          borderColor: 'rgba(66, 99, 235, 0.3)',
+        },
+        timeScale: {
+          borderColor: 'rgba(66, 99, 235, 0.3)',
+          timeVisible: chartInterval !== 'day' && chartInterval !== 'week',
+          secondsVisible: false,
+        },
+        localization: {
+          timeFormatter: (timestamp) => {
+            // Kite data is already in IST, just format it
+            const date = new Date(timestamp * 1000);
+            if (chartInterval === 'day' || chartInterval === 'week') {
+              return date.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', timeZone: 'Asia/Kolkata' });
+            }
+            return date.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Kolkata' });
+          },
+        },
+      });
+
+      candleSeries = chart.addCandlestickSeries({
+        upColor: '#10b981',
+        downColor: '#ef4444',
+        borderUpColor: '#10b981',
+        borderDownColor: '#ef4444',
+        wickUpColor: '#10b981',
+        wickDownColor: '#ef4444',
+      });
+
+      // Add EMA line series with dynamic period
+      emaSeries = chart.addLineSeries({
+        color: '#f59e0b',
+        lineWidth: 2,
+        title: `EMA${emaPeriod}`,
+        crosshairMarkerVisible: true,
+        priceLineVisible: false,
+      });
+
+      chartInstanceRef.current = chart;
+      candleSeriesRef.current = candleSeries;
+
+      // Fetch chart data
+      const fetchChartData = async () => {
+        try {
+          const days = chartInterval === 'week' ? 365 : chartInterval === 'day' ? 60 : 5;
+          const response = await fetch(`/api/nifty-chart?symbol=${chartSymbol}&interval=${chartInterval}&days=${days}`);
+          const data = await response.json();
+
+          if (data.candles && data.candles.length > 0) {
+            candleSeries.setData(data.candles);
+            
+            // Calculate and set EMA data with selected period
+            const emaData = calculateEMA(data.candles, emaPeriod);
+            if (emaData.length > 0) {
+              emaSeries.setData(emaData);
+            }
+            
+            chart.timeScale().fitContent();
+            console.log(`Loaded ${data.candles.length} ${chartSymbol} ${chartInterval} candles with EMA${emaPeriod}`);
+          } else {
+            console.warn(`No ${chartSymbol} data available:`, data.error);
+          }
+        } catch (error) {
+          console.error('Failed to fetch chart data:', error);
+        }
+      };
+
+      await fetchChartData();
+
+      // Auto-refresh for intraday intervals
+      if (chartInterval === '5minute' || chartInterval === '15minute') {
+        refreshInterval = setInterval(fetchChartData, 60000);
+      }
+
+      // Handle resize
+      resizeObserver = new ResizeObserver(() => {
+        chart.applyOptions({
+          width: el.clientWidth,
+          height: el.clientHeight,
+        });
+      });
+      resizeObserver.observe(el);
+    };
+
+    initChart();
+
+    return () => {
+      if (refreshInterval) clearInterval(refreshInterval);
+      if (resizeObserver) resizeObserver.disconnect();
+      if (chart) chart.remove();
+    };
+  }, [chartSymbol, chartInterval, emaPeriod]);
 
   return (
-    <div
-      className={`min-h-screen transition-colors ${
-        isDark ? 'bg-slate-950 text-white' : 'bg-gray-50 text-slate-900'
-      }`}
-    >
+    <div className="min-h-screen bg-[#0a1628] text-slate-100">
       {/* ================= HEADER ================= */}
-      <header
-        className={`border-b transition-colors ${
-          isDark
-            ? 'border-slate-800 bg-slate-900'
-            : 'border-gray-200 bg-white'
-        }`}
-      >
+      <header className="border-b border-blue-800/50 bg-[#0d1d35]/90 backdrop-blur-sm">
         <div className="container mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <TrendingUp
-              className={isDark ? 'w-7 h-7 text-blue-500' : 'w-7 h-7 text-blue-600'}
-            />
-            <h1 className="text-2xl font-bold">Trading Dashboard</h1>
+            <TrendingUp className="w-7 h-7 text-blue-400" />
+            <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-400 to-cyan-300 bg-clip-text text-transparent">
+              Trading Dashboard
+            </h1>
           </div>
 
           <div className="flex items-center gap-4">
+            {/* Kite Auth Status */}
             <button
-              onClick={toggleTheme}
-              className={`p-2 rounded-lg transition-colors ${
-                isDark
-                  ? 'bg-slate-800 hover:bg-slate-700 text-amber-400'
-                  : 'bg-gray-200 hover:bg-gray-300 text-slate-600'
+              onClick={openKiteSettings}
+              className={`px-3 py-1.5 text-sm rounded-lg border transition-colors flex items-center gap-2 ${
+                kiteAuth.checking 
+                  ? 'border-slate-600/50 bg-slate-800/40 text-slate-400'
+                  : kiteAuth.isLoggedIn 
+                    ? 'border-green-600/50 bg-green-900/30 hover:bg-green-800/40 text-green-300'
+                    : 'border-orange-600/50 bg-orange-900/30 hover:bg-orange-800/40 text-orange-300'
               }`}
-              title="Toggle theme"
             >
-              {isDark ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+              {kiteAuth.checking ? (
+                <>
+                  <span className="w-2 h-2 rounded-full bg-slate-400 animate-pulse"></span>
+                  Checking...
+                </>
+              ) : kiteAuth.isLoggedIn ? (
+                <>
+                  <span className="w-2 h-2 rounded-full bg-green-400"></span>
+                  Kite Connected
+                </>
+              ) : (
+                <>
+                  <span className="w-2 h-2 rounded-full bg-orange-400"></span>
+                  Login to Kite
+                </>
+              )}
             </button>
-
+            
+            <Link
+              href="/orders"
+              className="px-4 py-2 text-sm rounded-lg border border-purple-600/50 bg-purple-900/40 hover:bg-purple-800/50 text-purple-200 transition-colors"
+            >
+              🛒 Orders
+            </Link>
+            
             <Link
               href="/"
-              className={`px-4 py-2 text-sm rounded-lg border transition-colors ${
-                isDark
-                  ? 'bg-slate-800 border-slate-700 hover:bg-slate-700'
-                  : 'bg-gray-100 border-gray-300 hover:bg-gray-200'
-              }`}
+              className="px-4 py-2 text-sm rounded-lg border border-blue-600/50 bg-blue-900/40 hover:bg-blue-800/50 text-blue-200 transition-colors"
             >
               Back Home
             </Link>
@@ -60,92 +391,803 @@ export default function TradesPage() {
 
       {/* ================= MAIN CONTENT ================= */}
       <main className="container mx-auto px-4 py-6">
-        {/* Market Context Tabs */}
-        <div className="mb-5 flex gap-2">
-          {['Indices', 'Global', 'Commodities'].map((tab) => (
-            <button
-              key={tab}
-              className="px-4 py-2 rounded-lg text-sm font-medium
-                         bg-slate-800 text-slate-200
-                         hover:bg-slate-700 transition"
-            >
-              {tab}
-            </button>
-          ))}
+        {/* Market Data Grid - Top Section (Compact) */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-1 mb-4">
+          {/* Section 1: Market Indices */}
+          <div className="bg-[#112240] border border-blue-800/40 rounded-lg p-1.5 lg:p-2 flex flex-col justify-center min-h-14 lg:min-h-16">
+            <h4 className="text-blue-300 text-[10px] font-semibold mb-1 lg:mb-1.5 text-center">Market Indices</h4>
+            <div className="space-y-0.5 lg:space-y-1">
+              {/* Nifty 50 */}
+              <div className="flex justify-between items-center">
+                <span className="text-slate-400 text-[9px]">Nifty 50</span>
+                <div className="flex items-center gap-1">
+                  <span className="text-slate-100 text-[9px] lg:text-xs font-mono font-medium">
+                    {marketData?.indices?.nifty || '---'}
+                  </span>
+                  {marketData?.indices?.niftyChangePercent && (
+                    <span className={`text-[8px] font-mono ${
+                      parseFloat(marketData.indices.niftyChangePercent) >= 0 
+                        ? 'text-emerald-400' 
+                        : 'text-red-400'
+                    }`}>
+                      {parseFloat(marketData.indices.niftyChangePercent) >= 0 ? '+' : ''}
+                      {parseFloat(marketData.indices.niftyChangePercent).toFixed(2)}%
+                    </span>
+                  )}
+                </div>
+              </div>
+              {/* Bank Nifty */}
+              <div className="flex justify-between items-center">
+                <span className="text-slate-400 text-[9px]">Bank Nifty</span>
+                <div className="flex items-center gap-1">
+                  <span className="text-slate-100 text-[9px] lg:text-xs font-mono font-medium">
+                    {marketData?.indices?.bankNifty || '---'}
+                  </span>
+                  {marketData?.indices?.bankNiftyChangePercent && (
+                    <span className={`text-[8px] font-mono ${
+                      parseFloat(marketData.indices.bankNiftyChangePercent) >= 0 
+                        ? 'text-emerald-400' 
+                        : 'text-red-400'
+                    }`}>
+                      {parseFloat(marketData.indices.bankNiftyChangePercent) >= 0 ? '+' : ''}
+                      {parseFloat(marketData.indices.bankNiftyChangePercent).toFixed(2)}%
+                    </span>
+                  )}
+                </div>
+              </div>
+              {/* Sensex */}
+              <div className="flex justify-between items-center">
+                <span className="text-slate-400 text-[9px]">Sensex</span>
+                <div className="flex items-center gap-1">
+                  <span className="text-slate-100 text-[9px] lg:text-xs font-mono font-medium">
+                    {marketData?.indices?.sensex || '---'}
+                  </span>
+                  {marketData?.indices?.sensexChangePercent && (
+                    <span className={`text-[8px] font-mono ${
+                      parseFloat(marketData.indices.sensexChangePercent) >= 0 
+                        ? 'text-emerald-400' 
+                        : 'text-red-400'
+                    }`}>
+                      {parseFloat(marketData.indices.sensexChangePercent) >= 0 ? '+' : ''}
+                      {parseFloat(marketData.indices.sensexChangePercent).toFixed(2)}%
+                    </span>
+                  )}
+                </div>
+              </div>
+              {/* India VIX */}
+              <div className="flex justify-between items-center">
+                <span className="text-slate-400 text-[9px]">India VIX</span>
+                <div className="flex items-center gap-1">
+                  <span className="text-amber-400 text-[9px] lg:text-xs font-mono font-medium">
+                    {marketData?.indices?.vix || '---'}
+                  </span>
+                  {marketData?.indices?.vixChange && (
+                    <span className={`text-[8px] font-mono ${
+                      parseFloat(marketData.indices.vixChange) >= 0 
+                        ? 'text-red-400'  // VIX up is bearish
+                        : 'text-emerald-400'  // VIX down is bullish
+                    }`}>
+                      {parseFloat(marketData.indices.vixChange) >= 0 ? '+' : ''}
+                      {parseFloat(marketData.indices.vixChange).toFixed(2)}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Section 2: Global Indices */}
+          <div className="bg-[#112240] border border-blue-800/40 rounded-lg p-1.5 lg:p-2 flex flex-col justify-center min-h-14 lg:min-h-16">
+            <h4 className="text-blue-300 text-[10px] font-semibold mb-1 lg:mb-1.5 text-center">Global Indices</h4>
+            <div className="space-y-0.5 lg:space-y-1">
+              <div className="flex justify-between items-center">
+                <span className="text-slate-400 text-[9px]">DOW</span>
+                <span className="text-slate-100 text-[9px] lg:text-xs font-mono font-medium">
+                  {marketData?.global?.dow || '---'}
+                </span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-slate-400 text-[9px]">GIFT Nifty</span>
+                <span className="text-slate-100 text-[9px] lg:text-xs font-mono font-medium">
+                  {marketData?.indices?.giftNifty || '---'}
+                </span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-slate-400 text-[9px]">NASDAQ</span>
+                <span className="text-slate-100 text-[9px] lg:text-xs font-mono font-medium">
+                  {marketData?.global?.nasdaq || '---'}
+                </span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-slate-400 text-[9px]">DAX</span>
+                <span className="text-slate-100 text-[9px] lg:text-xs font-mono font-medium">
+                  {marketData?.global?.dax || '---'}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Section 3: Market Sentiment */}
+          <div className="bg-[#112240] border border-blue-800/40 rounded-lg p-1.5 lg:p-2 flex flex-col justify-center min-h-14 lg:min-h-16">
+            <h4 className="text-blue-300 text-[10px] font-semibold mb-1 lg:mb-1.5 text-center">Market Sentiment</h4>
+            <div className="space-y-0.5 lg:space-y-1">
+              <div className="flex justify-between items-center">
+                <span className="text-slate-400 text-[9px]">Nifty Bias</span>
+                <span className={`text-[9px] lg:text-xs font-mono font-medium ${
+                  marketData?.sentiment?.bias === 'Bullish' ? 'text-emerald-400' : 
+                  marketData?.sentiment?.bias === 'Bearish' ? 'text-red-400' : 
+                  'text-slate-300'
+                }`}>
+                  {marketData?.sentiment?.bias || 'Neutral'}
+                </span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-slate-400 text-[9px]">Adv/Decline</span>
+                <span className="text-[9px] lg:text-xs font-mono font-medium">
+                  {marketData?.sentiment?.advances > 0 || marketData?.sentiment?.declines > 0 ? (
+                    <>
+                      <span className="text-emerald-400">{marketData.sentiment.advances}↑</span>
+                      <span className="text-slate-500 mx-0.5">/</span>
+                      <span className="text-red-400">{marketData.sentiment.declines}↓</span>
+                    </>
+                  ) : (
+                    <span className="text-slate-100">---</span>
+                  )}
+                </span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-slate-400 text-[9px]">PCR</span>
+                <span className="text-slate-100 text-[9px] lg:text-xs font-mono font-medium">
+                  {marketData?.sentiment?.pcr || '---'}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Section 4: Commodities */}
+          <div className="bg-[#112240] border border-blue-800/40 rounded-lg p-1.5 lg:p-2 flex flex-col justify-center min-h-14 lg:min-h-16">
+            <h4 className="text-blue-300 text-[10px] font-semibold mb-1 lg:mb-1.5 text-center">Commodities</h4>
+            <div className="space-y-0.5 lg:space-y-1">
+              <div className="flex justify-between items-center">
+                <span className="text-slate-400 text-[9px]">Crude Oil</span>
+                <span className={`text-[9px] lg:text-xs font-mono font-medium ${(marketData?.commodities?.crudeChange ?? 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                  {marketData?.commodities?.crude || '---'} {marketData?.commodities?.crudeChange != null && ((marketData.commodities.crudeChange >= 0 ? '▲' : '▼'))}
+                </span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-slate-400 text-[9px]">Silver</span>
+                <span className={`text-[9px] lg:text-xs font-mono font-medium ${(marketData?.commodities?.silverChange ?? 0) >= 0 ? 'text-slate-100' : 'text-red-400'}`}>
+                  {marketData?.commodities?.silver || '---'} {marketData?.commodities?.silverChange != null && ((marketData.commodities.silverChange >= 0 ? '▲' : '▼'))}
+                </span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-slate-400 text-[9px]">Gold</span>
+                <span className={`text-[9px] lg:text-xs font-mono font-medium ${(marketData?.commodities?.goldChange ?? 0) >= 0 ? 'text-yellow-400' : 'text-red-400'}`}>
+                  {marketData?.commodities?.gold || '---'} {marketData?.commodities?.goldChange != null && ((marketData.commodities.goldChange >= 0 ? '▲' : '▼'))}
+                </span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-slate-400 text-[9px]">Nat. Gas</span>
+                <span className={`text-[9px] lg:text-xs font-mono font-medium ${(marketData?.commodities?.natGasChange ?? 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                  {marketData?.commodities?.natGas || '---'} {marketData?.commodities?.natGasChange != null && ((marketData.commodities.natGasChange >= 0 ? '▲' : '▼'))}
+                </span>
+              </div>
+            </div>
+          </div>
         </div>
 
-        {/* Dashboard Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-          {/* Chartink Scanners */}
-          <Card title="Chartink Scanners" className="lg:col-span-4">
-            <ul className="space-y-2">
-              <li>
-                <Link
-                  href="/stock-updates/scanner"
-                  className="flex items-center justify-between
-                             rounded-lg px-3 py-2
-                             bg-slate-800/60 hover:bg-slate-700/60
-                             transition"
-                >
-                  <span>Bullish BO 15 min scanner</span>
-                  <span className="text-slate-400">→</span>
-                </Link>
-              </li>
-            </ul>
-          </Card>
+        {/* Main Dashboard Grid - 3 Column Layout */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 mb-4">
+          {/* LEFT COLUMN: Chartink Scanners + Sentiment */}
+          <div className="lg:col-span-2 space-y-3">
+            {/* Scanners */}
+            <div className="bg-[#112240] backdrop-blur border border-blue-800/40 rounded-xl p-3">
+              <h2 className="text-sm font-semibold mb-2 text-blue-300">Scanners</h2>
+              <ul className="space-y-2">
+                <li>
+                  <Link
+                    href="/stock-updates/scanner/bullish-bo-15min"
+                    className="flex items-center justify-between rounded-lg px-2 py-2 bg-emerald-900/30 hover:bg-emerald-800/40 border border-emerald-700/40 hover:border-emerald-600/60 transition-all group text-xs text-slate-200"
+                  >
+                    <span className="font-medium">Bullish BO</span>
+                    <span className="text-emerald-400">→</span>
+                  </Link>
+                </li>
+                <li>
+                  <Link
+                    href="/stock-updates/scanner/bearish-bo-15min"
+                    className="flex items-center justify-between rounded-lg px-2 py-2 bg-red-900/30 hover:bg-red-800/40 border border-red-700/40 hover:border-red-600/60 transition-all group text-xs text-slate-200"
+                  >
+                    <span className="font-medium">Bearish BO</span>
+                    <span className="text-red-400">→</span>
+                  </Link>
+                </li>
+              </ul>
+            </div>
 
-          {/* Sector Strength */}
-          <Card title="Sector Strength" className="lg:col-span-4">
-            <div className="grid grid-cols-3 gap-2">
-              {['IT', 'BANK', 'AUTO', 'FMCG', 'METAL', 'PHARMA'].map((sector) => (
-                <div
-                  key={sector}
-                  className="rounded-lg py-4 text-center font-semibold
-                             bg-emerald-500/20 text-emerald-300"
+            {/* AI Sentiment Widget - FII/DII + TradingView */}
+            <div className="bg-[#112240] backdrop-blur border border-blue-800/40 rounded-xl p-3">
+              <div className="flex items-center justify-between mb-2">
+                <h2 className="text-sm font-semibold text-blue-300">AI Sentiment</h2>
+                <button
+                  onClick={async () => {
+                    setSentimentLoading(true);
+                    try {
+                      const pcr = optionChainData?.pcr;
+                      const url = pcr ? `/api/sentiment?pcr=${pcr}&refresh=1` : '/api/sentiment?refresh=1';
+                      const response = await fetch(url);
+                      const data = await response.json();
+                      setSentimentData(data);
+                    } catch (error) {
+                      console.error('Error refreshing sentiment:', error);
+                    } finally {
+                      setSentimentLoading(false);
+                    }
+                  }}
+                  className="p-1 hover:bg-blue-800/40 rounded transition-colors"
+                  title="Refresh sentiment"
                 >
-                  {sector}
+                  <RefreshCw className={`w-3 h-3 text-blue-400 ${sentimentLoading ? 'animate-spin' : ''}`} />
+                </button>
+              </div>
+              
+              {sentimentData ? (
+                <div className="space-y-2 text-xs">
+                  {/* Overall Mood Score */}
+                  <div className="text-center py-2 border-b border-blue-800/40">
+                    <div className={`text-2xl font-bold ${
+                      sentimentData.overall?.score >= 60 ? 'text-green-400' :
+                      sentimentData.overall?.score <= 40 ? 'text-red-400' :
+                      'text-yellow-400'
+                    }`}>
+                      {sentimentData.overall?.score || '—'}
+                    </div>
+                    <div className={`text-[10px] uppercase tracking-wider ${
+                      sentimentData.overall?.mood?.includes('bullish') ? 'text-green-500' :
+                      sentimentData.overall?.mood?.includes('bearish') ? 'text-red-500' :
+                      'text-yellow-500'
+                    }`}>
+                      {sentimentData.overall?.mood?.replace('_', ' ') || 'Loading...'}
+                    </div>
+                  </div>
+
+                  {/* Sentiment Factors */}
+                  {sentimentData.overall?.factors?.map((factor, idx) => (
+                    <div key={idx} className="flex justify-between items-center py-1 border-b border-blue-800/30">
+                      <span className="text-slate-400 flex items-center gap-1">
+                        {factor.name}
+                        <span className="text-[9px] text-slate-500">({factor.weight}%)</span>
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className={`font-mono text-[10px] ${
+                          factor.score >= 60 ? 'text-green-400' :
+                          factor.score <= 40 ? 'text-red-400' :
+                          'text-yellow-400'
+                        }`}>
+                          {factor.score}
+                        </span>
+                        <span className="text-slate-500 text-[10px] capitalize">
+                          {factor.detail}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+
+                  {/* FII/DII Details */}
+                  {sentimentData.fiiDii && (
+                    <div className="pt-1">
+                      <div className="text-[10px] text-slate-500 mb-1">FII/DII Flow (₹ Cr)</div>
+                      <div className="grid grid-cols-2 gap-1 text-[10px]">
+                        <div className="bg-slate-800/50 rounded px-2 py-1">
+                          <span className="text-slate-400">FII: </span>
+                          <span className={sentimentData.fiiDii.fii.net >= 0 ? 'text-green-400' : 'text-red-400'}>
+                            {sentimentData.fiiDii.fii.net >= 0 ? '+' : ''}{Math.round(sentimentData.fiiDii.fii.net)}
+                          </span>
+                        </div>
+                        <div className="bg-slate-800/50 rounded px-2 py-1">
+                          <span className="text-slate-400">DII: </span>
+                          <span className={sentimentData.fiiDii.dii.net >= 0 ? 'text-green-400' : 'text-red-400'}>
+                            {sentimentData.fiiDii.dii.net >= 0 ? '+' : ''}{Math.round(sentimentData.fiiDii.dii.net)}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* TradingView Technical */}
+                  {sentimentData.indices?.nifty && (
+                    <div className="pt-1">
+                      <div className="text-[10px] text-slate-500 mb-1">Technical Rating</div>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="text-slate-400">NIFTY:</span>
+                          <span className={`font-medium px-1.5 py-0.5 rounded text-[10px] ${
+                            sentimentData.indices.nifty.overall?.includes('buy') ? 'bg-green-900/50 text-green-400' :
+                            sentimentData.indices.nifty.overall?.includes('sell') ? 'bg-red-900/50 text-red-400' :
+                            'bg-yellow-900/50 text-yellow-400'
+                          }`}>
+                            {sentimentData.indices.nifty.overall?.replace('_', ' ').toUpperCase() || '—'}
+                          </span>
+                        </div>
+                        <span className="text-slate-500 text-[10px]">
+                          RSI: {sentimentData.indices.nifty.rsi?.toFixed(0) || '—'}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Sentiment Gauge */}
+                  <div className="pt-2">
+                    <div className="flex justify-between text-[10px] text-slate-500 mb-1">
+                      <span>Fear</span>
+                      <span>Neutral</span>
+                      <span>Greed</span>
+                    </div>
+                    <div className="h-2 bg-gradient-to-r from-red-600 via-yellow-500 to-green-600 rounded-full relative">
+                      <div 
+                        className="absolute top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full border-2 border-slate-800 shadow-lg transition-all duration-500"
+                        style={{ left: `${Math.max(5, Math.min(95, sentimentData.overall?.score || 50))}%` }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Last Updated */}
+                  {sentimentData.timestamp && (
+                    <div className="text-[9px] text-slate-600 text-center pt-1">
+                      Updated: {new Date(sentimentData.timestamp).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                    </div>
+                  )}
                 </div>
-              ))}
+              ) : (
+                <div className="text-center py-4 text-slate-500 text-xs">
+                  {sentimentLoading ? 'Loading sentiment...' : 'No data available'}
+                </div>
+              )}
             </div>
-          </Card>
+          </div>
 
-          {/* Options Snapshot */}
-          <Card title="Options Snapshot" className="lg:col-span-4">
-            <div className="space-y-3">
-              <div className="flex justify-between">
-                <span>PCR</span>
-                <span className="text-slate-400">—</span>
+          {/* CENTER COLUMN: Chart Area */}
+          <div className="lg:col-span-8">
+            <div className="bg-[#112240] backdrop-blur border border-blue-800/40 rounded-xl overflow-hidden h-full flex flex-col min-h-[500px]">
+              <div className="flex items-center justify-between px-4 py-3 border-b border-blue-800/40">
+                <div className="flex items-center gap-3">
+                  <h2 className="text-lg font-semibold text-blue-300">Market Chart</h2>
+                  {/* Symbol Picker */}
+                  <select
+                    className="bg-[#0a1628] border border-blue-700/50 rounded-lg px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:border-blue-500"
+                    value={chartSymbol}
+                    onChange={(e) => setChartSymbol(e.target.value)}
+                  >
+                    <option value="NIFTY">NIFTY 50</option>
+                    <option value="BANKNIFTY">BANK NIFTY</option>
+                  </select>
+                </div>
+                <div className="flex items-center gap-2">
+                  {/* Interval Buttons */}
+                  <div className="flex bg-[#0a1628] rounded-lg p-0.5">
+                    {[
+                      { value: '5minute', label: '5m' },
+                      { value: '15minute', label: '15m' },
+                      { value: 'day', label: 'D' },
+                      { value: 'week', label: 'W' },
+                    ].map((int) => (
+                      <button
+                        key={int.value}
+                        onClick={() => setChartInterval(int.value)}
+                        className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors ${
+                          chartInterval === int.value
+                            ? 'bg-blue-600 text-white'
+                            : 'text-slate-400 hover:text-slate-200'
+                        }`}
+                      >
+                        {int.label}
+                      </button>
+                    ))}
+                  </div>
+                  {/* EMA Period Selector */}
+                  <div className="flex bg-[#0a1628] rounded-lg p-0.5">
+                    {[9, 21, 50, 200].map((period) => (
+                      <button
+                        key={period}
+                        onClick={() => setEmaPeriod(period)}
+                        className={`px-2 py-1 text-xs font-medium rounded-md transition-colors ${
+                          emaPeriod === period
+                            ? 'bg-amber-600 text-white'
+                            : 'text-slate-400 hover:text-slate-200'
+                        }`}
+                      >
+                        {period}
+                      </button>
+                    ))}
+                    <span className="px-1.5 py-1 text-[10px] text-amber-400 font-medium">EMA</span>
+                  </div>
+                  <a
+                    href={`https://www.tradingview.com/chart/?symbol=NSE:${chartSymbol === 'BANKNIFTY' ? 'BANKNIFTY' : 'NIFTY'}&interval=${chartInterval === 'day' ? 'D' : chartInterval === 'week' ? 'W' : chartInterval.replace('minute', '')}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium rounded-lg transition-colors flex items-center gap-1"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                    </svg>
+                    TradingView
+                  </a>
+                </div>
               </div>
-              <div className="flex justify-between">
-                <span>Max Pain</span>
-                <span className="text-slate-400">—</span>
+              <div 
+                className="flex-1"
+                ref={chartRef}
+                key={`${chartSymbol}-${chartInterval}`}
+              />
+            </div>
+          </div>
+
+          {/* RIGHT COLUMN: Sector Performance + Options */}
+          <div className="lg:col-span-2 space-y-3">
+            {/* Sector Performance */}
+            <div className="bg-[#112240] backdrop-blur border border-blue-800/40 rounded-xl p-3">
+              <div className="flex justify-between items-center mb-2">
+                <h2 className="text-sm font-semibold text-blue-300">Sector Performance</h2>
+                <span className="text-[10px] text-slate-400">
+                  {new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })} | vs Prev Close
+                </span>
               </div>
-              <div className="flex justify-between">
-                <span>OI Bias</span>
-                <span className="text-slate-400">—</span>
+              {/* Scrollable container for all sectors */}
+              <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-blue-800 scrollbar-track-transparent">
+                {sectorData.length > 0 ? (
+                  sectorData.map((sector) => {
+                    const sectorValue = sector.value ?? 0;
+                    const absValue = Math.abs(sectorValue);
+                    // Bar width: scale so 3% change = full width
+                    const barWidth = Math.min((absValue / 3) * 100, 100);
+                    // Use tvSymbol from API, fallback to cleaned symbol name
+                    const tvSymbol = sector.tvSymbol || sector.symbol?.replace(/ /g, '') || sector.name?.toUpperCase().replace(/ /g, '');
+                    
+                    return (
+                      <a
+                        key={sector.name}
+                        href={`https://www.tradingview.com/chart/?symbol=NSE:${tvSymbol}&interval=15`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-2 group cursor-pointer hover:bg-[#0a1628]/50 rounded px-1 py-0.5"
+                      >
+                        {/* Sector name */}
+                        <span className="text-[10px] w-16 text-slate-300 truncate">{sector.name}</span>
+                        {/* Bar chart */}
+                        <div className="flex-1 h-4 bg-[#0a1628] rounded overflow-hidden relative">
+                          <div 
+                            className={`h-full ${sectorValue >= 0 ? 'bg-gradient-to-r from-emerald-600 to-emerald-500' : 'bg-gradient-to-r from-red-600 to-red-500'} transition-all duration-500`}
+                            style={{ width: `${Math.max(barWidth, 5)}%` }}
+                          />
+                        </div>
+                        {/* Percentage */}
+                        <span className={`text-[10px] w-12 text-right font-mono font-semibold ${
+                          sectorValue >= 0 ? 'text-emerald-400' : 'text-red-400'
+                        }`}>
+                          {sectorValue >= 0 ? '+' : ''}{sectorValue.toFixed(2)}%
+                        </span>
+                      </a>
+                    );
+                  })
+                ) : (
+                  <div className="rounded-lg border border-blue-800/40 bg-[#0a1628] px-2 py-3 text-xs text-slate-400 text-center">
+                    {sectorLoading ? 'Loading sectors...' : (sectorError || 'No sector data available')}
+                  </div>
+                )}
               </div>
             </div>
-          </Card>
+          </div>
+        </div>
 
-          {/* Chart Placeholder */}
-          <Card className="lg:col-span-12">
-            <div
-              className="h-[360px] flex items-center justify-center
-                         text-slate-500 border border-dashed
-                         border-white/10 rounded-lg"
-            >
-              Chart Area (to be added later)
+        {/* BOTTOM: News & Events + Options Analysis */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+          {/* News & Events - Redesigned */}
+          <div className="bg-[#112240] backdrop-blur border border-blue-800/40 rounded-xl p-5">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold text-blue-300 flex items-center gap-2">
+                <span className="w-1 h-5 bg-blue-500 rounded"></span>
+                Market Events & News
+              </h2>
+              <button
+                onClick={async () => {
+                  setNewsLoading(true);
+                  try {
+                    const response = await fetch('/api/market-events?refresh=1');
+                    const data = await response.json();
+                    if (data.news) setNewsData(data.news);
+                    if (data.events) setEventsData(data.events);
+                  } catch (error) {
+                    console.error('Error refreshing:', error);
+                  } finally {
+                    setNewsLoading(false);
+                  }
+                }}
+                className="p-1.5 hover:bg-blue-800/40 rounded transition-colors"
+                title="Refresh"
+              >
+                <RefreshCw className={`w-4 h-4 text-blue-400 ${newsLoading ? 'animate-spin' : ''}`} />
+              </button>
             </div>
-          </Card>
+            
+            {newsLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-400"></div>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {/* Important Events Section */}
+                {eventsData.length > 0 && (
+                  <div>
+                    <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-2">
+                      <span className="w-2 h-2 bg-yellow-500 rounded-full"></span>
+                      Upcoming Events
+                    </h3>
+                    <div className="space-y-2 max-h-32 overflow-y-auto">
+                      {eventsData.slice(0, 6).map((event, idx) => (
+                        <div 
+                          key={idx} 
+                          className={`flex items-center justify-between text-xs p-2 rounded ${
+                            event.urgent ? 'bg-red-900/30 border border-red-700/50' : 'bg-slate-800/50'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2">
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded ${
+                              event.category === 'expiry' ? 'bg-orange-900/50 text-orange-400' :
+                              event.category === 'results' ? 'bg-blue-900/50 text-blue-400' :
+                              event.category === 'dividend' ? 'bg-green-900/50 text-green-400' :
+                              event.category === 'holiday' ? 'bg-purple-900/50 text-purple-400' :
+                              event.category === 'regulatory' ? 'bg-cyan-900/50 text-cyan-400' :
+                              'bg-slate-700 text-slate-400'
+                            }`}>
+                              {event.category?.toUpperCase() || 'EVENT'}
+                            </span>
+                            <span className={`${event.urgent ? 'text-red-300 font-medium' : 'text-slate-300'}`}>
+                              {event.subject?.slice(0, 50)}{event.subject?.length > 50 ? '...' : ''}
+                            </span>
+                          </div>
+                          <span className={`text-[10px] font-mono ${
+                            event.urgent ? 'text-red-400 font-bold' : 'text-slate-500'
+                          }`}>
+                            {event.symbol || (event.daysAway !== undefined ? 
+                              (event.daysAway === 0 ? 'TODAY' : `${event.daysAway}d`) : 
+                              new Date(event.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })
+                            )}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
-          {/* News */}
-          <Card title="News & Events" className="lg:col-span-12">
-            <ul className="space-y-2">
-              <li>• RBI policy decision awaited</li>
-              <li>• Weekly expiry today</li>
-              <li>• Global markets mixed</li>
-            </ul>
-          </Card>
+                {/* Breaking News Section */}
+                {newsData.length > 0 && (
+                  <div>
+                    <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-2">
+                      <span className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></span>
+                      Latest News (24h)
+                    </h3>
+                    <ul className="space-y-2 max-h-40 overflow-y-auto">
+                      {newsData.map((item, index) => (
+                        <li key={index} className="flex items-start gap-2 text-xs">
+                          <span className="text-slate-500 font-mono text-[10px] mt-0.5 min-w-[32px]">
+                            {item.hoursAgo === 0 ? 'now' : `${item.hoursAgo}h`}
+                          </span>
+                          <a 
+                            href={item.link} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="text-slate-300 hover:text-blue-300 transition-colors line-clamp-2 flex-1"
+                          >
+                            {item.title}
+                            <span className="text-slate-600 text-[10px] ml-1">[{item.source}]</span>
+                          </a>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {/* No data state */}
+                {eventsData.length === 0 && newsData.length === 0 && (
+                  <div className="text-slate-400 text-sm py-4 text-center">No events or news available</div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Options Analysis with OI Changes */}
+          <div className="bg-[#112240] backdrop-blur border border-blue-800/40 rounded-xl p-5">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold text-blue-300 flex items-center gap-2">
+                <span className="w-1 h-5 bg-blue-500 rounded"></span>
+                Options Analysis
+              </h2>
+              <div className="flex gap-2">
+                {/* Underlying Selector */}
+                <div className="flex bg-[#0a1628] rounded-lg p-0.5">
+                  {['NIFTY', 'BANKNIFTY'].map((u) => (
+                    <button
+                      key={u}
+                      onClick={() => setOptionUnderlying(u)}
+                      className={`px-3 py-1 text-xs rounded-md transition-colors ${
+                        optionUnderlying === u
+                          ? 'bg-blue-600 text-white'
+                          : 'text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      {u === 'BANKNIFTY' ? 'Bank Nifty' : 'Nifty'}
+                    </button>
+                  ))}
+                </div>
+                {/* Expiry Selector */}
+                <div className="flex bg-[#0a1628] rounded-lg p-0.5">
+                  {['weekly', 'monthly'].map((e) => (
+                    <button
+                      key={e}
+                      onClick={() => setOptionExpiry(e)}
+                      className={`px-3 py-1 text-xs rounded-md transition-colors ${
+                        optionExpiry === e
+                          ? 'bg-blue-600 text-white'
+                          : 'text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      {e === 'weekly' ? 'Weekly' : 'Monthly'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {optionLoading ? (
+              <div className="text-slate-400 text-center py-8">Loading options data...</div>
+            ) : optionChainData?.error ? (
+              <div className="text-red-400 text-center py-4">{optionChainData.error}</div>
+            ) : (
+              <div className="space-y-4">
+                {/* Key Metrics Grid */}
+                <div className="grid grid-cols-4 gap-3">
+                  {/* Spot & ATM */}
+                  <div className="bg-[#0a1628] rounded-lg p-3">
+                    <div className="text-[10px] text-slate-500 uppercase tracking-wider">Spot / ATM</div>
+                    <div className="text-lg font-mono text-slate-200 mt-1">
+                      {parseFloat(optionChainData?.spotPrice || 0).toLocaleString()}
+                    </div>
+                    <div className="text-xs text-slate-400">ATM: {optionChainData?.atmStrike?.toLocaleString()}</div>
+                  </div>
+                  {/* PCR */}
+                  <div className="bg-[#0a1628] rounded-lg p-3">
+                    <div className="text-[10px] text-slate-500 uppercase tracking-wider">PCR</div>
+                    <div className={`text-lg font-mono mt-1 ${
+                      optionChainData?.pcr > 1.2 ? 'text-green-400' : 
+                      optionChainData?.pcr < 0.8 ? 'text-red-400' : 'text-yellow-400'
+                    }`}>
+                      {optionChainData?.pcr?.toFixed(2) || '—'}
+                    </div>
+                    <div className="text-xs text-slate-400">
+                      {optionChainData?.pcr > 1.2 ? 'Bullish' : optionChainData?.pcr < 0.8 ? 'Bearish' : 'Neutral'}
+                    </div>
+                  </div>
+                  {/* Max Pain */}
+                  <div className="bg-[#0a1628] rounded-lg p-3">
+                    <div className="text-[10px] text-slate-500 uppercase tracking-wider">Max Pain</div>
+                    <div className="text-lg font-mono text-orange-400 mt-1">
+                      {optionChainData?.maxPain?.toLocaleString() || '—'}
+                    </div>
+                    <div className="text-xs text-slate-400">
+                      {optionChainData?.maxPain && optionChainData?.spotPrice ? 
+                        `${((optionChainData.maxPain - parseFloat(optionChainData.spotPrice)) / parseFloat(optionChainData.spotPrice) * 100).toFixed(1)}% from spot` : '—'}
+                    </div>
+                  </div>
+                  {/* Expiry */}
+                  <div className="bg-[#0a1628] rounded-lg p-3">
+                    <div className="text-[10px] text-slate-500 uppercase tracking-wider">Expiry</div>
+                    <div className="text-lg font-mono text-slate-200 mt-1">
+                      {optionChainData?.expiry ? new Date(optionChainData.expiry).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) : '—'}
+                    </div>
+                    <div className="text-xs text-slate-400 capitalize">{optionChainData?.expiryType || '—'}</div>
+                  </div>
+                </div>
+
+                {/* Support & Resistance Levels */}
+                <div className="grid grid-cols-2 gap-4">
+                  {/* Resistance */}
+                  <div className="bg-[#0a1628] rounded-lg p-3">
+                    <div className="text-[10px] text-red-400 uppercase tracking-wider mb-2">Resistance (Call OI)</div>
+                    <div className="space-y-2">
+                      <div className="flex justify-between items-center">
+                        <span className="text-red-400 font-medium">R1</span>
+                        <span className="font-mono text-slate-200">
+                          {optionChainData?.resistance?.toLocaleString() || '—'}
+                          <span className="text-slate-500 text-xs ml-2">
+                            ({(optionChainData?.resistanceOI / 100000).toFixed(1)}L)
+                          </span>
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-red-300">R2</span>
+                        <span className="font-mono text-slate-300">
+                          {optionChainData?.resistance2?.toLocaleString() || '—'}
+                          <span className="text-slate-500 text-xs ml-2">
+                            ({(optionChainData?.resistance2OI / 100000).toFixed(1)}L)
+                          </span>
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  {/* Support */}
+                  <div className="bg-[#0a1628] rounded-lg p-3">
+                    <div className="text-[10px] text-green-400 uppercase tracking-wider mb-2">Support (Put OI)</div>
+                    <div className="space-y-2">
+                      <div className="flex justify-between items-center">
+                        <span className="text-green-400 font-medium">S1</span>
+                        <span className="font-mono text-slate-200">
+                          {optionChainData?.support?.toLocaleString() || '—'}
+                          <span className="text-slate-500 text-xs ml-2">
+                            ({(optionChainData?.supportOI / 100000).toFixed(1)}L)
+                          </span>
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-green-300">S2</span>
+                        <span className="font-mono text-slate-300">
+                          {optionChainData?.support2?.toLocaleString() || '—'}
+                          <span className="text-slate-500 text-xs ml-2">
+                            ({(optionChainData?.support2OI / 100000).toFixed(1)}L)
+                          </span>
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* OI Change Alerts / Commentary */}
+                <div className="bg-[#0a1628] rounded-lg p-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="text-[10px] text-slate-500 uppercase tracking-wider">OI Change Alerts</div>
+                    <div className="text-[10px] text-slate-600">Auto-refreshes every 1 min</div>
+                  </div>
+                  <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                    {optionChainData?.alerts && optionChainData.alerts.length > 0 ? (
+                      optionChainData.alerts.map((alert, index) => (
+                        <div 
+                          key={index} 
+                          className={`flex items-start gap-2 text-xs py-1 px-2 rounded ${
+                            alert.type === 'bullish' ? 'bg-green-900/20 border-l-2 border-green-500' :
+                            alert.type === 'bearish' ? 'bg-red-900/20 border-l-2 border-red-500' :
+                            alert.type === 'warning' ? 'bg-yellow-900/20 border-l-2 border-yellow-500' :
+                            'bg-blue-900/20 border-l-2 border-blue-500'
+                          }`}
+                        >
+                          <span className="text-slate-500 flex-shrink-0">{alert.time}</span>
+                          <span className={`${
+                            alert.type === 'bullish' ? 'text-green-400' :
+                            alert.type === 'bearish' ? 'text-red-400' :
+                            alert.type === 'warning' ? 'text-yellow-400' :
+                            'text-blue-300'
+                          }`}>
+                            {alert.message}
+                          </span>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="text-slate-500 text-xs py-2 text-center">
+                        Tracking OI changes... Alerts will appear here when significant changes occur.
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Total OI Summary */}
+                <div className="flex justify-between text-xs text-slate-400 pt-2 border-t border-blue-800/40">
+                  <span>Total Call OI: <span className="text-red-400 font-mono">{(optionChainData?.totalCallOI / 100000).toFixed(1)}L</span></span>
+                  <span>Total Put OI: <span className="text-green-400 font-mono">{(optionChainData?.totalPutOI / 100000).toFixed(1)}L</span></span>
+                  <span className="text-slate-500">
+                    Last updated: {optionChainData?.timestamp ? new Date(optionChainData.timestamp).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '—'}
+                  </span>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </main>
     </div>

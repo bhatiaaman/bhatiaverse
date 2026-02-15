@@ -1,12 +1,20 @@
-'use client';
+"use client";
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, RefreshCw, ExternalLink, TrendingUp, TrendingDown, BarChart3, Globe, Gauge, Droplets, Clock, Zap, ChevronRight, Eye } from 'lucide-react';
+import { nseStrikeSteps } from '@/app/lib/nseStrikeSteps';
+import OrderModal from '@/components/OrderModal';
 
-export default function ScannerPage() {
+export default function ScannerPage({ scanName }) {
   const router = useRouter();
+  const scannerLabel = scanName ? String(scanName) : null;
+
+  useEffect(() => {
+    // intentional no-op; keep quiet in production
+  }, [scanName]);
+
   const [scans, setScans] = useState({ latest: null, history: [] });
   const [loading, setLoading] = useState(true);
   const [lastUpdate, setLastUpdate] = useState(null);
@@ -17,6 +25,23 @@ export default function ScannerPage() {
   const [lastAlertId, setLastAlertId] = useState(null);
   const [isMobile, setIsMobile] = useState(false);
   const [marketData, setMarketData] = useState(null); // Main market data state
+  const [showTestForm, setShowTestForm] = useState(false);
+  const [testScannerName, setTestScannerName] = useState(scannerLabel || '');
+  const [testStocksText, setTestStocksText] = useState('TCS,INFY,RELIANCE');
+  const [testPricesText, setTestPricesText] = useState('');
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [orderModalOpen, setOrderModalOpen] = useState(false);
+  const [orderStock, setOrderStock] = useState(null);
+
+  const openOrderModal = (symbol, price, optionType = null, transactionType = 'BUY') => {
+    let optionSymbol = null;
+    if (optionType) {
+      const { ce, pe } = buildOptionSymbols(symbol, price);
+      optionSymbol = optionType === 'CE' ? ce : pe;
+    }
+    setOrderStock({ symbol, price, optionType, optionSymbol, transactionType });
+    setOrderModalOpen(true);
+  };
 
   const formatVal = (v, decimals=2) => {
     if (v === null || v === undefined) return '—';
@@ -71,31 +96,39 @@ export default function ScannerPage() {
     }
   };
 
-  // Fetch scans
+  const normalize = (s) => String(s || '').toLowerCase().replace(/[-_\s]+/g, ' ').replace(/[^a-z0-9 ]/g, '').trim();
+
+  // Fetch scans (optionally filter by scannerLabel from URL)
   useEffect(() => {
     const fetchScans = async () => {
+      if (isRefreshing) return; // skip automatic fetch while we're performing a manual refresh
       try {
-        const response = await fetch('/api/get-scans');
+        const url = scannerLabel
+          ? `/api/get-scans?scanner=${encodeURIComponent(scannerLabel)}`
+          : '/api/get-scans';
+
+        const response = await fetch(url);
         const data = await response.json();
-        
-        // Check for new alert
-        if (data.latest && data.latest.id !== lastAlertId) {
+
+        // Notify if there's a new global latest (only when no scanner filter)
+        if (!scannerLabel && data.latest && data.latest.id !== lastAlertId) {
           if (lastAlertId !== null) {
             const parsedData = parseChartInkData(data.latest);
-            if (parsedData) {
-              showNotification(parsedData);
-            }
+            if (parsedData) showNotification(parsedData);
           }
           setLastAlertId(data.latest.id);
         }
-        
-        setScans(data);
+
+        const matchedLatest = data.latest || null;
+        const matchedHistory = Array.isArray(data.history) ? data.history : [];
+
+        setScans({ latest: matchedLatest, history: matchedHistory });
         setLastUpdate(new Date());
         setLoading(false);
-        
-        if (data.latest && !selectedStock) {
-          const parsed = parseChartInkData(data.latest);
-          if (parsed && parsed.stocks.length > 0) {
+
+        if (matchedLatest) {
+          const parsed = parseChartInkData(matchedLatest);
+          if (parsed && parsed.stocks.length > 0 && !selectedStock) {
             setSelectedStock(parsed.stocks[0].symbol);
           }
         }
@@ -109,7 +142,7 @@ export default function ScannerPage() {
     const interval = setInterval(fetchScans, 30000);
 
     return () => clearInterval(interval);
-  }, [selectedStock, lastAlertId]);
+  }, [selectedStock, lastAlertId, scannerLabel, isRefreshing]);
 
   // Fetch market data
   useEffect(() => {
@@ -184,7 +217,143 @@ export default function ScannerPage() {
   };
 
   const openTradingViewChart = (symbol) => {
-    window.open(`https://www.tradingview.com/chart/?symbol=NSE:${symbol}`, '_blank');
+    const tvUrl = `https://www.tradingview.com/chart/?symbol=NSE:${symbol}&interval=15`;
+    window.open(tvUrl, '_blank');
+  };
+
+  const pad2 = (n) => String(n).padStart(2, '0');
+
+  const monthNames = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+
+  const getLastTuesdayExpiry = (date = new Date()) => {
+    const year = date.getFullYear();
+    const month = date.getMonth(); // 0-based
+    // get last day of month
+    let d = new Date(year, month + 1, 0);
+    // walk back to Tuesday (Tuesday === 2)
+    while (d.getDay() !== 2) {
+      d.setDate(d.getDate() - 1);
+    }
+    return d;
+  };
+
+  // For TradingView format: YYMMDD (e.g., 260224 for Feb 24, 2026)
+  const getLastTuesdayExpiryYYMMDD = (date = new Date()) => {
+    const d = getLastTuesdayExpiry(date);
+    const yy = String(d.getFullYear() % 100).padStart(2, '0');
+    const mm = pad2(d.getMonth() + 1);
+    const dd = pad2(d.getDate());
+    return `${yy}${mm}${dd}`;
+  };
+
+  // Build option symbols for TradingView charts
+  // TradingView format: SYMBOL + YYMMDD + C/P + STRIKE (e.g., MCX260224C4500)
+  const buildOptionSymbols = (symbol, price) => {
+    const expiry = getLastTuesdayExpiryYYMMDD();
+    
+    // Parse price - handle 'N/A' and invalid values
+    const numPrice = parseFloat(String(price).replace(/[^0-9.]/g, '')) || 0;
+    
+    // If no valid price, return null symbols
+    if (numPrice <= 0) {
+      return { ce: null, pe: null, ceStrike: 0, peStrike: 0 };
+    }
+    
+    // Get strike step from NSE data or fallback to price-based heuristic
+    let step = nseStrikeSteps[symbol];
+    if (!step) {
+      if (numPrice >= 5000) step = 100;
+      else if (numPrice >= 1000) step = 50;
+      else if (numPrice >= 300) step = 20;
+      else step = 10;
+    }
+
+    const ceStrike = Math.ceil(numPrice / step) * step;
+    const peStrike = Math.floor(numPrice / step) * step;
+
+    // TradingView format: SYMBOL + YYMMDD + C + STRIKE
+    // Example: MCX260224C4500 for MCX CE 4500 expiring Feb 24, 2026
+    const ce = `${symbol}${expiry}C${ceStrike}`;
+    const pe = `${symbol}${expiry}P${peStrike}`;
+    return { ce, pe, ceStrike, peStrike };
+  };
+
+  const openOptionChart = (symbol, type, strike, price) => {
+    // type: 'CE' or 'PE' -> convert to 'C' or 'P' for TradingView
+    const expiry = getLastTuesdayExpiryYYMMDD();
+    let step = nseStrikeSteps[symbol];
+    if (!step) {
+      const p = Number(price) || 0;
+      if (p >= 5000) step = 100;
+      else if (p >= 1000) step = 50;
+      else if (p >= 300) step = 20;
+      else step = 10;
+    }
+    const strikeVal = strike || (type === 'CE' ? Math.ceil((Number(price) || 0) / step) * step : Math.floor((Number(price) || 0) / step) * step);
+    const optType = type === 'CE' ? 'C' : 'P';
+    const sym = `${symbol}${expiry}${optType}${strikeVal}`;
+    window.open(`https://www.tradingview.com/chart/?symbol=NSE:${sym}&interval=15`, '_blank');
+  };
+
+  const sendTestWebhook = async () => {
+    const scanner = (testScannerName && testScannerName.trim()) || scannerLabel || 'test-scan';
+    const stocks = testStocksText.split(',').map(s => s.trim()).filter(Boolean);
+    const prices = testPricesText ? testPricesText.split(',').map(p => p.trim()) : [];
+
+    const sample = {
+      alert_name: `${scanner} Test`,
+      scan_name: scanner,
+      triggered_at: new Date().toISOString(),
+      stocks: stocks,
+      trigger_prices: prices,
+      scan_url: String(scanner).toLowerCase().replace(/[^a-z0-9]+/g, '-')
+    };
+
+    try {
+      const res = await fetch('/api/chartink-webhook', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(sample)
+      });
+
+      if (res.ok) {
+        setNotification('Test webhook sent');
+        setTimeout(() => setNotification(null), 3500);
+        // close form after send
+        setShowTestForm(false);
+
+        // Immediately refresh scanner-specific scans so UI updates without waiting for poll
+        try {
+          const refreshUrl = sample.scan_url
+            ? `/api/get-scans?scanner=${encodeURIComponent(sample.scan_url)}`
+            : scannerLabel
+              ? `/api/get-scans?scanner=${encodeURIComponent(scannerLabel)}`
+              : '/api/get-scans';
+
+          const resp = await fetch(refreshUrl);
+          const data = await resp.json();
+
+          const matchedLatest = data.latest || null;
+          const matchedHistory = Array.isArray(data.history) ? data.history : [];
+
+          setScans({ latest: matchedLatest, history: matchedHistory });
+          if (data.latest && data.latest.id) setLastAlertId(data.latest.id);
+          if (matchedLatest) {
+            const parsed = parseChartInkData(matchedLatest);
+            if (parsed && parsed.stocks.length > 0) setSelectedStock(parsed.stocks[0].symbol);
+          }
+        } catch (e) {
+          console.error('Failed to refresh scans after test webhook', e);
+        }
+      } else {
+        setNotification('Failed to send test webhook');
+        setTimeout(() => setNotification(null), 3500);
+      }
+    } catch (err) {
+      console.error('Test webhook error', err);
+      setNotification('Error sending test webhook');
+      setTimeout(() => setNotification(null), 3500);
+    }
   };
 
   if (loading) {
@@ -202,34 +371,101 @@ export default function ScannerPage() {
       {/* Toast Notification */}
       {notification && (
         <div className="fixed top-4 right-4 z-50 animate-slide-in">
-          <div className="bg-green-600 text-white px-6 py-3 rounded-lg shadow-lg flex items-center gap-3">
-            <span className="text-2xl">🔔</span>
-            <span className="font-semibold">{notification}</span>
+          <div className="bg-gradient-to-r from-green-500 to-emerald-600 text-white px-5 py-3 rounded-xl shadow-2xl shadow-green-500/25 flex items-center gap-3 border border-green-400/20">
+            <div className="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center">
+              <span className="text-lg">🔔</span>
+            </div>
+            <span className="font-medium text-sm">{notification}</span>
           </div>
         </div>
       )}
 
       <div className="container mx-auto px-2 sm:px-4 py-4 max-w-full">
-        <header className="mb-4">
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => router.push('/trades')}
-              className="flex items-center gap-2 px-3 py-2 hover:bg-slate-700 rounded-lg transition-colors text-slate-300 hover:text-white text-sm"
-              title="Go back to trades"
-            >
-              <ArrowLeft size={18} />
-              <span>Back to Trades</span>
-            </button>
-            <div>
-              <h1 className="text-2xl sm:text-3xl font-bold text-white">📊 ChartInk Scanner</h1>
-              {lastUpdate && (
-                <p className="text-slate-400 text-xs sm:text-sm">
-                  Last updated: {lastUpdate.toLocaleTimeString()}
-                </p>
-              )}
+        {/* Modern Header */}
+        <header className="mb-6">
+          <div className="bg-gradient-to-r from-slate-800/80 to-slate-800/40 backdrop-blur-xl rounded-2xl border border-slate-700/50 p-4 shadow-xl">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div className="flex items-center gap-4">
+                <button
+                  onClick={() => router.push('/trades')}
+                  className="flex items-center justify-center w-10 h-10 bg-slate-700/50 hover:bg-slate-600/50 rounded-xl transition-all duration-200 text-slate-300 hover:text-white hover:scale-105"
+                  title="Go back to trades"
+                >
+                  <ArrowLeft size={20} />
+                </button>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-2xl">📊</span>
+                    <h1 className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-white to-slate-300 bg-clip-text text-transparent">
+                      {scannerLabel || 'ChartInk Scanner'}
+                    </h1>
+                  </div>
+                  {lastUpdate && (
+                    <div className="flex items-center gap-2 mt-1">
+                      <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                      <p className="text-slate-400 text-xs">
+                        Live · Updated {lastUpdate.toLocaleTimeString()}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setShowTestForm(!showTestForm)}
+                  className="flex items-center gap-2 px-4 py-2 bg-indigo-500/20 hover:bg-indigo-500/30 border border-indigo-500/50 rounded-xl text-indigo-300 text-sm font-medium transition-all duration-200 hover:scale-105"
+                  title="Configure test webhook"
+                >
+                  <Zap size={16} />
+                  <span className="hidden sm:inline">Test</span>
+                </button>
+              </div>
             </div>
           </div>
         </header>
+
+        {showTestForm && (
+          <div className="mb-6 p-4 bg-gradient-to-r from-slate-800/80 to-slate-800/40 backdrop-blur-xl border border-slate-700/50 rounded-2xl shadow-xl animate-in slide-in-from-top duration-300">
+            <div className="flex items-center gap-2 mb-3">
+              <Zap size={16} className="text-indigo-400" />
+              <span className="text-sm font-medium text-white">Test Webhook</span>
+            </div>
+            <div className="flex flex-col sm:flex-row gap-3">
+              <input
+                value={testScannerName}
+                onChange={(e) => setTestScannerName(e.target.value)}
+                placeholder="Scanner name"
+                className="flex-1 bg-slate-900/50 border border-slate-600/50 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 transition-all"
+              />
+              <input
+                value={testStocksText}
+                onChange={(e) => setTestStocksText(e.target.value)}
+                placeholder="Stocks (e.g. TCS, INFY)"
+                className="flex-1 bg-slate-900/50 border border-slate-600/50 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 transition-all"
+              />
+            </div>
+            <div className="flex items-center gap-3 mt-3">
+              <input
+                value={testPricesText}
+                onChange={(e) => setTestPricesText(e.target.value)}
+                placeholder="Trigger prices (optional)"
+                className="flex-1 bg-slate-900/50 border border-slate-600/50 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 transition-all"
+              />
+              <button
+                onClick={sendTestWebhook}
+                className="px-5 py-2.5 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-400 hover:to-emerald-500 rounded-xl text-white text-sm font-medium shadow-lg shadow-green-500/25 transition-all duration-200 hover:scale-105"
+              >
+                Send
+              </button>
+              <button
+                onClick={() => setShowTestForm(false)}
+                className="px-5 py-2.5 bg-slate-700/50 hover:bg-slate-600/50 border border-slate-600/50 rounded-xl text-slate-300 text-sm font-medium transition-all duration-200"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        )}
 
         {latestData ? (
           <>
@@ -237,270 +473,270 @@ export default function ScannerPage() {
             {!isMobile ? (
               <div 
                 ref={containerRef}
-                className="flex gap-0 h-[calc(100vh-120px)] relative"
+                className="flex gap-0 h-[calc(100vh-180px)] relative"
               >
+                {/* Left Panel - Stock List */}
                 <div 
-                  className="bg-slate-800 rounded-l-lg border border-slate-700 overflow-hidden flex flex-col"
+                  className="bg-gradient-to-b from-slate-800/90 to-slate-900/90 backdrop-blur-xl rounded-l-2xl border border-slate-700/50 overflow-hidden flex flex-col shadow-xl"
                   style={{ width: `${leftWidth}%` }}
                 >
-                  <div className="p-4 border-b border-slate-700 bg-slate-750">
-                    <div className="flex items-start justify-between mb-2">
-                      <div className="flex-1">
-                        <h2 className="text-xl font-semibold text-white mb-1">
-                          {latestData.alertName}
-                        </h2>
-                        <p className="text-slate-400 text-sm mb-1">{latestData.scanName}</p>
+                  {/* Alert Header */}
+                  <div className="p-4 border-b border-slate-700/50 bg-gradient-to-r from-slate-800/50 to-transparent">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-2">
+                          <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                          <h2 className="text-lg font-bold text-white truncate">
+                            {latestData?.alertName || scannerLabel || 'ChartInk Alert'}
+                          </h2>
+                        </div>
                         {latestData.scanUrl && (
                           <a 
                             href={`https://chartink.com/screener/${latestData.scanUrl}`}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="text-blue-400 hover:text-blue-300 text-sm underline"
+                            className="inline-flex items-center gap-1 text-blue-400 hover:text-blue-300 text-xs font-medium transition-colors"
                           >
-                            View on ChartInk →
+                            <ExternalLink size={12} />
+                            View on ChartInk
                           </a>
                         )}
                       </div>
-                      <span className="text-slate-400 text-sm whitespace-nowrap ml-4">
-                        ⏰ Triggered: {latestData.triggeredAt}
-                        {latestData.receivedAt && (
-                          <div className="text-slate-500 text-xs mt-1">
-                            Received: {new Date(latestData.receivedAt).toLocaleString()}
-                          </div>
-                        )}
-                      </span>
-                    </div>
-                    <div className="text-slate-400 text-xs mt-2">
-                      Total stocks: {latestData.stocks.length}
+                      <div className="text-right flex-shrink-0">
+                        <div className="flex items-center gap-1.5 text-slate-400 text-xs">
+                          <Clock size={12} />
+                          <span>{latestData.triggeredAt}</span>
+                        </div>
+                        <div className="mt-2 px-2.5 py-1 bg-blue-500/20 rounded-lg">
+                          <span className="text-blue-300 text-sm font-bold">{latestData.stocks.length}</span>
+                          <span className="text-blue-400/70 text-xs ml-1">stocks</span>
+                        </div>
+                      </div>
                     </div>
                   </div>
 
-                  <div className="flex-1 overflow-y-auto">
-                    <table className="w-full">
-                      <thead className="sticky top-0 bg-slate-800 z-10">
-                        <tr className="border-b border-slate-700">
-                          <th className="text-left py-3 px-3 text-slate-300 font-semibold text-sm">#</th>
-                          <th className="text-left py-3 px-3 text-slate-300 font-semibold text-sm">Stock</th>
-                          <th className="text-right py-3 px-3 text-slate-300 font-semibold text-sm">Price</th>
-                          <th className="text-center py-3 px-3 text-slate-300 font-semibold text-sm">Chart</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {latestData.stocks.map((stock, idx) => (
-                          <tr 
-                            key={idx} 
-                            className={`border-b border-slate-700 hover:bg-slate-700 transition-colors cursor-pointer ${
-                              selectedStock === stock.symbol ? 'bg-slate-700' : ''
-                            }`}
-                            onClick={() => setSelectedStock(stock.symbol)}
-                          >
-                            <td className="py-3 px-3 text-slate-400 text-sm">{idx + 1}</td>
-                            <td className="py-3 px-3">
-                              <span className={`font-semibold ${
-                                selectedStock === stock.symbol ? 'text-green-300' : 'text-green-400'
-                              }`}>
+                  {/* Stock List */}
+                  <div className="flex-1 overflow-y-auto custom-scrollbar">
+                    <div className="p-2 space-y-1">
+                      {latestData.stocks.map((stock, idx) => (
+                        <div 
+                          key={idx}
+                          onClick={() => setSelectedStock(stock.symbol)}
+                          className={`group p-3 rounded-xl cursor-pointer transition-all duration-200 ${
+                            selectedStock === stock.symbol 
+                              ? 'bg-gradient-to-r from-blue-500/20 to-indigo-500/10 border border-blue-500/30 shadow-lg shadow-blue-500/10' 
+                              : 'bg-slate-800/30 hover:bg-slate-700/50 border border-transparent hover:border-slate-600/50'
+                          }`}
+                        >
+                          {/* Stock Header */}
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center gap-2">
+                              <span className="text-slate-500 text-xs font-mono w-5">{idx + 1}</span>
+                              <span className={`font-bold text-base ${selectedStock === stock.symbol ? 'text-blue-300' : 'text-green-400'}`}>
                                 {stock.symbol}
                               </span>
-                            </td>
-                            <td className="py-3 px-3 text-right">
-                              <span className="text-white font-mono text-sm">
-                                ₹{stock.price}
-                              </span>
-                            </td>
-                            <td className="py-3 px-3 text-center">
+                            </div>
+                            <span className="text-white font-mono text-sm font-medium bg-slate-700/50 px-2 py-0.5 rounded-lg">
+                              ₹{stock.price}
+                            </span>
+                          </div>
+                          
+                          {/* Action Buttons */}
+                          <div className="flex items-center gap-2 flex-wrap">
+                            {/* Chart Buttons */}
+                            <div className="flex items-center gap-1 bg-slate-900/50 rounded-lg px-2 py-1">
                               <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  openTradingViewChart(stock.symbol);
-                                }}
-                                className="text-blue-400 hover:text-blue-300 text-sm px-2 py-1 rounded hover:bg-slate-600"
-                                title="Open in TradingView"
+                                onClick={(e) => { e.stopPropagation(); openTradingViewChart(stock.symbol); }}
+                                className="text-blue-400 hover:text-blue-300 text-xs px-1.5 py-0.5 hover:bg-blue-500/20 rounded transition-colors"
+                                title="Stock Chart"
                               >
-                                📈
+                                📊
                               </button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                              <button
+                                onClick={(e) => { 
+                                  e.stopPropagation(); 
+                                  const { ce } = buildOptionSymbols(stock.symbol, stock.price); 
+                                  if (ce) {
+                                    window.open(`https://www.tradingview.com/chart/?symbol=NSE:${ce}&interval=15`, '_blank'); 
+                                  } else {
+                                    alert(`No valid price for ${stock.symbol}. Cannot open CE chart.`);
+                                  }
+                                }}
+                                className="text-amber-400 hover:text-amber-300 text-xs font-medium px-1.5 py-0.5 hover:bg-amber-500/20 rounded transition-colors"
+                                title="CE Chart"
+                              >
+                                CE
+                              </button>
+                              <button
+                                onClick={(e) => { 
+                                  e.stopPropagation(); 
+                                  const { pe } = buildOptionSymbols(stock.symbol, stock.price); 
+                                  if (pe) {
+                                    window.open(`https://www.tradingview.com/chart/?symbol=NSE:${pe}&interval=15`, '_blank'); 
+                                  } else {
+                                    alert(`No valid price for ${stock.symbol}. Cannot open PE chart.`);
+                                  }
+                                }}
+                                className="text-rose-400 hover:text-rose-300 text-xs font-medium px-1.5 py-0.5 hover:bg-rose-500/20 rounded transition-colors"
+                                title="PE Chart"
+                              >
+                                PE
+                              </button>
+                            </div>
+
+                            {/* Order Group */}
+                            <div className="flex items-center gap-1 bg-gradient-to-r from-indigo-500/20 to-purple-500/10 rounded-lg px-2 py-1 border border-indigo-500/20">
+                              <span className="text-indigo-400 text-xs mr-1">🛒</span>
+                              <button
+                                onClick={(e) => { e.stopPropagation(); openOrderModal(stock.symbol, stock.price, null, 'BUY'); }}
+                                className="text-indigo-300 hover:text-indigo-200 text-xs font-semibold px-1.5 py-0.5 hover:bg-indigo-500/20 rounded transition-colors"
+                                title="Order Equity"
+                              >
+                                EQ
+                              </button>
+                              <button
+                                onClick={(e) => { e.stopPropagation(); openOrderModal(stock.symbol, stock.price, 'CE', 'BUY'); }}
+                                className="text-amber-400 hover:text-amber-300 text-xs font-semibold px-1.5 py-0.5 hover:bg-indigo-500/20 rounded transition-colors"
+                                title="Order CE Option"
+                              >
+                                CE
+                              </button>
+                              <button
+                                onClick={(e) => { e.stopPropagation(); openOrderModal(stock.symbol, stock.price, 'PE', 'BUY'); }}
+                                className="text-rose-400 hover:text-rose-300 text-xs font-semibold px-1.5 py-0.5 hover:bg-indigo-500/20 rounded transition-colors"
+                                title="Order PE Option"
+                              >
+                                PE
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 </div>
 
+                {/* Resizer */}
                 <div 
-                  className="w-1 bg-slate-600 hover:bg-blue-500 cursor-col-resize transition-colors relative group"
+                  className="w-1.5 bg-slate-700/50 hover:bg-blue-500 cursor-col-resize transition-all duration-200 relative group hover:w-2"
                   onMouseDown={() => setIsDragging(true)}
                 >
                   <div className="absolute inset-y-0 -left-1 -right-1 group-hover:bg-blue-500/20"></div>
                 </div>
 
+                {/* Right Panel */}
                 <div 
-                  className="bg-slate-800 border border-slate-700 overflow-hidden flex flex-col"
+                  className="bg-gradient-to-b from-slate-800/50 to-slate-900/90 backdrop-blur-xl rounded-r-2xl border border-slate-700/50 overflow-hidden flex flex-col shadow-xl"
                   style={{ width: `${100 - leftWidth}%` }}
                 >
-                  {/* Top Analytics Section */}
-                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 p-2 sm:p-4 bg-slate-750 border-b border-slate-700">
-                    {/* Section 1: Market Indices */}
-                    <div className="bg-slate-800 border border-slate-700 rounded-lg p-3 lg:p-4 flex flex-col justify-center min-h-20 lg:min-h-24">
-                      <h4 className="text-slate-300 text-xs font-semibold mb-2 lg:mb-3 text-center">Market Indices</h4>
-                      <div className="space-y-1 lg:space-y-2">
-                        {/* Nifty with change indicator */}
-                        <div className="flex justify-between items-center">
-                          <span className="text-slate-500 text-xs">Nifty 50</span>
-                          <div className="flex items-center gap-1">
-                            <span className="text-white text-xs lg:text-sm font-mono">
-                              {marketData?.indices?.nifty || '---'}
-                            </span>
-                            {marketData?.indices?.niftyChange && (
-                              <span className={`text-xs font-mono ${
-                                parseFloat(marketData.indices.niftyChange) >= 0 
-                                  ? 'text-green-400' 
-                                  : 'text-red-400'
-                              }`}>
-                                {parseFloat(marketData.indices.niftyChange) >= 0 ? '▲' : '▼'}
-                                {Math.abs(parseFloat(marketData.indices.niftyChange)).toFixed(0)}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                        
-                        {/* Bank Nifty */}
-                        <div className="flex justify-between items-center">
-                          <span className="text-slate-500 text-xs">Bank Nifty</span>
-                          <span className="text-white text-xs lg:text-sm font-mono">
-                            {marketData?.indices?.bankNifty || '---'}
-                          </span>
-                        </div>
-                        
-                        {/* Sensex */}
-                        <div className="flex justify-between items-center">
-                          <span className="text-slate-500 text-xs">Sensex</span>
-                          <span className="text-white text-xs lg:text-sm font-mono">
-                            {marketData?.indices?.sensex || '---'}
-                          </span>
-                        </div>
-                        
-                        {/* VIX */}
-                        <div className="flex justify-between items-center">
-                          <span className="text-slate-500 text-xs">India VIX</span>
-                          <span className="text-orange-400 text-xs lg:text-sm font-mono">
-                            {marketData?.indices?.vix || '---'}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Section 2: Global Indices */}
-                    <div className="bg-slate-800 border border-slate-700 rounded-lg p-3 lg:p-4 flex flex-col justify-center min-h-20 lg:min-h-24">
-                      <h4 className="text-slate-300 text-xs font-semibold mb-2 lg:mb-3 text-center">Global Indices</h4>
-                      <div className="space-y-1 lg:space-y-2">
-                        <div className="flex justify-between items-center">
-                          <span className="text-slate-500 text-xs">DOW</span>
-                          <span className="text-white text-xs lg:text-sm font-mono">
-                            {marketData?.global?.dow || '---'}
-                          </span>
-                        </div>
-                        <div className="flex justify-between items-center">
-                          <span className="text-slate-500 text-xs">GIFT Nifty</span>
-                          <span className="text-white text-xs lg:text-sm font-mono">
-                            {marketData?.indices?.giftNifty || '---'}
-                          </span>
-                        </div>
-                        <div className="flex justify-between items-center">
-                          <span className="text-slate-500 text-xs">NASDAQ</span>
-                          <span className="text-white text-xs lg:text-sm font-mono">
-                            {marketData?.global?.nasdaq || '---'}
-                          </span>
-                        </div>
-                        <div className="flex justify-between items-center">
-                          <span className="text-slate-500 text-xs">DAX</span>
-                          <span className="text-white text-xs lg:text-sm font-mono">
-                            {marketData?.global?.dax || '---'}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Section 3: Market Sentiment */}
-                    <div className="bg-slate-800 border border-slate-700 rounded-lg p-3 lg:p-4 flex flex-col justify-center min-h-20 lg:min-h-24">
-                      <h4 className="text-slate-300 text-xs font-semibold mb-2 lg:mb-3 text-center">Market Sentiment</h4>
-                      <div className="space-y-1 lg:space-y-2">
-                        <div className="flex justify-between items-center">
-                          <span className="text-slate-500 text-xs">Nifty Bias</span>
-                          <span className={`text-xs lg:text-sm font-mono ${
-                            marketData?.sentiment?.bias === 'Bullish' ? 'text-green-400' : 
-                            marketData?.sentiment?.bias === 'Bearish' ? 'text-red-400' : 
-                            'text-slate-400'
+                  {/* Compact Market Data Strip */}
+                  <div className="p-3 bg-gradient-to-r from-slate-800/80 to-slate-900/50 border-b border-slate-700/50">
+                    <div className="flex flex-wrap gap-3 justify-center lg:justify-between">
+                      {/* Nifty */}
+                      <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-900/50 rounded-xl border border-slate-700/30">
+                        <BarChart3 size={14} className="text-blue-400" />
+                        <span className="text-slate-400 text-xs">NIFTY</span>
+                        <span className="text-white font-mono text-sm font-medium">{marketData?.indices?.nifty || '---'}</span>
+                        {marketData?.indices?.niftyChange && (
+                          <span className={`text-xs font-mono px-1.5 py-0.5 rounded ${
+                            parseFloat(marketData.indices.niftyChange) >= 0 
+                              ? 'text-green-400 bg-green-500/10' 
+                              : 'text-red-400 bg-red-500/10'
                           }`}>
-                            {marketData?.sentiment?.bias || 'Neutral'}
+                            {parseFloat(marketData.indices.niftyChange) >= 0 ? '+' : ''}{marketData.indices.niftyChange}
                           </span>
-                        </div>
-                        <div className="flex justify-between items-center">
-                          <span className="text-slate-500 text-xs">Adv/Decline</span>
-                          <span className="text-white text-xs lg:text-sm font-mono">
-                            {marketData?.sentiment?.advDecline || '---'}
-                          </span>
-                        </div>
-                        <div className="flex justify-between items-center">
-                          <span className="text-slate-500 text-xs">PCR</span>
-                          <span className="text-white text-xs lg:text-sm font-mono">
-                            {marketData?.sentiment?.pcr || '---'}
-                          </span>
-                        </div>
+                        )}
                       </div>
-                    </div>
+                      
+                      {/* Bank Nifty */}
+                      <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-900/50 rounded-xl border border-slate-700/30">
+                        <span className="text-slate-400 text-xs">BNIFTY</span>
+                        <span className="text-white font-mono text-sm font-medium">{marketData?.indices?.bankNifty || '---'}</span>
+                      </div>
+                      
+                      {/* VIX */}
+                      <div className="flex items-center gap-2 px-3 py-1.5 bg-orange-500/10 rounded-xl border border-orange-500/20">
+                        <Gauge size={14} className="text-orange-400" />
+                        <span className="text-orange-300 text-xs">VIX</span>
+                        <span className="text-orange-400 font-mono text-sm font-medium">{marketData?.indices?.vix || '---'}</span>
+                      </div>
 
-                    {/* Section 4: Commodities */}
-                    <div className="bg-slate-800 border border-slate-700 rounded-lg p-3 lg:p-4 flex flex-col justify-center min-h-20 lg:min-h-24">
-                      <h4 className="text-slate-300 text-xs font-semibold mb-2 lg:mb-3 text-center">Commodities</h4>
-                      <div className="space-y-1 lg:space-y-2">
-                        <div className="flex justify-between items-center">
-                          <span className="text-slate-500 text-xs">Crude Oil</span>
-                          <span className="text-white text-xs lg:text-sm font-mono">
-                            {marketData?.commodities?.crude || '---'}
-                          </span>
-                        </div>
-                        <div className="flex justify-between items-center">
-                          <span className="text-slate-500 text-xs">Silver</span>
-                          <span className="text-white text-xs lg:text-sm font-mono">
-                            {marketData?.commodities?.silver || '---'}
-                          </span>
-                        </div>
-                        <div className="flex justify-between items-center">
-                          <span className="text-slate-500 text-xs">Gold</span>
-                          <span className="text-yellow-400 text-xs lg:text-sm font-mono">
-                            {marketData?.commodities?.gold || '---'}
-                          </span>
-                        </div>
-                        <div className="flex justify-between items-center">
-                          <span className="text-slate-500 text-xs">Nat. Gas</span>
-                          <span className="text-white text-xs lg:text-sm font-mono">
-                            {marketData?.commodities?.natGas || '---'}
-                          </span>
-                        </div>
+                      {/* Sentiment */}
+                      <div className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border ${
+                        marketData?.sentiment?.bias === 'Bullish' 
+                          ? 'bg-green-500/10 border-green-500/20' 
+                          : marketData?.sentiment?.bias === 'Bearish'
+                            ? 'bg-red-500/10 border-red-500/20'
+                            : 'bg-slate-900/50 border-slate-700/30'
+                      }`}>
+                        {marketData?.sentiment?.bias === 'Bullish' ? (
+                          <TrendingUp size={14} className="text-green-400" />
+                        ) : marketData?.sentiment?.bias === 'Bearish' ? (
+                          <TrendingDown size={14} className="text-red-400" />
+                        ) : (
+                          <Gauge size={14} className="text-slate-400" />
+                        )}
+                        <span className={`text-xs font-medium ${
+                          marketData?.sentiment?.bias === 'Bullish' ? 'text-green-400' :
+                          marketData?.sentiment?.bias === 'Bearish' ? 'text-red-400' :
+                          'text-slate-400'
+                        }`}>
+                          {marketData?.sentiment?.bias || 'Neutral'}
+                        </span>
                       </div>
                     </div>
                   </div>
 
                   <div className="flex flex-1 overflow-hidden">
                     {/* Centre Section */}
-                    <div className="flex-1 flex flex-col bg-slate-900">
-                      <div className="p-4 border-b border-slate-700 bg-slate-800">
-                        <h3 className="text-lg font-semibold text-white">
-                          {selectedStock ? `${selectedStock}` : 'Scanner Context'}
-                        </h3>
-                      </div>
+                    <div className="flex-1 flex flex-col bg-gradient-to-b from-slate-900/50 to-slate-900">
+                      {/* Selected Stock Header */}
+                      {selectedStock && (
+                        <div className="p-4 border-b border-slate-700/50 bg-gradient-to-r from-blue-500/10 to-transparent">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 bg-gradient-to-br from-green-500 to-emerald-600 rounded-xl flex items-center justify-center text-white font-bold text-sm shadow-lg">
+                                {selectedStock.slice(0, 2)}
+                              </div>
+                              <div>
+                                <h3 className="text-xl font-bold text-white">{selectedStock}</h3>
+                                <p className="text-slate-400 text-xs">NSE • {latestData?.alertName}</p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => window.open(`https://www.tradingview.com/chart/?symbol=NSE:${selectedStock}&interval=15`, '_blank')}
+                                className="flex items-center gap-2 px-4 py-2 bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/30 rounded-xl text-blue-300 text-sm font-medium transition-all hover:scale-105"
+                              >
+                                <Eye size={16} />
+                                Chart
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      )}
                       
-                      <div className="flex-1 flex flex-col overflow-y-auto p-6">
-                        {/* Analytics Section */}
-                        <div className="grid grid-cols-2 gap-3 mb-6">
-                          <div className="bg-slate-800 rounded-lg p-4 border border-slate-700">
-                            <p className="text-xs text-slate-500 mb-2">Latest Scan</p>
+                      <div className="flex-1 flex flex-col overflow-y-auto p-4">
+                        {/* Stats Cards */}
+                        <div className="grid grid-cols-2 gap-3 mb-4">
+                          <div className="bg-gradient-to-br from-blue-500/10 to-blue-600/5 rounded-2xl p-4 border border-blue-500/20">
+                            <div className="flex items-center gap-2 mb-2">
+                              <div className="w-8 h-8 bg-blue-500/20 rounded-lg flex items-center justify-center">
+                                <Zap size={16} className="text-blue-400" />
+                              </div>
+                              <span className="text-slate-400 text-xs">Current Scan</span>
+                            </div>
                             <p className="text-3xl font-bold text-blue-400">{latestData.stocks.length}</p>
-                            <p className="text-xs text-slate-600 mt-1">Stocks</p>
+                            <p className="text-blue-400/60 text-xs mt-1">stocks detected</p>
                           </div>
                           
-                          <div className="bg-slate-800 rounded-lg p-4 border border-slate-700">
-                            <p className="text-xs text-slate-500 mb-2">Last 20 Scans</p>
+                          <div className="bg-gradient-to-br from-emerald-500/10 to-emerald-600/5 rounded-2xl p-4 border border-emerald-500/20">
+                            <div className="flex items-center gap-2 mb-2">
+                              <div className="w-8 h-8 bg-emerald-500/20 rounded-lg flex items-center justify-center">
+                                <BarChart3 size={16} className="text-emerald-400" />
+                              </div>
+                              <span className="text-slate-400 text-xs">Avg (20 scans)</span>
+                            </div>
                             <p className="text-3xl font-bold text-emerald-400">
                               {scans.history && scans.history.length > 0
                                 ? (
@@ -512,31 +748,45 @@ export default function ScannerPage() {
                                 : latestData.stocks.length
                               }
                             </p>
-                            <p className="text-xs text-slate-600 mt-1">Avg Stocks</p>
+                            <p className="text-emerald-400/60 text-xs mt-1">stocks per scan</p>
                           </div>
                         </div>
 
                         {/* Chart: Last 10 Scans */}
-                        <div className="bg-slate-800 rounded-lg p-4 border border-slate-700 mb-6">
-                          <p className="text-xs text-slate-500 mb-3 text-center">Stock Count Trend (Last 10 Scans)</p>
-                          <ResponsiveContainer width="100%" height={200}>
+                        <div className="bg-slate-800/50 rounded-2xl p-4 border border-slate-700/30 mb-4">
+                          <p className="text-slate-300 text-sm font-medium mb-3 flex items-center gap-2">
+                            <BarChart3 size={14} className="text-blue-400" />
+                            Scan Trend
+                          </p>
+                          <ResponsiveContainer width="100%" height={160}>
                             <LineChart data={(() => {
                               const chartData = [];
-                              const allScans = [{ stocks: latestData.stocks, name: 'Latest' }, ...scans.history];
-                              for (let i = Math.min(9, allScans.length - 1); i >= 0; i--) {
-                                const scan = allScans[i];
-                                const parsed = i === 0 ? latestData : parseChartInkData(scan);
+                              const allScans = [scans.latest, ...scans.history].filter(Boolean);
+                              const recentScans = allScans.slice(0, 10);
+                              
+                              for (const scan of recentScans.reverse()) {
+                                const parsed = parseChartInkData(scan);
                                 if (parsed) {
+                                  let timeLabel = parsed.triggeredAt;
+                                  if (typeof timeLabel === 'string') {
+                                    if (timeLabel.includes('T')) {
+                                      const d = new Date(timeLabel);
+                                      timeLabel = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+                                    }
+                                    // Truncate if too long
+                                    if (timeLabel.length > 10) timeLabel = timeLabel.slice(0, 10);
+                                  }
+                                  
                                   chartData.push({
-                                    time: `${9 - i}`,
+                                    time: timeLabel,
                                     count: parsed.stocks.length
                                   });
                                 }
                               }
-                              return chartData.length > 0 ? chartData : [{ time: '1', count: latestData.stocks.length }];
+                              return chartData.length > 0 ? chartData : [{ time: 'N/A', count: latestData.stocks.length }];
                             })()}>
                               <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-                              <XAxis dataKey="time" stroke="#94a3b8" label={{ value: 'Scan #', position: 'insideBottomRight', offset: -5, fill: '#94a3b8', fontSize: 11 }} />
+                              <XAxis dataKey="time" stroke="#94a3b8" angle={-45} textAnchor="end" height={60} tick={{ fontSize: 10 }} />
                               <YAxis stroke="#94a3b8" label={{ value: 'Stocks', angle: -90, position: 'insideLeft', fill: '#94a3b8', fontSize: 11 }} />
                               <Tooltip contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #475569', borderRadius: '0.5rem' }} />
                               <Line type="monotone" dataKey="count" stroke="#60a5fa" strokeWidth={2} dot={{ fill: '#60a5fa', r: 4 }} activeDot={{ r: 6 }} />
@@ -544,63 +794,57 @@ export default function ScannerPage() {
                           </ResponsiveContainer>
                         </div>
 
-                        <div className="border-t border-slate-700 my-4"></div>
-
-                        <div className="text-center">
-                          {selectedStock ? (
-                            <>
-                              <h2 className="text-3xl font-bold text-green-400 mb-3">{selectedStock}</h2>
-                              <div className="space-y-2 text-slate-300 text-sm">
-                                <div>
-                                  <p className="text-xs text-slate-500">Alert: {latestData.alertName}</p>
-                                  <p className="text-xs text-slate-500">Triggered: {latestData.triggeredAt}</p>
-                                </div>
+                        {/* Quick Links - when no stock selected */}
+                        {!selectedStock && (
+                          <div className="flex-1 flex items-center justify-center">
+                            <div className="text-center">
+                              <div className="w-16 h-16 bg-slate-800/50 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                                <ChevronRight size={32} className="text-slate-600" />
                               </div>
-                            </>
-                          ) : (
-                            <p className="text-slate-400 text-sm">👈 Select a stock from the list</p>
-                          )}
-                        </div>
+                              <p className="text-slate-400 text-sm">Select a stock from the list</p>
+                              <p className="text-slate-500 text-xs mt-1">to view details and trade</p>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
 
-                    <div className="hidden lg:block w-1 bg-slate-700"></div>
-
-                    {/* Chart Buttons */}
-                    <div className="hidden lg:flex w-48 bg-slate-800 flex-col items-center py-4 gap-3 overflow-y-auto px-3">
+                    {/* Quick Action Sidebar */}
+                    <div className="hidden lg:flex w-44 bg-gradient-to-b from-slate-800/50 to-slate-900 flex-col items-center py-4 gap-2 overflow-y-auto px-3 border-l border-slate-700/30">
+                      <p className="text-slate-500 text-xs font-medium mb-2 w-full">Quick Links</p>
                       {selectedStock ? (
                         <>
                           <button
-                            onClick={() => window.open(`https://www.tradingview.com/chart/?symbol=NSE:${selectedStock}`, '_blank')}
-                            className="w-full px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-semibold transition-colors"
+                            onClick={() => window.open(`https://www.tradingview.com/chart/?symbol=NSE:${selectedStock}&interval=15`, '_blank')}
+                            className="w-full flex items-center gap-2 px-3 py-2.5 bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/30 text-blue-300 rounded-xl text-sm font-medium transition-all hover:scale-[1.02]"
                           >
-                            📊 TradingView
+                            <span>📊</span> TradingView
                           </button>
                           
                           <button
-                            onClick={() => window.open(`https://www.tradingview.com/chart/?symbol=BSE:${selectedStock}`, '_blank')}
-                            className="w-full px-4 py-3 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-sm font-semibold transition-colors"
+                            onClick={() => window.open(`https://www.tradingview.com/chart/?symbol=BSE:${selectedStock}&interval=15`, '_blank')}
+                            className="w-full flex items-center gap-2 px-3 py-2.5 bg-slate-700/30 hover:bg-slate-700/50 border border-slate-600/30 text-slate-300 rounded-xl text-sm font-medium transition-all hover:scale-[1.02]"
                           >
-                            📋 TradingView BSE
+                            <span>📋</span> TV BSE
                           </button>
                           
                           <button
                             onClick={() => window.open(`https://www.google.com/finance/quote/${selectedStock}:NSE`, '_blank')}
-                            className="w-full px-4 py-3 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-sm font-semibold transition-colors"
+                            className="w-full flex items-center gap-2 px-3 py-2.5 bg-slate-700/30 hover:bg-slate-700/50 border border-slate-600/30 text-slate-300 rounded-xl text-sm font-medium transition-all hover:scale-[1.02]"
                           >
-                            💹 Google Finance
+                            <span>💹</span> Google
                           </button>
                           
                           <button
                             onClick={() => window.open(`https://chartink.com/stocks/${selectedStock.toLowerCase()}.html`, '_blank')}
-                            className="w-full px-4 py-3 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-sm font-semibold transition-colors"
+                            className="w-full flex items-center gap-2 px-3 py-2.5 bg-slate-700/30 hover:bg-slate-700/50 border border-slate-600/30 text-slate-300 rounded-xl text-sm font-medium transition-all hover:scale-[1.02]"
                           >
-                            📈 ChartInk
+                            <span>📈</span> ChartInk
                           </button>
                         </>
                       ) : (
-                        <div className="text-slate-400 text-center text-xs py-4">
-                          <p>👈 Select a stock</p>
+                        <div className="flex-1 flex items-center justify-center">
+                          <p className="text-slate-500 text-xs text-center">Select a stock</p>
                         </div>
                       )}
                     </div>
@@ -610,198 +854,171 @@ export default function ScannerPage() {
             ) : (
               /* Mobile Layout */
               <div className="space-y-4">
-                <div className="bg-slate-800 rounded-lg border border-slate-700 p-4">
-                  <h2 className="text-lg font-semibold text-white mb-1">
-                    {latestData.alertName}
-                  </h2>
-                  <p className="text-slate-400 text-sm mb-2">{latestData.scanName}</p>
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-slate-400">⏰ {latestData.triggeredAt}</span>
-                    <span className="text-slate-400">Stocks: {latestData.stocks.length}</span>
+                {/* Alert Header Card */}
+                <div className="bg-gradient-to-r from-slate-800/80 to-slate-800/40 backdrop-blur-xl rounded-2xl border border-slate-700/50 p-4 shadow-xl">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="flex items-center gap-2 mb-1">
+                        <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                        <h2 className="text-lg font-bold text-white">
+                          {latestData?.alertName || scannerLabel || 'ChartInk Alert'}
+                        </h2>
+                      </div>
+                      <div className="flex items-center gap-2 text-slate-400 text-xs">
+                        <Clock size={12} />
+                        <span>{latestData.triggeredAt}</span>
+                      </div>
+                    </div>
+                    <div className="px-3 py-1.5 bg-blue-500/20 rounded-xl">
+                      <span className="text-blue-300 text-lg font-bold">{latestData.stocks.length}</span>
+                      <span className="text-blue-400/70 text-xs ml-1">stocks</span>
+                    </div>
                   </div>
                   {latestData.scanUrl && (
                     <a 
                       href={`https://chartink.com/screener/${latestData.scanUrl}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-blue-400 hover:text-blue-300 text-xs underline mt-2 inline-block"
+                      className="inline-flex items-center gap-1 text-blue-400 hover:text-blue-300 text-xs mt-3 font-medium"
                     >
-                      View on ChartInk →
+                      <ExternalLink size={12} />
+                      View on ChartInk
                     </a>
                   )}
                 </div>
 
-                {/* Analytics Boxes Mobile */}
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="bg-slate-800 border border-slate-700 rounded-lg p-3">
-                    <h4 className="text-slate-300 text-xs font-semibold mb-2 text-center">Market</h4>
-                    <div className="space-y-1">
-                      <div className="flex justify-between items-center">
-                        <span className="text-slate-500 text-xs">Nifty</span>
-                        <span className="text-white text-xs font-mono">
-                          {marketData?.indices?.nifty || '---'}
-                        </span>
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <span className="text-slate-500 text-xs">GIFT</span>
-                        <span className="text-white text-xs font-mono">
-                          {marketData?.indices?.giftNifty || '---'}
-                        </span>
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <span className="text-slate-500 text-xs">VIX</span>
-                        <span className="text-orange-400 text-xs font-mono">
-                          {marketData?.indices?.vix || '---'}
-                        </span>
-                      </div>
-                    </div>
+                {/* Compact Market Strip Mobile */}
+                <div className="flex flex-wrap gap-2 justify-center">
+                  <div className="flex items-center gap-2 px-3 py-2 bg-slate-800/80 rounded-xl border border-slate-700/50">
+                    <span className="text-slate-400 text-xs">NIFTY</span>
+                    <span className="text-white font-mono text-sm">{marketData?.indices?.nifty || '---'}</span>
                   </div>
-
-                  <div className="bg-slate-800 border border-slate-700 rounded-lg p-3">
-                    <h4 className="text-slate-300 text-xs font-semibold mb-2 text-center">Global</h4>
-                    <div className="space-y-1">
-                      <div className="flex justify-between items-center">
-                        <span className="text-slate-500 text-xs">DOW</span>
-                        <span className="text-white text-xs font-mono">
-                          {marketData?.global?.dow || '---'}
-                        </span>
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <span className="text-slate-500 text-xs">NASDAQ</span>
-                        <span className="text-white text-xs font-mono">
-                          {marketData?.global?.nasdaq || '---'}
-                        </span>
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <span className="text-slate-500 text-xs">DAX</span>
-                        <span className="text-white text-xs font-mono">
-                          {marketData?.global?.dax || '---'}
-                        </span>
-                      </div>
-                    </div>
+                  <div className="flex items-center gap-2 px-3 py-2 bg-orange-500/10 rounded-xl border border-orange-500/20">
+                    <span className="text-orange-300 text-xs">VIX</span>
+                    <span className="text-orange-400 font-mono text-sm">{marketData?.indices?.vix || '---'}</span>
                   </div>
-
-                  <div className="bg-slate-800 border border-slate-700 rounded-lg p-3">
-                    <h4 className="text-slate-300 text-xs font-semibold mb-2 text-center">Sentiment</h4>
-                    <div className="space-y-1">
-                      <div className="flex justify-between items-center">
-                        <span className="text-slate-500 text-xs">Bias</span>
-                        <span className={`text-xs font-mono ${
-                          marketData?.sentiment?.bias === 'Bullish' ? 'text-green-400' : 
-                          marketData?.sentiment?.bias === 'Bearish' ? 'text-red-400' : 
-                          'text-slate-400'
-                        }`}>
-                          {marketData?.sentiment?.bias || 'Neutral'}
-                        </span>
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <span className="text-slate-500 text-xs">Adv/Dec</span>
-                        <span className="text-white text-xs font-mono">
-                          {marketData?.sentiment?.advDecline || '---'}
-                        </span>
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <span className="text-slate-500 text-xs">PCR</span>
-                        <span className="text-white text-xs font-mono">
-                          {marketData?.sentiment?.pcr || '---'}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="bg-slate-800 border border-slate-700 rounded-lg p-3">
-                    <h4 className="text-slate-300 text-xs font-semibold mb-2 text-center">Commodities</h4>
-                    <div className="space-y-1">
-                      <div className="flex justify-between items-center">
-                        <span className="text-slate-500 text-xs">Crude</span>
-                        <span className="text-white text-xs font-mono">
-                          {marketData?.commodities?.crude || '---'}
-                        </span>
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <span className="text-slate-500 text-xs">Gold</span>
-                        <span className="text-yellow-400 text-xs font-mono">
-                          {marketData?.commodities?.gold || '---'}
-                        </span>
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <span className="text-slate-500 text-xs">Silver</span>
-                        <span className="text-white text-xs font-mono">
-                          {marketData?.commodities?.silver || '---'}
-                        </span>
-                      </div>
-                    </div>
+                  <div className={`flex items-center gap-2 px-3 py-2 rounded-xl border ${
+                    marketData?.sentiment?.bias === 'Bullish' 
+                      ? 'bg-green-500/10 border-green-500/20' 
+                      : marketData?.sentiment?.bias === 'Bearish'
+                        ? 'bg-red-500/10 border-red-500/20'
+                        : 'bg-slate-800/80 border-slate-700/50'
+                  }`}>
+                    <span className={`text-xs font-medium ${
+                      marketData?.sentiment?.bias === 'Bullish' ? 'text-green-400' :
+                      marketData?.sentiment?.bias === 'Bearish' ? 'text-red-400' :
+                      'text-slate-400'
+                    }`}>
+                      {marketData?.sentiment?.bias || 'Neutral'}
+                    </span>
                   </div>
                 </div>
 
-                {selectedStock && (
-                  <div className="bg-slate-800 rounded-lg border border-slate-700 p-4">
-                    <div className="text-center">
-                      <h2 className="text-3xl font-bold text-green-400 mb-3">{selectedStock}</h2>
-                      <div className="bg-slate-900 rounded p-3">
-                        <p className="text-xs text-slate-500 mb-1">Total Stocks in Scan</p>
-                        <p className="text-4xl font-bold text-blue-400">{latestData.stocks.length}</p>
+                {/* Mobile Stock Cards */}
+                <div className="space-y-2">
+                  {latestData.stocks.map((stock, idx) => (
+                    <div 
+                      key={idx}
+                      className="bg-gradient-to-r from-slate-800/80 to-slate-800/40 backdrop-blur-xl rounded-xl border border-slate-700/50 p-3"
+                    >
+                      {/* Stock Header */}
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                          <span className="text-slate-500 text-xs font-mono w-5">{idx + 1}</span>
+                          <span className="font-bold text-green-400 text-base">{stock.symbol}</span>
+                        </div>
+                        <span className="text-white font-mono text-sm font-medium bg-slate-700/50 px-2.5 py-1 rounded-lg">
+                          ₹{stock.price}
+                        </span>
                       </div>
-                    </div>
-                  </div>
-                )}
-
-                <div className="bg-slate-800 rounded-lg border border-slate-700 overflow-hidden">
-                  <div className="overflow-x-auto">
-                    <table className="w-full">
-                      <thead className="bg-slate-750">
-                        <tr className="border-b border-slate-700">
-                          <th className="text-left py-2 px-2 text-slate-300 font-semibold text-xs">#</th>
-                          <th className="text-left py-2 px-2 text-slate-300 font-semibold text-xs">Stock</th>
-                          <th className="text-right py-2 px-2 text-slate-300 font-semibold text-xs">Price</th>
-                          <th className="text-center py-2 px-2 text-slate-300 font-semibold text-xs">View</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {latestData.stocks.map((stock, idx) => (
-                          <tr 
-                            key={idx} 
-                            className="border-b border-slate-700 active:bg-slate-700"
+                      
+                      {/* Action Buttons */}
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {/* Chart Buttons */}
+                        <div className="flex items-center gap-1 bg-slate-900/50 rounded-lg px-2 py-1.5">
+                          <button
+                            onClick={() => openTradingViewChart(stock.symbol)}
+                            className="text-blue-400 active:text-blue-300 text-xs px-2 py-0.5"
+                            title="Stock Chart"
                           >
-                            <td className="py-3 px-2 text-slate-400 text-xs">{idx + 1}</td>
-                            <td className="py-3 px-2">
-                              <span className="font-semibold text-green-400 text-sm">
-                                {stock.symbol}
-                              </span>
-                            </td>
-                            <td className="py-3 px-2 text-right">
-                              <span className="text-white font-mono text-xs">
-                                ₹{stock.price}
-                              </span>
-                            </td>
-                            <td className="py-3 px-2 text-center">
-                              <button
-                                onClick={() => openTradingViewChart(stock.symbol)}
-                                className="text-blue-400 active:text-blue-300 text-lg px-2"
-                              >
-                                📈
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                            📊
+                          </button>
+                          <button
+                            onClick={() => { 
+                              const { ce } = buildOptionSymbols(stock.symbol, stock.price); 
+                              if (ce) {
+                                window.open(`https://www.tradingview.com/chart/?symbol=NSE:${ce}&interval=15`, '_blank'); 
+                              } else {
+                                alert(`No valid price for ${stock.symbol}. Cannot open CE chart.`);
+                              }
+                            }}
+                            className="text-amber-400 active:text-amber-300 text-xs font-medium px-2 py-0.5"
+                            title="CE Chart"
+                          >
+                            CE
+                          </button>
+                          <button
+                            onClick={() => { 
+                              const { pe } = buildOptionSymbols(stock.symbol, stock.price); 
+                              if (pe) {
+                                window.open(`https://www.tradingview.com/chart/?symbol=NSE:${pe}&interval=15`, '_blank'); 
+                              } else {
+                                alert(`No valid price for ${stock.symbol}. Cannot open PE chart.`);
+                              }
+                            }}
+                            className="text-rose-400 active:text-rose-300 text-xs font-medium px-2 py-0.5"
+                            title="PE Chart"
+                          >
+                            PE
+                          </button>
+                        </div>
+
+                        {/* Order Group */}
+                        <div className="flex items-center gap-1 bg-gradient-to-r from-indigo-500/20 to-purple-500/10 rounded-lg px-2 py-1.5 border border-indigo-500/20">
+                          <span className="text-indigo-400 text-xs mr-1">🛒</span>
+                          <button
+                            onClick={() => openOrderModal(stock.symbol, stock.price, null, 'BUY')}
+                            className="text-indigo-300 active:text-indigo-200 text-xs font-semibold px-1.5"
+                            title="Order Equity"
+                          >
+                            EQ
+                          </button>
+                          <button
+                            onClick={() => openOrderModal(stock.symbol, stock.price, 'CE', 'BUY')}
+                            className="text-amber-400 active:text-amber-300 text-xs font-semibold px-1.5"
+                            title="Order CE Option"
+                          >
+                            CE
+                          </button>
+                          <button
+                            onClick={() => openOrderModal(stock.symbol, stock.price, 'PE', 'BUY')}
+                            className="text-rose-400 active:text-rose-300 text-xs font-semibold px-1.5"
+                            title="Order PE Option"
+                          >
+                            PE
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
                 </div>
 
                 {selectedStock && (
-                  <div className="bg-slate-800 rounded-lg border border-slate-700 p-4">
-                    <h3 className="text-sm font-semibold text-white mb-3">Quick Chart Links</h3>
+                  <div className="bg-gradient-to-r from-slate-800/80 to-slate-800/40 backdrop-blur-xl rounded-2xl border border-slate-700/50 p-4">
+                    <h3 className="text-sm font-semibold text-white mb-3 flex items-center gap-2">
+                      <Eye size={14} className="text-blue-400" />
+                      Quick Links
+                    </h3>
                     <div className="grid grid-cols-2 gap-2">
                       <button
                         onClick={() => window.open(`https://www.tradingview.com/chart/?symbol=NSE:${selectedStock}`, '_blank')}
-                        className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs font-semibold"
+                        className="flex items-center justify-center gap-2 px-3 py-2.5 bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/30 text-blue-300 rounded-xl text-xs font-medium"
                       >
                         📊 TradingView
                       </button>
                       <button
                         onClick={() => window.open(`https://www.google.com/finance/quote/${selectedStock}:NSE`, '_blank')}
-                        className="px-3 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded text-xs font-semibold"
+                        className="flex items-center justify-center gap-2 px-3 py-2.5 bg-slate-700/30 hover:bg-slate-700/50 border border-slate-600/30 text-slate-300 rounded-xl text-xs font-medium"
                       >
                         💹 Google
                       </button>
@@ -813,10 +1030,14 @@ export default function ScannerPage() {
 
             {/* History Section */}
             {scans.history.length > 0 && (
-              <div className="mt-4">
-                <h2 className="text-lg sm:text-xl font-semibold mb-3 text-white">
-                  Previous Alerts ({Math.max(scans.history.length - 1, 0)})
-                </h2>
+              <div className="mt-6">
+                <div className="flex items-center gap-2 mb-4">
+                  <Clock size={18} className="text-slate-400" />
+                  <h2 className="text-lg font-semibold text-white">
+                    Previous Alerts
+                  </h2>
+                  <span className="text-slate-500 text-sm">({Math.max(scans.history.length - 1, 0)})</span>
+                </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                   {scans.history.slice(1).map((scan) => {
                     const data = parseChartInkData(scan);
@@ -825,7 +1046,7 @@ export default function ScannerPage() {
                     return (
                       <div 
                         key={scan.id} 
-                        className="bg-slate-800 border border-slate-700 rounded-lg p-3 hover:bg-slate-750 cursor-pointer"
+                        className="group bg-gradient-to-r from-slate-800/60 to-slate-800/30 border border-slate-700/50 rounded-xl p-3 hover:border-blue-500/30 hover:bg-slate-800/80 cursor-pointer transition-all duration-200"
                         onClick={() => {
                           setScans({ ...scans, latest: scan });
                           if (data.stocks.length > 0) {
@@ -834,19 +1055,21 @@ export default function ScannerPage() {
                         }}
                       >
                         <div className="flex items-center justify-between mb-2">
-                          <span className="font-semibold text-white text-xs sm:text-sm truncate">
+                          <span className="font-semibold text-white text-sm truncate group-hover:text-blue-300 transition-colors">
                             {data.alertName}
                           </span>
-                          <span className="text-slate-400 text-xs">
-                            {data.triggeredAt}
-                          </span>
+                          <ChevronRight size={14} className="text-slate-600 group-hover:text-blue-400 transition-colors" />
                         </div>
-                        <div className="text-slate-400 text-xs">
+                        <div className="flex items-center gap-2 text-slate-400 text-xs mb-2">
+                          <Clock size={10} />
+                          <span>{data.triggeredAt}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
                           <span className="font-mono text-green-400 text-xs">
                             {data.stocks.slice(0, 3).map(s => s.symbol).join(', ')}
                           </span>
                           {data.stocks.length > 3 && (
-                            <span className="text-slate-500"> +{data.stocks.length - 3}</span>
+                            <span className="text-slate-500 text-xs bg-slate-700/50 px-1.5 py-0.5 rounded">+{data.stocks.length - 3}</span>
                           )}
                         </div>
                       </div>
@@ -857,11 +1080,20 @@ export default function ScannerPage() {
             )}
           </>
         ) : (
-          <div className="bg-slate-800 rounded-lg p-8 sm:p-12 text-center border border-slate-700">
-            <p className="text-lg sm:text-xl mb-2 text-white">⏳ Waiting for scanner data...</p>
-            <p className="text-slate-400 text-xs sm:text-sm">
-              Webhook URL: https://bhatiaverse.com/api/chartink-webhook
-            </p>
+          <div className="flex items-center justify-center min-h-[60vh]">
+            <div className="bg-gradient-to-r from-slate-800/80 to-slate-800/40 backdrop-blur-xl rounded-2xl p-8 sm:p-12 text-center border border-slate-700/50 shadow-xl max-w-md">
+              <div className="w-20 h-20 bg-gradient-to-br from-blue-500/20 to-indigo-500/20 rounded-2xl flex items-center justify-center mx-auto mb-6">
+                <RefreshCw size={32} className="text-blue-400 animate-spin" style={{ animationDuration: '3s' }} />
+              </div>
+              <h3 className="text-xl font-bold text-white mb-2">Waiting for Scanner Data</h3>
+              <p className="text-slate-400 text-sm mb-4">
+                Scanner alerts will appear here once received
+              </p>
+              <div className="bg-slate-900/50 rounded-xl p-3 text-xs text-slate-500">
+                <span className="text-slate-400">Webhook URL:</span><br />
+                <code className="text-blue-400">bhatiaverse.com/api/chartink-webhook</code>
+              </div>
+            </div>
           </div>
         )}
       </div>
@@ -880,7 +1112,61 @@ export default function ScannerPage() {
         .animate-slide-in {
           animation: slide-in 0.3s ease-out;
         }
+        .custom-scrollbar::-webkit-scrollbar {
+          width: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+          background: rgba(30, 41, 59, 0.5);
+          border-radius: 3px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+          background: rgba(71, 85, 105, 0.8);
+          border-radius: 3px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+          background: rgba(100, 116, 139, 0.9);
+        }
+        .animate-in {
+          animation: animate-in 0.3s ease-out;
+        }
+        @keyframes animate-in {
+          from {
+            opacity: 0;
+            transform: translateY(-10px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+        .slide-in-from-top {
+          animation-name: slide-in-from-top;
+        }
+        @keyframes slide-in-from-top {
+          from {
+            opacity: 0;
+            transform: translateY(-20px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
       `}</style>
+
+      {/* Order Modal */}
+      <OrderModal
+        isOpen={orderModalOpen}
+        onClose={() => setOrderModalOpen(false)}
+        symbol={orderStock?.symbol}
+        price={orderStock?.price}
+        defaultType={orderStock?.transactionType || 'BUY'}
+        optionType={orderStock?.optionType}
+        optionSymbol={orderStock?.optionSymbol}
+        onOrderPlaced={(result) => {
+          console.log('Order placed:', result);
+        }}
+      />
     </div>
   );
 }
