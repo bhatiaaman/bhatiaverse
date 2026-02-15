@@ -185,10 +185,11 @@ function KiteSettingsContent() {
         setConfig(prev => ({ ...prev, accessToken: '' }));
         setTokenStatus('invalid');
         setMessage({ type: 'success', text: 'Disconnected from Kite successfully' });
-        
-        // Notify opener window
+
+        // Send message first, THEN close after a delay so message is received
         if (window.opener) {
           window.opener.postMessage({ type: 'KITE_LOGOUT_SUCCESS' }, '*');
+          setTimeout(() => window.close(), 1500);
         }
       }
     } catch (error) {

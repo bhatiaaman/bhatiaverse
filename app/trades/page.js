@@ -47,14 +47,19 @@ export default function TradesPage() {
     };
     checkKiteAuth();
 
-    // Listen for login/logout success from settings popup
+      // Poll every 5 seconds to catch changes from the settings popup
+    const pollInterval = setInterval(checkKiteAuth, 5000);
+
     const handleMessage = (event) => {
       if (event.data?.type === 'KITE_LOGIN_SUCCESS' || event.data?.type === 'KITE_LOGOUT_SUCCESS') {
         checkKiteAuth();
       }
     };
     window.addEventListener('message', handleMessage);
-    return () => window.removeEventListener('message', handleMessage);
+    return () => {
+      clearInterval(pollInterval);
+      window.removeEventListener('message', handleMessage);
+    };
   }, []);
 
   const openKiteSettings = () => {
