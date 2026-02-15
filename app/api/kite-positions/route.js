@@ -4,9 +4,9 @@ import { getKiteCredentials } from '@/app/lib/kite-credentials';
 
 export async function GET(request) {
   try {
-    const { apiKey, accessToken, tokenValid } = await getKiteCredentials();
+    const { apiKey, accessToken } = await getKiteCredentials();
     
-    if (!accessToken || !tokenValid) {
+    if (!accessToken) {
       return NextResponse.json({ 
         success: false, 
         error: 'Kite not connected',

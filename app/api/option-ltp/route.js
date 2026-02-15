@@ -89,8 +89,8 @@ export async function GET(request) {
       return NextResponse.json({ error: 'Missing symbol or type' }, { status: 400 });
     }
     
-    const { apiKey, accessToken, tokenValid } = await getKiteCredentials();
-    if (!accessToken || !tokenValid) {
+    const { apiKey, accessToken } = await getKiteCredentials();
+    if (!accessToken) {
       return NextResponse.json({ error: 'Kite not authenticated' }, { status: 401 });
     }
     

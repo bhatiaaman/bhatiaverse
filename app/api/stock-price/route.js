@@ -50,9 +50,9 @@ export async function GET(request) {
     }
 
     // Get Kite credentials
-    const { apiKey, accessToken, tokenValid } = await getKiteCredentials();
+    const { apiKey, accessToken } = await getKiteCredentials();
     
-    if (!accessToken || !tokenValid) {
+    if (!accessToken) {
       return NextResponse.json({ 
         price: null, 
         error: 'Kite not connected',

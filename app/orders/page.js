@@ -217,7 +217,7 @@ export default function OrdersPage() {
       };
       if (orderType === 'LIMIT' || orderType === 'SL') payload.price = parseFloat(price);
       if (orderType === 'SL' || orderType === 'SL-M') payload.trigger_price = parseFloat(triggerPrice);
-      const res = await fetch('/api/kite-order', {
+      const res = await fetch('/api/place-order', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)

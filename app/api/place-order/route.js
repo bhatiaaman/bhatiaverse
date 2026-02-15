@@ -1,28 +1,9 @@
 import { NextResponse } from 'next/server';
 import { KiteConnect } from 'kiteconnect';
-
-// Check if current time is within market hours (7 AM - 10 PM IST)
-function isMarketHours() {
-  const now = new Date();
-  // Convert to IST (UTC+5:30)
-  const istOffset = 5.5 * 60 * 60 * 1000;
-  const istTime = new Date(now.getTime() + istOffset);
-  const hours = istTime.getUTCHours();
-  // Market hours: 7 AM (7) to 10 PM (22)
-  return hours >= 7 && hours < 22;
-}
-
-// Check if it's a trading day (Mon-Fri, not a holiday)
-function isTradingDay() {
-  const now = new Date();
-  const day = now.getDay();
-  // 0 = Sunday, 6 = Saturday
-  return day !== 0 && day !== 6;
-}
+import { getKiteCredentials } from '@/app/lib/kite-credentials';
 
 export async function POST(request) {
-  const apiKey = process.env.KITE_API_KEY;
-  const accessToken = process.env.KITE_ACCESS_TOKEN;
+  const { apiKey, accessToken } = await getKiteCredentials();
 
   if (!apiKey || !accessToken) {
     return NextResponse.json(
@@ -36,36 +17,31 @@ export async function POST(request) {
     const {
       tradingsymbol,
       exchange = 'NSE',
-      transaction_type, // BUY or SELL
+      transaction_type,
       quantity,
-      product = 'CNC', // CNC, MIS, NRML
-      order_type = 'MARKET', // MARKET, LIMIT, SL, SL-M
+      product = 'CNC',
+      order_type = 'MARKET',
       price = null,
       trigger_price = null,
       validity = 'DAY',
-      variety = 'regular', // regular, amo, co, iceberg
+      variety = 'regular',
       disclosed_quantity = 0,
       tag = '',
     } = body;
 
-    // Validation
     if (!tradingsymbol) {
       return NextResponse.json({ error: 'Trading symbol is required' }, { status: 400 });
     }
-
     if (!transaction_type || !['BUY', 'SELL'].includes(transaction_type)) {
       return NextResponse.json({ error: 'Transaction type must be BUY or SELL' }, { status: 400 });
     }
-
     if (!quantity || quantity <= 0) {
       return NextResponse.json({ error: 'Quantity must be a positive number' }, { status: 400 });
     }
 
-    // Initialize Kite
     const kite = new KiteConnect({ api_key: apiKey });
     kite.setAccessToken(accessToken);
 
-    // Build order params
     const orderParams = {
       tradingsymbol: tradingsymbol.toUpperCase(),
       exchange: exchange.toUpperCase(),
@@ -77,31 +53,21 @@ export async function POST(request) {
       variety,
     };
 
-    // Add price for LIMIT orders
     if (order_type === 'LIMIT' && price) {
       orderParams.price = parseFloat(price);
     }
-
-    // Add trigger price for SL/SL-M orders
     if (['SL', 'SL-M'].includes(order_type) && trigger_price) {
       orderParams.trigger_price = parseFloat(trigger_price);
     }
-
-    // Add disclosed quantity if provided
     if (disclosed_quantity > 0) {
       orderParams.disclosed_quantity = parseInt(disclosed_quantity);
     }
-
-    // Add tag if provided
     if (tag) {
-      orderParams.tag = tag.substring(0, 20); // Max 20 chars
+      orderParams.tag = tag.substring(0, 20);
     }
 
     console.log('Placing order:', orderParams);
-
-    // Place the order
     const orderResponse = await kite.placeOrder(variety, orderParams);
-
     console.log('Order placed successfully:', orderResponse);
 
     return NextResponse.json({
@@ -114,7 +80,6 @@ export async function POST(request) {
   } catch (error) {
     console.error('Order placement error:', error);
 
-    // Handle specific Kite errors
     let errorMessage = error.message || 'Failed to place order';
     let statusCode = 500;
 
@@ -136,16 +101,11 @@ export async function POST(request) {
   }
 }
 
-// GET endpoint to fetch order book
 export async function GET(request) {
-  const apiKey = process.env.KITE_API_KEY;
-  const accessToken = process.env.KITE_ACCESS_TOKEN;
+  const { apiKey, accessToken } = await getKiteCredentials();
 
   if (!apiKey || !accessToken) {
-    return NextResponse.json(
-      { error: 'Kite API not configured' },
-      { status: 400 }
-    );
+    return NextResponse.json({ error: 'Kite API not configured' }, { status: 400 });
   }
 
   try {

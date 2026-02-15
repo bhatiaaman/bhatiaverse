@@ -75,9 +75,9 @@ export async function GET(request) {
       return NextResponse.json({ error: 'Missing symbol parameter' }, { status: 400 });
     }
     
-    const { apiKey, accessToken, tokenValid } = await getKiteCredentials();
+    const { apiKey, accessToken } = await getKiteCredentials();
     
-    if (!accessToken || !tokenValid) {
+    if (!accessToken) {
       // Return fallback lot sizes if Kite not connected
       const fallbackLotSizes = {
         'NIFTY': 75, 'BANKNIFTY': 30, 'FINNIFTY': 40, 'MIDCPNIFTY': 75,
