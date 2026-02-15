@@ -1,118 +1,92 @@
 import { NextResponse } from 'next/server';
 import { KiteConnect } from 'kiteconnect';
-import { Redis } from '@upstash/redis';
+import { getKiteCredentials } from '@/app/lib/kite-credentials';
 
-const redis = new Redis({
-  url: process.env.UPSTASH_REDIS_REST_URL,
-  token: process.env.UPSTASH_REDIS_REST_TOKEN,
-});
+const REDIS_URL = process.env.UPSTASH_REDIS_REST_URL;
+const REDIS_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
+const NS = process.env.REDIS_NAMESPACE || 'default';
 
-// Nifty 50 constituents with NSE symbols
-// These are the current Nifty 50 stocks (as of Feb 2026)
+async function redisGet(key) {
+  try {
+    const res = await fetch(`${REDIS_URL}/get/${key}`, {
+      headers: { Authorization: `Bearer ${REDIS_TOKEN}` },
+    });
+    const data = await res.json();
+    return data.result ? JSON.parse(data.result) : null;
+  } catch { return null; }
+}
+
+async function redisSet(key, value, exSeconds) {
+  try {
+    const encoded = encodeURIComponent(JSON.stringify(value));
+    const url = exSeconds
+      ? `${REDIS_URL}/set/${key}/${encoded}?ex=${exSeconds}`
+      : `${REDIS_URL}/set/${key}/${encoded}`;
+    await fetch(url, { headers: { Authorization: `Bearer ${REDIS_TOKEN}` } });
+  } catch (e) { console.error('Redis set error:', e); }
+}
+
 const NIFTY_50_STOCKS = [
-  'RELIANCE', 'TCS', 'HDFCBANK', 'INFY', 'ICICIBANK', 
-  'HINDUNILVR', 'SBIN', 'BHARTIARTL', 'ITC', 'KOTAKBANK',
-  'LT', 'AXISBANK', 'ASIANPAINT', 'MARUTI', 'HCLTECH',
-  'SUNPHARMA', 'TITAN', 'BAJFINANCE', 'WIPRO', 'ULTRACEMCO',
-  'NESTLEIND', 'NTPC', 'POWERGRID', 'M&M', 'TATAMOTORS',
-  'TATASTEEL', 'ADANIENT', 'ADANIPORTS', 'TECHM', 'INDUSINDBK',
-  'JSWSTEEL', 'HINDALCO', 'ONGC', 'BPCL', 'GRASIM',
-  'DIVISLAB', 'DRREDDY', 'BRITANNIA', 'CIPLA', 'EICHERMOT',
-  'COALINDIA', 'APOLLOHOSP', 'SBILIFE', 'TATACONSUM', 'BAJAJFINSV',
-  'HEROMOTOCO', 'LTIM', 'SHRIRAMFIN', 'TRENT', 'BAJAJ-AUTO'
+  'RELIANCE','TCS','HDFCBANK','INFY','ICICIBANK',
+  'HINDUNILVR','SBIN','BHARTIARTL','ITC','KOTAKBANK',
+  'LT','AXISBANK','ASIANPAINT','MARUTI','HCLTECH',
+  'SUNPHARMA','TITAN','BAJFINANCE','WIPRO','ULTRACEMCO',
+  'NESTLEIND','NTPC','POWERGRID','M&M','TATAMOTORS',
+  'TATASTEEL','ADANIENT','ADANIPORTS','TECHM','INDUSINDBK',
+  'JSWSTEEL','HINDALCO','ONGC','BPCL','GRASIM',
+  'DIVISLAB','DRREDDY','BRITANNIA','CIPLA','EICHERMOT',
+  'COALINDIA','APOLLOHOSP','SBILIFE','TATACONSUM','BAJAJFINSV',
+  'HEROMOTOCO','LTIM','SHRIRAMFIN','TRENT','BAJAJ-AUTO',
 ];
 
-const CACHE_KEY = 'market-breadth';
-const CACHE_TTL = 60; // 1 minute cache
+const CACHE_KEY = `${NS}:market-breadth`;
+const CACHE_TTL = 60;
 
 export async function GET() {
-  const apiKey = process.env.KITE_API_KEY;
-  const accessToken = process.env.KITE_ACCESS_TOKEN;
-  
   try {
-    // Check cache first
-    const cached = await redis.get(CACHE_KEY);
+    const cached = await redisGet(CACHE_KEY);
     if (cached) {
-      console.log('Returning cached market breadth');
       return NextResponse.json({ ...cached, fromCache: true });
     }
-    
+
+    const { apiKey, accessToken } = await getKiteCredentials();
     if (!apiKey || !accessToken) {
-      console.error('Kite credentials missing');
-      return NextResponse.json({
-        advances: 0,
-        declines: 0,
-        unchanged: 0,
-        ratio: '---',
-        error: 'Kite API not configured'
-      });
+      return NextResponse.json({ advances: 0, declines: 0, unchanged: 0, ratio: '---', error: 'Kite API not configured' });
     }
 
     const kite = new KiteConnect({ api_key: apiKey });
     kite.setAccessToken(accessToken);
 
-    // Build instrument keys for getOHLC
     const instrumentKeys = NIFTY_50_STOCKS.map(symbol => `NSE:${symbol}`);
-    
-    console.log(`Fetching OHLC for ${instrumentKeys.length} Nifty 50 stocks`);
-    
-    // Fetch OHLC data for all stocks
     const ohlcData = await kite.getOHLC(instrumentKeys);
-    
-    let advances = 0;
-    let declines = 0;
-    let unchanged = 0;
-    
-    // Calculate advances/declines
+
+    let advances = 0, declines = 0, unchanged = 0;
+
     for (const symbol of NIFTY_50_STOCKS) {
-      const key = `NSE:${symbol}`;
-      const data = ohlcData[key];
-      
-      if (!data) {
-        console.log(`No data for ${key}`);
-        continue;
-      }
-      
+      const data = ohlcData[`NSE:${symbol}`];
+      if (!data) continue;
       const lastPrice = data.last_price;
       const prevClose = data.ohlc?.close || lastPrice;
-      
-      if (lastPrice > prevClose) {
-        advances++;
-      } else if (lastPrice < prevClose) {
-        declines++;
-      } else {
-        unchanged++;
-      }
+      if (lastPrice > prevClose) advances++;
+      else if (lastPrice < prevClose) declines++;
+      else unchanged++;
     }
-    
+
     const total = advances + declines + unchanged;
     const advDeclineRatio = declines > 0 ? (advances / declines).toFixed(2) : advances.toString();
-    
-    console.log(`Market Breadth: ${advances}↑ ${declines}↓ ${unchanged}= (Ratio: ${advDeclineRatio})`);
-    
+
     const response = {
-      advances,
-      declines,
-      unchanged,
-      total,
+      advances, declines, unchanged, total,
       ratio: advDeclineRatio,
       display: `${advances}↑ ${declines}↓`,
       timestamp: new Date().toISOString(),
     };
-    
-    // Cache the response
-    await redis.set(CACHE_KEY, response, { ex: CACHE_TTL });
-    
+
+    await redisSet(CACHE_KEY, response, CACHE_TTL);
     return NextResponse.json(response);
 
   } catch (error) {
     console.error('Error fetching market breadth:', error.message);
-    return NextResponse.json({
-      advances: 0,
-      declines: 0,
-      unchanged: 0,
-      ratio: '---',
-      error: error.message
-    });
+    return NextResponse.json({ advances: 0, declines: 0, unchanged: 0, ratio: '---', error: error.message });
   }
 }
