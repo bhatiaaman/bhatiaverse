@@ -12,8 +12,6 @@ async function getKiteCredentials() {
   };
 }
 
-const INDICES = ['NIFTY', 'BANKNIFTY', 'FINNIFTY', 'MIDCPNIFTY', 'SENSEX', 'BANKEX'];
-
 function getStrikeStep(symbol, price) {
   if (nseStrikeSteps[symbol]) return nseStrikeSteps[symbol];
   const p = Number(price) || 0;
@@ -24,55 +22,55 @@ function getStrikeStep(symbol, price) {
   return 2.5;
 }
 
-function getLastThursdayOfMonth(date = new Date()) {
-  const d = new Date(date.getFullYear(), date.getMonth() + 1, 0);
-  while (d.getDay() !== 4) d.setDate(d.getDate() - 1);
-  return d;
-}
-
+// Last Tuesday of current month
 function getLastTuesdayOfMonth(date = new Date()) {
   const d = new Date(date.getFullYear(), date.getMonth() + 1, 0);
   while (d.getDay() !== 2) d.setDate(d.getDate() - 1);
   return d;
 }
 
-// Next Thursday from today (weekly expiry for NIFTY)
-function getNextThursday(date = new Date()) {
+// Nearest upcoming Tuesday (this week or next) for NIFTY weekly
+function getNearestTuesday(date = new Date()) {
   const d = new Date(date);
   const day = d.getDay();
-  const daysUntilThursday = (4 - day + 7) % 7 || 7;
-  d.setDate(d.getDate() + daysUntilThursday);
+  if (day === 2) return d; // today is Tuesday
+  if (day < 2) {
+    d.setDate(d.getDate() + (2 - day)); // Mon/Sun → this week's Tuesday
+  } else {
+    d.setDate(d.getDate() + (7 - day + 2)); // Wed-Sat → next week's Tuesday
+  }
   return d;
 }
 
-function getNextExpiry(symbol, fromDate = new Date(), expiryType = 'monthly') {
-  const upper = symbol.toUpperCase();
-  const isIndex = INDICES.includes(upper);
-
-  if (upper === 'NIFTY' && expiryType === 'weekly') {
-    return getNextThursday(fromDate);
+function getExpiry(symbol, fromDate = new Date(), expiryType = 'monthly') {
+  if (symbol === 'NIFTY' && expiryType === 'weekly') {
+    return getNearestTuesday(fromDate);
   }
-  if (isIndex) {
-    const expiry = getLastThursdayOfMonth(fromDate);
-    if (fromDate > expiry) {
-      return getLastThursdayOfMonth(new Date(fromDate.getFullYear(), fromDate.getMonth() + 1, 15));
-    }
-    return expiry;
-  }
-  // Stocks — last Tuesday of month
   const expiry = getLastTuesdayOfMonth(fromDate);
   if (fromDate > expiry) {
-    return getLastTuesdayOfMonth(new Date(fromDate.getFullYear(), fromDate.getMonth() + 1, 15));
+    return getLastTuesdayOfMonth(
+      new Date(fromDate.getFullYear(), fromDate.getMonth() + 1, 15)
+    );
   }
   return expiry;
 }
 
-function buildKiteSymbol(symbol, strike, optionType, expiry) {
+// Monthly Kite format: NIFTY25FEB24500CE
+function buildKiteMonthlySymbol(symbol, strike, optionType, expiry) {
   const yy  = String(expiry.getFullYear()).slice(-2);
   const mmm = expiry.toLocaleString('en-US', { month: 'short' }).toUpperCase();
   return `${symbol}${yy}${mmm}${strike}${optionType}`;
 }
 
+// Weekly Kite format: NIFTY2621725500CE  (YY + M (no padding) + DD + strike + type)
+function buildKiteWeeklySymbol(symbol, strike, optionType, expiry) {
+  const yy = String(expiry.getFullYear()).slice(-2);
+  const m  = String(expiry.getMonth() + 1); // 1-12, no padding
+  const dd = String(expiry.getDate()).padStart(2, '0');
+  return `${symbol}${yy}${m}${dd}${strike}${optionType}`;
+}
+
+// TradingView format: NIFTY260217C25500
 function buildTvSymbol(symbol, strike, optionType, expiry) {
   const yy = String(expiry.getFullYear() % 100).padStart(2, '0');
   const mm = String(expiry.getMonth() + 1).padStart(2, '0');
@@ -86,8 +84,8 @@ export async function GET(request) {
     const { searchParams } = new URL(request.url);
     const symbol         = searchParams.get('symbol')?.toUpperCase();
     const spotPrice      = parseFloat(searchParams.get('spotPrice') || '0');
-    const instrumentType = searchParams.get('instrumentType')?.toUpperCase(); // CE or PE
-    const expiryType     = searchParams.get('expiryType') || 'monthly';       // weekly | monthly
+    const instrumentType = searchParams.get('instrumentType')?.toUpperCase();
+    const expiryType     = searchParams.get('expiryType') || 'monthly';
 
     if (!symbol || !instrumentType || !spotPrice) {
       return NextResponse.json({ error: 'Missing symbol, spotPrice or instrumentType' }, { status: 400 });
@@ -108,10 +106,13 @@ export async function GET(request) {
       : Math.floor(spotPrice / step) * step;
 
     const now    = new Date();
-    const expiry = getNextExpiry(symbol, now, expiryType);
+    const expiry = getExpiry(symbol, now, expiryType);
 
-    const kiteSymbol = buildKiteSymbol(symbol, atmStrike, instrumentType, expiry);
-    const tvSymbol   = buildTvSymbol(symbol, atmStrike, instrumentType, expiry);
+    const isWeekly   = symbol === 'NIFTY' && expiryType === 'weekly';
+    const kiteSymbol = isWeekly
+      ? buildKiteWeeklySymbol(symbol, atmStrike, instrumentType, expiry)
+      : buildKiteMonthlySymbol(symbol, atmStrike, instrumentType, expiry);
+    const tvSymbol = buildTvSymbol(symbol, atmStrike, instrumentType, expiry);
 
     // Fetch LTP from Kite
     const ltpRes = await fetch(
@@ -135,10 +136,10 @@ export async function GET(request) {
     return NextResponse.json({
       optionSymbol: kiteSymbol,
       tvSymbol,
-      strike:       atmStrike,
+      strike:    atmStrike,
       ltp,
-      expiry:       expiry.toISOString(),
-      expiryDay:    expiry.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }),
+      expiry:    expiry.toISOString(),
+      expiryDay: expiry.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }),
       step,
     });
 
