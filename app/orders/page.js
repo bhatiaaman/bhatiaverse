@@ -43,6 +43,17 @@ export default function OrdersPage() {
   const [positionsLoading, setPositionsLoading] = useState(false);
   const [orderPlacing, setOrderPlacing] = useState(false);
   const [expiryType, setExpiryType] = useState('weekly');
+  const [strikeAnalysis, setStrikeAnalysis] = useState(null);
+  const [analysisLoading, setAnalysisLoading] = useState(false);
+  const [showAnalysis, setShowAnalysis] = useState(false);
+  const [strikeStep, setStrikeStep] = useState(50);
+
+  // NFO instruments (options/futures) don't support MARKET or SL-M orders
+  const isNFO = instrumentType === 'CE' || instrumentType === 'PE' || instrumentType === 'FUT';
+  const allowedOrderTypes = isNFO ? ['LIMIT', 'SL'] : ['MARKET', 'LIMIT', 'SL', 'SL-M'];
+  const [slModal, setSlModal] = useState(null); // { position, slPrice }
+  const [cancelConfirm, setCancelConfirm] = useState(null); // order_id
+  const [actionLoading, setActionLoading] = useState(null); // order_id or symbol being actioned
 
   const popularStocks = ['NIFTY', 'BANKNIFTY', 'RELIANCE', 'TCS', 'INFY', 'HDFCBANK', 'ICICIBANK', 'SBIN', 'HDFC', 'BHARTIARTL'];
   const INDICES = ['NIFTY', 'BANKNIFTY', 'FINNIFTY', 'MIDCPNIFTY'];
@@ -123,6 +134,7 @@ export default function OrdersPage() {
       const data = await res.json();
       if (data.optionSymbol) {
         setOptionSymbol(data.optionSymbol || '');
+        if (data.step) setStrikeStep(data.step);
         setOptionTvSymbol(data.tvSymbol || '');
         setOptionLtp(data.ltp || null);
         setOptionStrike(data.strike || null);
@@ -156,7 +168,16 @@ export default function OrdersPage() {
     }
   };
 
+  // Reset order type to MARKET when switching to EQ, LIMIT when switching to NFO
+  useEffect(() => {
+    if (isNFO && (orderType === 'MARKET' || orderType === 'SL-M')) {
+      setOrderType('LIMIT');
+    }
+  }, [isNFO]);
+
   const selectStock = async (selectedSymbol, knownLotSize = null) => {
+    setShowAnalysis(false);
+    setStrikeAnalysis(null);
     setSymbol(selectedSymbol);
     setShowDropdown(false);
     setSearchResults([]);
@@ -236,6 +257,134 @@ export default function OrdersPage() {
       alert('Error placing order');
     } finally {
       setOrderPlacing(false);
+    }
+  };
+
+  const fetchStrikeAnalysis = async () => {
+    if (!optionStrike || (!symbol && instrumentType !== 'FUT')) return;
+    setAnalysisLoading(true);
+    setShowAnalysis(true);
+    setStrikeAnalysis(null);
+    try {
+      const params = new URLSearchParams({
+        symbol,
+        strike: optionStrike,
+        type: instrumentType,
+        expiryType,
+        strikeGap: strikeStep,
+        spotPrice: spotPrice || 0,
+      });
+      const res = await fetch(`/api/strike-analysis?${params}`);
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      setStrikeAnalysis(data);
+    } catch (err) {
+      setStrikeAnalysis({ error: err.message });
+    } finally {
+      setAnalysisLoading(false);
+    }
+  };
+
+  const handleExitPosition = async (p) => {
+    const isNFOPos = p.exchange === 'NFO';
+    const exitPrice = isNFOPos ? p.last_price : null;
+    const orderTypeExit = isNFOPos ? 'LIMIT' : 'MARKET';
+    const confirmMsg = isNFOPos
+      ? `Exit ${p.tradingsymbol} (${Math.abs(p.quantity)} qty) with LIMIT order at LTP ₹${p.last_price?.toFixed(2)}?`
+      : `Exit ${p.tradingsymbol} (${Math.abs(p.quantity)} qty) at market price?`;
+    if (!confirm(confirmMsg)) return;
+    setActionLoading(p.tradingsymbol);
+    try {
+      const payload = {
+        variety: 'regular',
+        exchange: p.exchange,
+        tradingsymbol: p.tradingsymbol,
+        transaction_type: p.quantity > 0 ? 'SELL' : 'BUY',
+        quantity: Math.abs(p.quantity),
+        product: p.product || 'MIS',
+        order_type: orderTypeExit,
+      };
+      if (isNFOPos && exitPrice) payload.price = exitPrice;
+      const res = await fetch('/api/place-order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (data.success) {
+        alert(`Exit order placed! ID: ${data.order_id}`);
+        fetchPositions();
+        fetchOpenOrders();
+      } else {
+        alert(`Failed: ${data.error || 'Unknown error'}`);
+      }
+    } catch (err) {
+      alert('Error placing exit order');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handlePlaceSL = async () => {
+    if (!slModal || !slModal.slPrice) { alert('Enter SL price'); return; }
+    const { position: p, slPrice } = slModal;
+    if (p._demo) {
+      const slType = p.exchange === 'NFO' ? 'SL' : 'SL-M';
+      alert(`DEMO MODE: Would place ${slType} order for ${Math.abs(p.quantity)} qty of ${p.tradingsymbol} with trigger price ₹${slPrice} — no real order placed.`);
+      setSlModal(null);
+      return;
+    }
+    setActionLoading(p.tradingsymbol);
+    try {
+      const res = await fetch('/api/place-order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          variety: 'regular',
+          exchange: p.exchange,
+          tradingsymbol: p.tradingsymbol,
+          transaction_type: p.quantity > 0 ? 'SELL' : 'BUY',
+          quantity: Math.abs(p.quantity),
+          product: p.product || 'MIS',
+          order_type: p.exchange === 'NFO' ? 'SL' : 'SL-M',
+          ...(p.exchange === 'NFO' ? { price: parseFloat(slPrice) - 1, trigger_price: parseFloat(slPrice) } : { trigger_price: parseFloat(slPrice) }),
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        alert(`SL order placed! ID: ${data.order_id}`);
+        setSlModal(null);
+        fetchOpenOrders();
+      } else {
+        alert(`Failed: ${data.error || 'Unknown error'}`);
+      }
+    } catch (err) {
+      alert('Error placing SL order');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleCancelOrder = async (orderId) => {
+    setActionLoading(orderId);
+    setCancelConfirm(null);
+    try {
+      const res = await fetch('/api/cancel-order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ order_id: orderId, variety: 'regular' }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        alert('Order cancelled successfully');
+        fetchOpenOrders();
+      } else {
+        alert(`Failed: ${data.error || 'Unknown error'}`);
+      }
+    } catch (err) {
+      alert('Error cancelling order');
+    } finally {
+      setActionLoading(null);
     }
   };
 
@@ -405,13 +554,117 @@ export default function OrdersPage() {
                   </div>
                 </div>
                 {(instrumentType === 'CE' || instrumentType === 'PE') && optionSymbol && (
-                  <div className="mb-4 p-3 bg-slate-900/70 rounded-xl border border-white/5">
-                    <div className="grid grid-cols-2 gap-3 text-sm">
-                      <div><span className="text-gray-500 text-xs">Symbol</span><p className="font-medium text-xs">{optionSymbol}</p></div>
-                      <div><span className="text-gray-500 text-xs">Strike</span><p className="font-medium">₹{optionStrike}</p></div>
-                      <div><span className="text-gray-500 text-xs">Expiry</span><p className="font-medium text-xs">{optionExpiry}</p></div>
-                      <div><span className="text-gray-500 text-xs">LTP</span><p className={`font-bold ${instrumentType === 'CE' ? 'text-green-400' : 'text-red-400'}`}>₹{optionLtp || '--'}</p></div>
+                  <div className="mb-4">
+                    <div className="p-3 bg-slate-900/70 rounded-xl border border-white/5">
+                      <div className="grid grid-cols-2 gap-3 text-sm mb-3">
+                        <div><span className="text-gray-500 text-xs">Symbol</span><p className="font-medium text-xs">{optionSymbol}</p></div>
+                        <div><span className="text-gray-500 text-xs">Strike</span><p className="font-medium">₹{optionStrike}</p></div>
+                        <div><span className="text-gray-500 text-xs">Expiry</span><p className="font-medium text-xs">{optionExpiry}</p></div>
+                        <div><span className="text-gray-500 text-xs">LTP</span><p className={`font-bold ${instrumentType === 'CE' ? 'text-green-400' : 'text-red-400'}`}>₹{optionLtp || '--'}</p></div>
+                      </div>
+                      <button
+                        onClick={fetchStrikeAnalysis}
+                        disabled={analysisLoading}
+                        className="w-full py-1.5 rounded-lg bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/30 text-purple-300 text-xs font-medium flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
+                      >
+                        <BarChart2 size={13} />
+                        {analysisLoading ? 'Analysing...' : showAnalysis ? 'Refresh Analysis' : 'Analyse This Strike'}
+                      </button>
                     </div>
+
+                    {/* Inline Strike Analysis */}
+                    {showAnalysis && (
+                      <div className="mt-2 p-3 bg-purple-900/10 rounded-xl border border-purple-500/20">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-xs text-purple-300 font-medium">Strike Analysis · {optionStrike} {instrumentType}</span>
+                          <button onClick={() => setShowAnalysis(false)} className="text-gray-500 hover:text-white text-xs px-2 py-0.5 rounded bg-white/5 hover:bg-white/10">✕ Close</button>
+                        </div>
+                        {analysisLoading ? (
+                          <div className="flex items-center justify-center py-4 gap-2 text-purple-300 text-xs">
+                            <RefreshCw size={14} className="animate-spin" /> Fetching OI data...
+                          </div>
+                        ) : strikeAnalysis?.error ? (
+                          <p className="text-xs text-red-400">Error: {strikeAnalysis.error}</p>
+                        ) : strikeAnalysis ? (
+                          <>
+                            {/* Key metrics row */}
+                            <div className="grid grid-cols-3 gap-2 mb-3">
+                              <div className="bg-slate-900/50 rounded-lg p-2 text-center">
+                                <p className="text-xs text-gray-500">Call OI</p>
+                                <p className="text-xs font-bold text-red-400">{strikeAnalysis.ceOI > 0 ? (strikeAnalysis.ceOI/1e5).toFixed(1)+'L' : '--'}</p>
+                              </div>
+                              <div className="bg-slate-900/50 rounded-lg p-2 text-center">
+                                <p className="text-xs text-gray-500">PCR</p>
+                                <p className={`text-xs font-bold ${strikeAnalysis.pcr > 1 ? 'text-green-400' : strikeAnalysis.pcr < 0.8 ? 'text-red-400' : 'text-yellow-400'}`}>
+                                  {strikeAnalysis.pcr}
+                                </p>
+                              </div>
+                              <div className="bg-slate-900/50 rounded-lg p-2 text-center">
+                                <p className="text-xs text-gray-500">Put OI</p>
+                                <p className="text-xs font-bold text-green-400">{strikeAnalysis.peOI > 0 ? (strikeAnalysis.peOI/1e5).toFixed(1)+'L' : '--'}</p>
+                              </div>
+                            </div>
+
+                            {/* Max Pain */}
+                            <div className="flex items-center justify-between mb-3 px-1">
+                              <span className="text-xs text-gray-400">Max Pain</span>
+                              <span className="text-xs font-medium text-amber-400">₹{strikeAnalysis.maxPain}</span>
+                              <span className="text-xs text-gray-500">
+                                {Math.abs(optionStrike - strikeAnalysis.maxPain)} pts {optionStrike > strikeAnalysis.maxPain ? 'above' : 'below'}
+                              </span>
+                            </div>
+
+                            {/* OI Bar chart for nearby strikes */}
+                            <div className="mb-3">
+                              <p className="text-xs text-gray-500 mb-1.5">OI at nearby strikes</p>
+                              {strikeAnalysis.strikeData?.map(s => {
+                                const maxOI = Math.max(...strikeAnalysis.strikeData.map(x => Math.max(x.ceOI, x.peOI)), 1);
+                                const ceWidth = Math.round((s.ceOI / maxOI) * 100);
+                                const peWidth = Math.round((s.peOI / maxOI) * 100);
+                                const isSelected = s.strike === optionStrike;
+                                return (
+                                  <div key={s.strike} className={`flex items-center gap-1 mb-1 ${isSelected ? 'opacity-100' : 'opacity-60'}`}>
+                                    <span className={`text-xs w-12 text-right ${isSelected ? 'text-white font-bold' : 'text-gray-500'}`}>{s.strike}</span>
+                                    <div className="flex-1 flex gap-0.5 h-3">
+                                      <div className="flex-1 flex justify-end">
+                                        <div className="h-full bg-red-500/60 rounded-sm" style={{width: `${ceWidth}%`}} title={`CE OI: ${(s.ceOI/1e5).toFixed(1)}L`} />
+                                      </div>
+                                      <div className="w-px bg-white/10" />
+                                      <div className="flex-1">
+                                        <div className="h-full bg-green-500/60 rounded-sm" style={{width: `${peWidth}%`}} title={`PE OI: ${(s.peOI/1e5).toFixed(1)}L`} />
+                                      </div>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                              <div className="flex justify-between text-xs text-gray-600 mt-1 px-14">
+                                <span>← CE (calls)</span>
+                                <span>PE (puts) →</span>
+                              </div>
+                            </div>
+
+                            {/* Signals */}
+                            <div className="space-y-1">
+                              {strikeAnalysis.signals?.map((sig, i) => (
+                                <div key={i} className={`flex items-start gap-1.5 text-xs px-2 py-1 rounded-lg ${
+                                  sig.type === 'bullish' ? 'bg-green-500/10 text-green-400' :
+                                  sig.type === 'bearish' ? 'bg-red-500/10 text-red-400' :
+                                  sig.type === 'warning' ? 'bg-amber-500/10 text-amber-400' :
+                                  'bg-white/5 text-gray-400'
+                                }`}>
+                                  <span>{sig.type === 'bullish' ? '↑' : sig.type === 'bearish' ? '↓' : sig.type === 'warning' ? '⚠' : '•'}</span>
+                                  <span>{sig.text}</span>
+                                </div>
+                              ))}
+                            </div>
+
+                            <p className="text-xs text-gray-600 mt-2 text-right">
+                              {strikeAnalysis.fromCache ? 'cached · ' : ''}{new Date(strikeAnalysis.timestamp).toLocaleTimeString('en-IN', {hour:'2-digit', minute:'2-digit'})}
+                            </p>
+                          </>
+                        ) : null}
+                      </div>
+                    )}
                   </div>
                 )}
                 <div className="mb-4">
@@ -460,16 +713,30 @@ export default function OrdersPage() {
                 <div className="mb-4">
                   <label className="text-sm text-gray-400 mb-1.5 block">Order Type</label>
                   <div className="grid grid-cols-4 gap-2">
-                    {['MARKET', 'LIMIT', 'SL', 'SL-M'].map((t) => (
-                      <button
-                        key={t}
-                        onClick={() => setOrderType(t)}
-                        className={`py-2 rounded-lg text-xs font-medium ${orderType === t ? 'bg-blue-500 text-white' : 'bg-white/5 border border-white/10'}`}
-                      >
-                        {t}
-                      </button>
-                    ))}
+                    {['MARKET', 'LIMIT', 'SL', 'SL-M'].map((t) => {
+                      const disabled = isNFO && (t === 'MARKET' || t === 'SL-M');
+                      return (
+                        <button
+                          key={t}
+                          onClick={() => !disabled && setOrderType(t)}
+                          title={disabled ? 'Not allowed for F&O by Kite' : ''}
+                          className={`py-2 rounded-lg text-xs font-medium relative ${
+                            disabled
+                              ? 'bg-white/5 border border-white/5 text-gray-600 cursor-not-allowed'
+                              : orderType === t
+                                ? 'bg-blue-500 text-white'
+                                : 'bg-white/5 border border-white/10 hover:bg-white/10'
+                          }`}
+                        >
+                          {t}
+                          {disabled && <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-red-500/70" />}
+                        </button>
+                      );
+                    })}
                   </div>
+                  {isNFO && (
+                    <p className="text-xs text-amber-400/70 mt-1">⚠ F&O: Only LIMIT and SL orders allowed</p>
+                  )}
                 </div>
                 <div className="mb-4">
                   <label className="text-sm text-gray-400 mb-1.5 block">Quantity</label>
@@ -543,26 +810,43 @@ export default function OrdersPage() {
               </div>
               {positionsLoading
                 ? <div className="flex items-center justify-center py-8"><RefreshCw size={20} className="animate-spin text-gray-400" /></div>
-                : !Array.isArray(positions) || positions.length === 0
-                  ? <div className="text-center py-8 text-gray-500"><Wallet size={32} className="mx-auto mb-2 opacity-50" /><p className="text-sm">No positions</p></div>
-                  : <div className="space-y-2 max-h-[350px] overflow-y-auto">
-                      {positions.map((p, i) => (
-                        <div key={`${p.tradingsymbol}-${i}`} className="p-3 bg-slate-900/50 rounded-xl border border-white/5">
+                : <div className="space-y-2 max-h-[350px] overflow-y-auto">
+                      {[...positions, ...(positions.length === 0 ? [{
+                        tradingsymbol: 'NIFTY2621724500CE', exchange: 'NFO',
+                        quantity: 65, average_price: 120.50, last_price: 145.30,
+                        pnl: 1657.50, product: 'MIS', _demo: true
+                      }] : [])].map((p, i) => (
+                        <div key={`${p.tradingsymbol}-${i}`} className={`p-3 rounded-xl border ${p._demo ? 'bg-blue-900/10 border-blue-500/20' : 'bg-slate-900/50 border-white/5'}`}>
                           <div className="flex items-start justify-between mb-1">
                             <div>
                               <span className="font-medium text-sm">{p.tradingsymbol}</span>
                               <span className="text-xs text-gray-500 ml-2">{p.exchange}</span>
+                              {p._demo && <span className="text-xs text-blue-400 ml-2">demo</span>}
                             </div>
                             <div className={`text-sm font-bold ${p.pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                               {p.pnl >= 0 ? '+' : ''}₹{p.pnl?.toFixed(2) || '0'}
                             </div>
                           </div>
-                          <div className="flex items-center gap-3 text-xs">
+                          <div className="flex items-center gap-3 text-xs mb-2">
                             <span className={p.quantity > 0 ? 'text-green-400' : 'text-red-400'}>
                               {p.quantity > 0 ? 'LONG' : 'SHORT'} {Math.abs(p.quantity)}
                             </span>
                             <span className="text-gray-400">Avg: ₹{p.average_price?.toFixed(2)}</span>
                             <span className="text-gray-400">LTP: ₹{p.last_price?.toFixed(2)}</span>
+                          </div>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => p._demo ? alert('DEMO MODE: Would place a SELL MARKET order for ' + Math.abs(p.quantity) + ' qty of ' + p.tradingsymbol + ' — no real order placed.') : handleExitPosition(p)}
+                              className="flex-1 py-1 px-2 rounded-lg text-xs font-medium transition-colors bg-red-500/20 hover:bg-red-500/30 text-red-400"
+                            >
+                              {p._demo ? '🔴 Exit (demo)' : 'Exit'}
+                            </button>
+                            <button
+                              onClick={() => setSlModal({ position: p, slPrice: '' })}
+                              className="flex-1 py-1 px-2 rounded-lg text-xs font-medium transition-colors bg-amber-500/20 hover:bg-amber-500/30 text-amber-400"
+                            >
+                              {p._demo ? '🟡 SL (demo)' : 'Add / Edit SL'}
+                            </button>
                           </div>
                         </div>
                       ))}
@@ -582,21 +866,34 @@ export default function OrdersPage() {
                 ? <div className="flex items-center justify-center py-4"><RefreshCw size={16} className="animate-spin text-gray-400" /></div>
                 : openOrders.length === 0
                   ? <div className="text-center py-4 text-gray-500"><p className="text-xs">No open orders</p></div>
-                  : <div className="space-y-2 max-h-[120px] overflow-y-auto">
-                      {openOrders.map((o) => (
-                        <div key={o.order_id} className="p-2.5 bg-slate-900/50 rounded-lg border border-amber-500/10">
+                  : <div className="space-y-2 max-h-[160px] overflow-y-auto">
+                      {[...openOrders, ...(openOrders.length === 0 ? [{
+                        order_id: 'DEMO001', tradingsymbol: 'RELIANCE',
+                        transaction_type: 'BUY', quantity: 250,
+                        price: 1420.00, status: 'TRIGGER PENDING', _demo: true
+                      }] : [])].map((o) => (
+                        <div key={o.order_id} className={`p-2.5 rounded-lg border ${o._demo ? 'bg-blue-900/10 border-blue-500/20' : 'bg-slate-900/50 border-amber-500/10'}`}>
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-2">
                               <span className={`text-xs font-medium ${o.transaction_type === 'BUY' ? 'text-green-400' : 'text-red-400'}`}>
                                 {o.transaction_type}
                               </span>
-                              <span className="text-xs font-medium truncate max-w-[100px]">{o.tradingsymbol}</span>
+                              <span className="text-xs font-medium truncate max-w-[80px]">{o.tradingsymbol}</span>
+                              {o._demo && <span className="text-xs text-blue-400">demo</span>}
                             </div>
-                            <div className="flex items-center gap-1 text-xs text-amber-400">
-                              <Clock size={10} />{o.status}
+                            <div className="flex items-center gap-2">
+                              <div className="flex items-center gap-1 text-xs text-amber-400">
+                                <Clock size={10} />{o.status}
+                              </div>
+                              <button
+                                onClick={() => o._demo ? alert('DEMO MODE: Would cancel order ' + o.order_id + ' — no real cancellation.') : setCancelConfirm(o.order_id)}
+                                className="px-2 py-0.5 rounded text-xs font-medium transition-colors bg-red-500/20 hover:bg-red-500/30 text-red-400"  
+                              >
+                                Cancel
+                              </button>
                             </div>
                           </div>
-                          <div className="text-xs text-gray-400 mt-1">{o.quantity} × ₹{o.price || '-'}</div>
+                          <div className="text-xs text-gray-400 mt-1">{o.quantity} × ₹{o.price || 'MARKET'}</div>
                         </div>
                       ))}
                     </div>
@@ -605,6 +902,73 @@ export default function OrdersPage() {
           </div>
         </div>
       </main>
+
+      {/* SL Modal */}
+      {slModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="bg-slate-800 border border-white/10 rounded-2xl p-6 w-80 shadow-2xl">
+            <h3 className="text-base font-semibold mb-1">Add / Edit Stop Loss</h3>
+            <p className="text-xs text-gray-400 mb-4">
+              {slModal.position.tradingsymbol} · {slModal.position.quantity > 0 ? 'LONG' : 'SHORT'} {Math.abs(slModal.position.quantity)} · LTP ₹{slModal.position.last_price?.toFixed(2)}
+            </p>
+            <div className="mb-4">
+              <label className="text-xs text-gray-400 mb-1 block">Trigger Price {slModal?.position?.exchange === 'NFO' ? '(SL)' : '(SL-M)'}</label>
+              <input
+                type="number"
+                value={slModal.slPrice}
+                onChange={e => setSlModal({ ...slModal, slPrice: e.target.value })}
+                placeholder="Enter trigger price"
+                className="w-full bg-slate-900 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-amber-500/50"
+              />
+              {slModal.position.average_price && (
+                <p className="text-xs text-gray-500 mt-1">
+                  Avg price: ₹{slModal.position.average_price?.toFixed(2)}
+                </p>
+              )}
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setSlModal(null)}
+                className="flex-1 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-sm transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handlePlaceSL}
+                disabled={actionLoading === slModal.position.tradingsymbol}
+                className="flex-1 py-2 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 text-sm font-medium transition-colors disabled:opacity-50"
+              >
+                {actionLoading === slModal.position.tradingsymbol ? 'Placing...' : 'Place SL'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Cancel Order Confirm */}
+      {cancelConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="bg-slate-800 border border-white/10 rounded-2xl p-6 w-72 shadow-2xl">
+            <h3 className="text-base font-semibold mb-2">Cancel Order?</h3>
+            <p className="text-xs text-gray-400 mb-5">This will cancel order <span className="text-white font-mono">{cancelConfirm}</span>. This cannot be undone.</p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setCancelConfirm(null)}
+                className="flex-1 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-sm transition-colors"
+              >
+                Keep
+              </button>
+              <button
+                onClick={() => handleCancelOrder(cancelConfirm)}
+                className="flex-1 py-2 rounded-lg bg-red-500/20 hover:bg-red-500/30 text-red-400 text-sm font-medium transition-colors"
+              >
+                Yes, Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
