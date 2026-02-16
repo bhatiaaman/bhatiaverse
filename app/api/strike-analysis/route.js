@@ -25,17 +25,18 @@ async function redisSet(key, value, exSeconds) {
   } catch {}
 }
 
-// Get NFO instruments — reuse cache from option-chain route if available
+// Get NFO instruments — separate cache key for full list (option-chain only caches NIFTY/BANKNIFTY)
 async function getNFOInstruments(kite) {
-  const cacheKey = `${NS}:nfo-instruments-all`;
+  const cacheKey = `${NS}:nfo-instruments-full`;
   const cached = await redisGet(cacheKey);
   if (cached) return cached;
 
-  // Cache miss — fetch and store
+  console.log('Fetching full NFO instruments list...');
   const instruments = await kite.getInstruments('NFO');
   const options = instruments.filter(i =>
     i.instrument_type === 'CE' || i.instrument_type === 'PE'
   );
+  console.log(`Cached ${options.length} NFO options`);
   await redisSet(cacheKey, options, 86400);
   return options;
 }
@@ -124,7 +125,13 @@ export async function GET(request) {
     const symbolOptions = allInstruments.filter(i => i.name === symbol);
 
     if (symbolOptions.length === 0) {
-      return NextResponse.json({ error: `No NFO options found for ${symbol}` }, { status: 404 });
+      const availableNames = [...new Set(allInstruments.map(i => i.name))].sort();
+      const similar = availableNames.filter(n => n.includes(symbol) || symbol.includes(n));
+      console.log(`No options for ${symbol}. Similar:`, similar.slice(0, 10));
+      return NextResponse.json({
+        error: `No NFO options found for ${symbol}`,
+        hint: similar.length > 0 ? `Did you mean: ${similar.slice(0,3).join(', ')}?` : 'Symbol not in NFO'
+      }, { status: 404 });
     }
 
     // Get available expiries, pick nearest weekly or monthly
