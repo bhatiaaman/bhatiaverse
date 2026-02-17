@@ -35,13 +35,12 @@ export async function GET(request) {
     const data = await res.json();
     
     if (data.status === 'success') {
-      // Filter for active MIS or NFO positions with net quantity > 0
+      // Show all open NFO (FnO) and all MIS positions, both long and short
       const filtered = (data.data.net || []).filter(p => {
-        // product: 'MIS' or exchange: 'NFO', and net quantity > 0
         const isMIS = p.product === 'MIS';
         const isNFO = p.exchange === 'NFO';
-        const isActive = (p.quantity || 0) > 0;
-        return (isMIS || isNFO) && isActive;
+        const isOpen = (p.quantity || 0) !== 0;
+        return (isMIS || isNFO) && isOpen;
       });
       return NextResponse.json({
         success: true,
