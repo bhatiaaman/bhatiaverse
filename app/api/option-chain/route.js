@@ -49,7 +49,9 @@ function roundToStrike(price, gap) { return Math.round(price / gap) * gap; }
 
 function generateCommentary(current, previous, underlying) {
   const alerts = [];
-  const timestamp = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+  // Format time in IST (Asia/Kolkata)
+  const now = new Date();
+  const timestamp = now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Kolkata' });
 
   if (!previous) {
     return [{ type: 'info', time: timestamp, message: `${underlying} options data initialized. Tracking OI changes...` }];
