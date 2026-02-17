@@ -282,22 +282,67 @@
             </div>
             <div className="flex items-center gap-4">
               <button
-                onClick={openKiteSettings}
-                className={`px-3 py-1.5 text-sm rounded-lg border transition-colors flex items-center gap-2 ${
-                  kiteAuth.checking
-                    ? 'border-slate-600/50 bg-slate-800/40 text-slate-400'
-                    : kiteAuth.isLoggedIn
-                    ? 'border-green-600/50 bg-green-900/30 hover:bg-green-800/40 text-green-300'
-                    : 'border-orange-600/50 bg-orange-900/30 hover:bg-orange-800/40 text-orange-300'
+                onClick={e => {
+                  e.currentTarget.classList.add('animate-click-scale');
+                  setTimeout(() => {
+                    e.currentTarget.classList.remove('animate-click-scale');
+                  }, 300);
+                  openKiteSettings();
+                }}
+                className={`relative w-9 h-9 flex items-center justify-center rounded-full border-0 focus:outline-none transition-transform duration-300 ${
+                  kiteAuth.isLoggedIn ? 'bg-green-500 shadow-[0_0_8px_2px_rgba(34,197,94,0.3)]' :
+                  kiteAuth.checking ? 'bg-slate-500' :
+                  'bg-red-500 shadow-[0_0_8px_2px_rgba(239,68,68,0.3)]'
                 }`}
+                title={kiteAuth.checking ? 'Checking Kite...' : kiteAuth.isLoggedIn ? 'Kite Connected' : 'Kite Disconnected'}
+                style={{
+                  boxShadow: kiteAuth.isLoggedIn
+                    ? '0 0 8px 2px rgba(34,197,94,0.3)'
+                    : kiteAuth.checking
+                    ? '0 0 4px 1px rgba(100,116,139,0.2)'
+                    : '0 0 8px 2px rgba(239,68,68,0.3)',
+                  transition: 'box-shadow 0.3s, background-color 0.3s, transform 0.3s',
+                }}
               >
-                {kiteAuth.checking ? (
-                  <><span className="w-2 h-2 rounded-full bg-slate-400 animate-pulse"></span>Checking...</>
-                ) : kiteAuth.isLoggedIn ? (
-                  <><span className="w-2 h-2 rounded-full bg-green-400"></span>Kite Connected</>
-                ) : (
-                  <><span className="w-2 h-2 rounded-full bg-orange-400"></span>Login to Kite</>
-                )}
+                <span
+                  className={`w-7 h-7 flex items-center justify-center rounded-full text-lg font-extrabold select-none transition-colors duration-300 ${
+                    kiteAuth.isLoggedIn ? 'text-white drop-shadow-[0_0_4px_rgba(34,197,94,0.7)]' :
+                    kiteAuth.checking ? 'text-slate-200' :
+                    'text-white drop-shadow-[0_0_4px_rgba(239,68,68,0.7)]'
+                  }`}
+                  style={{
+                    fontFamily: 'monospace',
+                  }}
+                >K</span>
+                {/* Rotating ring animation */}
+                <span
+                  className={`absolute w-9 h-9 rounded-full border-2 pointer-events-none ${
+                    kiteAuth.isLoggedIn ? 'border-green-300 animate-rotate-cw' :
+                    kiteAuth.checking ? 'border-slate-300' :
+                    'border-red-300 animate-rotate-ccw'
+                  }`}
+                  style={{
+                    opacity: 0.7,
+                  }}
+                ></span>
+                <style jsx>{`
+                  @keyframes click-scale {
+                    0% { transform: scale(1); }
+                    50% { transform: scale(1.12); }
+                    100% { transform: scale(1); }
+                  }
+                  .animate-click-scale { animation: click-scale 0.3s; }
+                  @keyframes rotate-cw {
+                    0% { transform: rotate(0deg); }
+                    100% { transform: rotate(360deg); }
+                  }
+                  @keyframes rotate-ccw {
+                    0% { transform: rotate(0deg); }
+                    100% { transform: rotate(-360deg); }
+                  }
+                  .animate-rotate-cw { animation: rotate-cw 1.2s linear infinite; }
+                  .animate-rotate-ccw { animation: rotate-ccw 1.2s linear infinite; }
+                `}</style>
               </button>
               <Link href="/orders" className="px-4 py-2 text-sm rounded-lg border border-purple-600/50 bg-purple-900/40 hover:bg-purple-800/50 text-purple-200 transition-colors">
                 🛒 Orders
