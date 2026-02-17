@@ -13,6 +13,7 @@ import {
   BarChart2,
   ExternalLink
 } from 'lucide-react';
+import BehavioralInsights from '@/app/components/BehavioralInsights';
 
 export default function OrdersPage() {
 
@@ -55,6 +56,14 @@ export default function OrdersPage() {
   const [cancelConfirm, setCancelConfirm] = useState(null); // order_id
   const [actionLoading, setActionLoading] = useState(null); // order_id or symbol being actioned
   const [livePriceActive, setLivePriceActive] = useState(false);
+  const [insightBadge, setInsightBadge] = useState({ count: 0, verdict: 'clear' });
+  const [avgDownAlert, setAvgDownAlert] = useState(null); // { position } — blocks placement
+  const [avgDownBypass, setAvgDownBypass] = useState(false); // user confirmed, skip guard once
+  // Context data for behavioral agent (fetched once on mount)
+  const [sentimentCtx, setSentimentCtx] = useState(null);
+  const [marketCtx, setMarketCtx] = useState(null);
+  const [sectorCtx, setSectorCtx] = useState([]);
+  const [optionCtx, setOptionCtx] = useState(null);
 
   const popularStocks = ['NIFTY', 'BANKNIFTY', 'RELIANCE', 'TCS', 'INFY', 'HDFCBANK', 'ICICIBANK', 'SBIN', 'HDFC', 'BHARTIARTL'];
   const INDICES = ['NIFTY', 'BANKNIFTY', 'FINNIFTY', 'MIDCPNIFTY'];
@@ -123,6 +132,28 @@ export default function OrdersPage() {
     }, 5000);
 
     return () => clearInterval(interval);
+  }, []);
+
+  // When user confirms "Place Anyway" — bypass flag is set, re-trigger placeOrder
+  useEffect(() => {
+    if (avgDownBypass) placeOrder();
+  }, [avgDownBypass]);
+
+  // Load context data for behavioral agent once on mount
+  useEffect(() => {
+    const loadContext = async () => {
+      try {
+        const [sentRes, mktRes, secRes] = await Promise.allSettled([
+          fetch('/api/sentiment').then(r => r.json()),
+          fetch('/api/market-data').then(r => r.json()),
+          fetch('/api/sector-performance').then(r => r.json()),
+        ]);
+        if (sentRes.status === 'fulfilled') setSentimentCtx(sentRes.value);
+        if (mktRes.status === 'fulfilled')  setMarketCtx(mktRes.value);
+        if (secRes.status === 'fulfilled')  setSectorCtx(secRes.value?.sectors || []);
+      } catch {}
+    };
+    loadContext();
   }, []);
 
   useEffect(() => {
@@ -229,6 +260,27 @@ export default function OrdersPage() {
 
   const placeOrder = async () => {
     if (!symbol) return;
+
+    // ── Averaging-down guard ─────────────────────────────────────────────
+    if (!avgDownBypass) {
+      const openPos = positions.filter(p => p.quantity !== 0);
+      const matchingPos = openPos.find(p =>
+        p.tradingsymbol === (optionSymbol || symbol) ||
+        p.tradingsymbol?.includes(symbol)
+      );
+      if (matchingPos) {
+        const isAddingLong  = matchingPos.quantity > 0 && transactionType === 'BUY';
+        const isAddingShort = matchingPos.quantity < 0 && transactionType === 'SELL';
+        const isLosingTrade = (matchingPos.pnl || 0) < -200;
+        if ((isAddingLong || isAddingShort) && isLosingTrade) {
+          setAvgDownAlert({ position: matchingPos });
+          return;
+        }
+      }
+    }
+    setAvgDownBypass(false); // reset bypass after use
+    // ────────────────────────────────────────────────────────────────────
+
     let ts, ex;
     if (instrumentType === 'EQ') {
       ts = symbol; ex = 'NSE';
@@ -813,9 +865,29 @@ export default function OrdersPage() {
             )}
           </div>
 
-          {/* Right Panel: Positions & Open Orders (2/5) */}
-          <div className="lg:col-span-2 flex flex-col gap-4">
-            <div className="bg-gradient-to-br from-slate-800/50 to-slate-900/50 rounded-2xl border border-white/10 p-4 flex-[3]">
+          {/* Right Panel: Insights + Positions + Open Orders (2/5) */}
+          <div className="lg:col-span-2 flex flex-col gap-3">
+
+            {/* Behavioral Insights */}
+            <BehavioralInsights
+              symbol={symbol}
+              tradingsymbol={optionSymbol || symbol}
+              exchange={instrumentType === 'EQ' ? 'NSE' : 'NFO'}
+              instrumentType={instrumentType}
+              transactionType={transactionType}
+              quantity={quantity}
+              price={price || spotPrice}
+              spotPrice={spotPrice}
+              expiryType={expiryType}
+              positions={positions}
+              openOrders={openOrders}
+              sentimentData={sentimentCtx}
+              marketData={marketCtx}
+              sectorData={sectorCtx}
+              optionChainData={optionCtx}
+              onPassiveReady={(count, verdict) => setInsightBadge({ count, verdict })}
+            />
+            <div className="bg-gradient-to-br from-slate-800/50 to-slate-900/50 rounded-2xl border border-white/10 p-4">
               <div className="flex items-center justify-between mb-3">
                 <h2 className="text-base font-semibold flex items-center gap-2">
                   <Wallet size={18} className="text-green-400" /> Positions
@@ -927,6 +999,80 @@ export default function OrdersPage() {
           </div>
         </div>
       </main>
+
+      {/* Averaging-Down Alert Modal */}
+      {avgDownAlert && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+          <div className="bg-slate-800 border border-red-500/40 rounded-2xl p-6 w-96 shadow-2xl">
+            {/* Header */}
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-red-500/20 flex items-center justify-center flex-shrink-0">
+                <span className="text-xl">⚠</span>
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-red-400">Adding to a Losing Position</h3>
+                <p className="text-xs text-slate-400">Behavioural risk alert</p>
+              </div>
+            </div>
+
+            {/* Position details */}
+            <div className="bg-red-900/20 border border-red-500/20 rounded-xl p-4 mb-4">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-medium text-white">{avgDownAlert.position.tradingsymbol}</span>
+                <span className="text-sm font-bold text-red-400">
+                  ₹{Math.round(avgDownAlert.position.pnl || 0).toLocaleString()} P&L
+                </span>
+              </div>
+              <div className="grid grid-cols-3 gap-2 text-xs text-slate-400">
+                <div>
+                  <p className="text-slate-500">Side</p>
+                  <p className={avgDownAlert.position.quantity > 0 ? 'text-green-400' : 'text-red-400'}>
+                    {avgDownAlert.position.quantity > 0 ? 'LONG' : 'SHORT'} {Math.abs(avgDownAlert.position.quantity)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-slate-500">Avg price</p>
+                  <p className="text-white">₹{avgDownAlert.position.average_price?.toFixed(2)}</p>
+                </div>
+                <div>
+                  <p className="text-slate-500">LTP</p>
+                  <p className="text-white">₹{avgDownAlert.position.last_price?.toFixed(2)}</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Warning message */}
+            <div className="bg-amber-900/20 border border-amber-500/20 rounded-xl px-4 py-3 mb-5">
+              <p className="text-xs text-amber-300 leading-relaxed">
+                You're about to add more to a position that is currently <strong className="text-red-400">₹{Math.abs(Math.round(avgDownAlert.position.pnl || 0)).toLocaleString()} in loss</strong>. 
+                Averaging into losing trades increases risk exposure and can lead to larger drawdowns.
+              </p>
+              <p className="text-xs text-slate-500 mt-2">
+                Common alternative: wait for price to recover above your entry, or cut the loss and re-evaluate.
+              </p>
+            </div>
+
+            {/* Buttons */}
+            <div className="flex gap-3">
+              <button
+                onClick={() => setAvgDownAlert(null)}
+                className="flex-1 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-sm font-medium transition-colors border border-white/10"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  setAvgDownAlert(null);
+                  setAvgDownBypass(true); // skip guard on next placeOrder call
+                }}
+                className="flex-1 py-2.5 rounded-xl bg-red-500/20 hover:bg-red-500/30 text-red-400 text-sm font-medium transition-colors border border-red-500/30"
+              >
+                Place Anyway
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* SL Modal */}
       {slModal && (
