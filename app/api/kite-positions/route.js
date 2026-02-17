@@ -35,9 +35,17 @@ export async function GET(request) {
     const data = await res.json();
     
     if (data.status === 'success') {
+      // Filter for active MIS or NFO positions with net quantity > 0
+      const filtered = (data.data.net || []).filter(p => {
+        // product: 'MIS' or exchange: 'NFO', and net quantity > 0
+        const isMIS = p.product === 'MIS';
+        const isNFO = p.exchange === 'NFO';
+        const isActive = (p.quantity || 0) > 0;
+        return (isMIS || isNFO) && isActive;
+      });
       return NextResponse.json({
         success: true,
-        positions: data.data
+        positions: filtered
       });
     }
 
