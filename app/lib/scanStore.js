@@ -32,6 +32,7 @@ export async function setLatestScan(scan) {
   await redis.set(KEY_HISTORY, deduped.slice(0, MAX_HISTORY));
 }
 
+//getScannerSlug
 function getScannerSlug(scanOrSlug) {
   if (!scanOrSlug) return '';
   const raw = typeof scanOrSlug === 'string'
