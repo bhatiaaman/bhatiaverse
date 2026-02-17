@@ -54,6 +54,7 @@ export default function OrdersPage() {
   const [slModal, setSlModal] = useState(null); // { position, slPrice }
   const [cancelConfirm, setCancelConfirm] = useState(null); // order_id
   const [actionLoading, setActionLoading] = useState(null); // order_id or symbol being actioned
+  const [livePriceActive, setLivePriceActive] = useState(false);
 
   const popularStocks = ['NIFTY', 'BANKNIFTY', 'RELIANCE', 'TCS', 'INFY', 'HDFCBANK', 'ICICIBANK', 'SBIN', 'HDFC', 'BHARTIARTL'];
   const INDICES = ['NIFTY', 'BANKNIFTY', 'FINNIFTY', 'MIDCPNIFTY'];
@@ -85,13 +86,21 @@ export default function OrdersPage() {
     }
   };
 
-  const fetchPositions = async () => {
-    setPositionsLoading(true);
+  const isMarketHours = () => {
+    const now = new Date();
+    const ist = new Date(now.getTime() + 5.5 * 60 * 60 * 1000);
+    const total = ist.getUTCHours() * 60 + ist.getUTCMinutes();
+    return total >= 555 && total <= 930;
+  };
+
+  const fetchPositions = async (silent = false) => {
+    if (!silent) setPositionsLoading(true);
     try {
       const res = await fetch('/api/kite-positions');
       const data = await res.json();
       if (data.success && Array.isArray(data.positions)) {
         setPositions(data.positions);
+        setLivePriceActive(data.livePrice || false);
       } else {
         setPositions([]);
       }
@@ -99,7 +108,7 @@ export default function OrdersPage() {
       console.error('Error:', err);
       setPositions([]);
     } finally {
-      setPositionsLoading(false);
+      if (!silent) setPositionsLoading(false);
     }
   };
 
@@ -107,10 +116,12 @@ export default function OrdersPage() {
     checkKiteConnection();
     fetchOpenOrders();
     fetchPositions();
-    // Auto-refresh positions every 30 seconds
+
+    // Auto-refresh positions every 5s during market hours
     const interval = setInterval(() => {
-      fetchPositions();
-    }, 30000);
+      if (isMarketHours()) fetchPositions(true); // silent = no spinner
+    }, 5000);
+
     return () => clearInterval(interval);
   }, []);
 
@@ -808,8 +819,14 @@ export default function OrdersPage() {
               <div className="flex items-center justify-between mb-3">
                 <h2 className="text-base font-semibold flex items-center gap-2">
                   <Wallet size={18} className="text-green-400" /> Positions
+                  {livePriceActive && (
+                    <span className="text-xs text-green-400 font-normal flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse inline-block" />
+                      live
+                    </span>
+                  )}
                 </h2>
-                <button onClick={fetchPositions} className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10">
+                <button onClick={() => fetchPositions(false)} className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10" title="Refresh positions">
                   <RefreshCw size={14} className={positionsLoading ? 'animate-spin' : ''} />
                 </button>
               </div>
@@ -837,7 +854,10 @@ export default function OrdersPage() {
                               {p.quantity > 0 ? 'LONG' : 'SHORT'} {Math.abs(p.quantity)}
                             </span>
                             <span className="text-gray-400">Avg: ₹{p.average_price?.toFixed(2)}</span>
-                            <span className="text-gray-400">LTP: ₹{p.last_price?.toFixed(2)}</span>
+                            <span className={p.live_price ? "text-green-300" : "text-gray-400"}>
+                              LTP: ₹{p.last_price?.toFixed(2)}
+                              {p.live_price && <span className="text-green-500 ml-0.5">●</span>}
+                            </span>
                           </div>
                           <div className="flex gap-2">
                             <button

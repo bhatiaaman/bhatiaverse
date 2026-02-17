@@ -25,10 +25,12 @@ function isMarketHours() {
 // Returns { candles, error } — error is null on success, string on failure
 async function fetchKiteCandles(token, interval, days = 3) {
   try {
-    const { apiKey, accessToken } = await getSharedCredentials();
+    const { apiKey, accessToken } = await getKiteCredentials();
     if (!apiKey || !accessToken) {
+      console.log('[sentiment] Kite credentials missing - not logged in');
       return { candles: null, error: 'not_logged_in' };
     }
+    console.log('[sentiment] Fetching Kite candles, token present:', !!accessToken);
 
     const toDate = new Date();
     const fromDate = new Date();
@@ -51,7 +53,7 @@ async function fetchKiteCandles(token, interval, days = 3) {
     if (!response.ok) {
       const body = await response.json().catch(() => ({}));
       const msg = body?.message || body?.error || `HTTP ${response.status}`;
-      console.error('Kite candles API error:', msg);
+      console.error('[sentiment] Kite candles API error:', response.status, msg);
       return { candles: null, error: `kite_api_error: ${msg}` };
     }
 
@@ -65,6 +67,7 @@ async function fetchKiteCandles(token, interval, days = 3) {
       open, high, low, close, volume: volume || 0,
     }));
 
+    console.log(`[sentiment] Kite candles fetched: ${candles.length} candles`);
     return { candles, error: null };
   } catch (err) {
     console.error('fetchKiteCandles error:', err.message);
@@ -145,7 +148,7 @@ function calcADX(candles, period = 14) {
 // INTRADAY BIAS FROM KITE CANDLES
 // ─────────────────────────────────────────────
 async function calculateIntradayBias(pcr) {
-  const { candles, error } = await fetchKiteCandles(NIFTY_TOKEN, '5minute', 3);
+  const { candles, error } = await fetchKiteCandles(NIFTY_TOKEN, '5minute', 7); // 7 days covers weekends/holidays
 
   if (!candles || candles.length < 30) {
     // Fallback: PCR only — show accurate reason, not always "login"
