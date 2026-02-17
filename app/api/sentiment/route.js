@@ -22,10 +22,13 @@ function isMarketHours() {
 // ─────────────────────────────────────────────
 // KITE CANDLE FETCHER
 // ─────────────────────────────────────────────
+// Returns { candles, error } — error is null on success, string on failure
 async function fetchKiteCandles(token, interval, days = 3) {
   try {
     const { apiKey, accessToken } = await getSharedCredentials();
-    if (!apiKey || !accessToken) return null;
+    if (!apiKey || !accessToken) {
+      return { candles: null, error: 'not_logged_in' };
+    }
 
     const toDate = new Date();
     const fromDate = new Date();
@@ -45,18 +48,27 @@ async function fetchKiteCandles(token, interval, days = 3) {
       },
     });
 
-    if (!response.ok) return null;
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}));
+      const msg = body?.message || body?.error || `HTTP ${response.status}`;
+      console.error('Kite candles API error:', msg);
+      return { candles: null, error: `kite_api_error: ${msg}` };
+    }
 
     const data = await response.json();
-    if (!data?.data?.candles?.length) return null;
+    if (!data?.data?.candles?.length) {
+      return { candles: null, error: 'no_candles' };
+    }
 
-    return data.data.candles.map(([time, open, high, low, close, volume]) => ({
+    const candles = data.data.candles.map(([time, open, high, low, close, volume]) => ({
       time: new Date(time).getTime() / 1000,
       open, high, low, close, volume: volume || 0,
     }));
+
+    return { candles, error: null };
   } catch (err) {
     console.error('fetchKiteCandles error:', err.message);
-    return null;
+    return { candles: null, error: err.message };
   }
 }
 
@@ -133,10 +145,10 @@ function calcADX(candles, period = 14) {
 // INTRADAY BIAS FROM KITE CANDLES
 // ─────────────────────────────────────────────
 async function calculateIntradayBias(pcr) {
-  const candles = await fetchKiteCandles(NIFTY_TOKEN, '5minute', 3);
+  const { candles, error } = await fetchKiteCandles(NIFTY_TOKEN, '5minute', 3);
 
   if (!candles || candles.length < 30) {
-    // Fallback: PCR only
+    // Fallback: PCR only — show accurate reason, not always "login"
     let score = 50;
     const signals = [];
     if (pcr != null) {
@@ -144,7 +156,12 @@ async function calculateIntradayBias(pcr) {
       else if (pcr < 0.75) { score -= 15; signals.push({ factor: 'PCR', signal: 'bearish', detail: pcr.toFixed(2) }); }
       else                 { signals.push({ factor: 'PCR', signal: 'neutral', detail: pcr.toFixed(2) }); }
     }
-    signals.push({ factor: 'Note', signal: 'neutral', detail: 'Login to Kite for full intraday' });
+    // Only show login prompt if actually not logged in
+    if (error === 'not_logged_in') {
+      signals.push({ factor: 'Note', signal: 'neutral', detail: 'Login to Kite for full intraday' });
+    } else if (error) {
+      signals.push({ factor: 'Note', signal: 'neutral', detail: `Kite: ${error}` });
+    }
     score = Math.max(0, Math.min(100, score));
     const bias = score >= 55 ? 'slightly_bullish' : score <= 45 ? 'slightly_bearish' : 'neutral';
     return { bias, score: Math.round(score), signals, source: 'pcr_only' };
