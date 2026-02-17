@@ -107,6 +107,11 @@ export default function OrdersPage() {
     checkKiteConnection();
     fetchOpenOrders();
     fetchPositions();
+    // Auto-refresh positions every 30 seconds
+    const interval = setInterval(() => {
+      fetchPositions();
+    }, 30000);
+    return () => clearInterval(interval);
   }, []);
 
   useEffect(() => {
