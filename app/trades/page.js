@@ -28,7 +28,7 @@
     // Chart state
     const [chartSymbol, setChartSymbol] = useState('NIFTY');
     const [chartInterval, setChartInterval] = useState('15minute');
-    const [emaPeriod, setEmaPeriod] = useState(9);
+    const [emaPeriods, setEmaPeriods] = useState([9]);
     const chartRef = useRef(null);
     const chartInstanceRef = useRef(null);
     const candleSeriesRef = useRef(null);
@@ -181,7 +181,7 @@
       if (!el) return;
       let chart = null;
       let candleSeries = null;
-      let emaSeries = null;
+      let emaSeriesArr = [];
       let refreshInterval = null;
       let resizeObserver = null;
 
@@ -221,9 +221,16 @@
           borderUpColor: '#10b981', borderDownColor: '#ef4444',
           wickUpColor: '#10b981', wickDownColor: '#ef4444',
         });
-        emaSeries = chart.addLineSeries({
-          color: '#f59e0b', lineWidth: 2,
-          title: `EMA${emaPeriod}`, crosshairMarkerVisible: true, priceLineVisible: false,
+        // Add multiple EMA series
+        emaSeriesArr = emaPeriods.map((period, idx) => {
+          const colors = ['#f59e0b', '#3b82f6', '#10b981', '#ef4444', '#a21caf'];
+          return chart.addLineSeries({
+            color: colors[idx % colors.length],
+            lineWidth: 2,
+            title: `EMA${period}`,
+            crosshairMarkerVisible: true,
+            priceLineVisible: false,
+          });
         });
         chartInstanceRef.current = chart;
         candleSeriesRef.current = candleSeries;
@@ -235,8 +242,10 @@
             const data = await response.json();
             if (data.candles && data.candles.length > 0) {
               candleSeries.setData(data.candles);
-              const emaData = calculateEMA(data.candles, emaPeriod);
-              if (emaData.length > 0) emaSeries.setData(emaData);
+              emaPeriods.forEach((period, idx) => {
+                const emaData = calculateEMA(data.candles, period);
+                if (emaData.length > 0) emaSeriesArr[idx].setData(emaData);
+              });
               chart.timeScale().fitContent();
             }
           } catch (error) {
@@ -259,7 +268,7 @@
         if (resizeObserver) resizeObserver.disconnect();
         if (chart) chart.remove();
       };
-    }, [chartSymbol, chartInterval, emaPeriod]);
+    }, [chartSymbol, chartInterval, emaPeriods]);
 
     // Helper: bias to emoji
     const biasEmoji = (bias) => {
@@ -753,8 +762,14 @@
                       {[9, 21, 50, 200].map((period) => (
                         <button
                           key={period}
-                          onClick={() => setEmaPeriod(period)}
-                          className={`px-2 py-1 text-xs font-medium rounded-md transition-colors ${emaPeriod === period ? 'bg-amber-600 text-white' : 'text-slate-400 hover:text-slate-200'}`}
+                          onClick={() => {
+                            setEmaPeriods((prev) =>
+                              prev.includes(period)
+                                ? prev.filter((p) => p !== period)
+                                : [...prev, period]
+                            );
+                          }}
+                          className={`px-2 py-1 text-xs font-medium rounded-md transition-colors ${emaPeriods.includes(period) ? 'bg-amber-600 text-white' : 'text-slate-400 hover:text-slate-200'}`}
                         >
                           {period}
                         </button>
