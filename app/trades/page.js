@@ -2,9 +2,8 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
-import { TrendingUp, Moon, Sun, RefreshCw } from 'lucide-react';
+import { TrendingUp, RefreshCw } from 'lucide-react';
 import { useTheme } from '../../lib/theme-context';
-import Card from '../../components/ui/cards';
 
 export default function TradesPage() {
   const { isDark, toggleTheme } = useTheme();
@@ -22,7 +21,7 @@ export default function TradesPage() {
   const [sentimentData, setSentimentData] = useState(null);
   const [sentimentLoading, setSentimentLoading] = useState(true);
   const [kiteAuth, setKiteAuth] = useState({ isLoggedIn: false, checking: true });
-  
+
   // Chart state
   const [chartSymbol, setChartSymbol] = useState('NIFTY');
   const [chartInterval, setChartInterval] = useState('15minute');
@@ -37,19 +36,13 @@ export default function TradesPage() {
       try {
         const res = await fetch('/api/kite-config');
         const data = await res.json();
-        setKiteAuth({
-          isLoggedIn: data.tokenValid === true,
-          checking: false,
-        });
+        setKiteAuth({ isLoggedIn: data.tokenValid === true, checking: false });
       } catch (error) {
         setKiteAuth({ isLoggedIn: false, checking: false });
       }
     };
     checkKiteAuth();
-
-      // Poll every 5 seconds to catch changes from the settings popup
     const pollInterval = setInterval(checkKiteAuth, 5000);
-
     const handleMessage = (event) => {
       if (event.data?.type === 'KITE_LOGIN_SUCCESS' || event.data?.type === 'KITE_LOGOUT_SUCCESS') {
         checkKiteAuth();
@@ -77,9 +70,7 @@ export default function TradesPage() {
         console.error('Failed to fetch market data:', error);
       }
     };
-
     fetchMarketData();
-    // Refresh every 5 minutes
     const interval = setInterval(fetchMarketData, 60000);
     return () => clearInterval(interval);
   }, []);
@@ -91,14 +82,9 @@ export default function TradesPage() {
       try {
         const response = await fetch('/api/sector-performance');
         const data = await response.json();
-        if (data?.error) {
-          setSectorError(data.error);
-        } else {
-          setSectorError('');
-        }
-        if (data.sectors) {
-          setSectorData(data.sectors);
-        }
+        if (data?.error) setSectorError(data.error);
+        else setSectorError('');
+        if (data.sectors) setSectorData(data.sectors);
       } catch (error) {
         console.error('Failed to fetch sector data:', error);
         setSectorError('Failed to fetch sector data');
@@ -106,9 +92,7 @@ export default function TradesPage() {
         setSectorLoading(false);
       }
     };
-
     fetchSectorData();
-    // Refresh every 5 minutes
     const interval = setInterval(fetchSectorData, 300000);
     return () => clearInterval(interval);
   }, []);
@@ -127,9 +111,7 @@ export default function TradesPage() {
         setOptionLoading(false);
       }
     };
-
     fetchOptionChain();
-    // Refresh every 1 minute for options
     const interval = setInterval(fetchOptionChain, 60000);
     return () => clearInterval(interval);
   }, [optionUnderlying, optionExpiry]);
@@ -140,25 +122,20 @@ export default function TradesPage() {
       try {
         const response = await fetch('/api/market-events');
         const data = await response.json();
-        if (data.news) {
-          setNewsData(data.news);
-        }
-        if (data.events) {
-          setEventsData(data.events);
-        }
+        if (data.news) setNewsData(data.news);
+        if (data.events) setEventsData(data.events);
       } catch (error) {
         console.error('Error fetching news:', error);
       } finally {
         setNewsLoading(false);
       }
     };
-
     fetchNewsAndEvents();
-    const interval = setInterval(fetchNewsAndEvents, 5 * 60 * 1000); // Refresh every 5 minutes
+    const interval = setInterval(fetchNewsAndEvents, 5 * 60 * 1000);
     return () => clearInterval(interval);
   }, []);
 
-  // Fetch sentiment data (FII/DII + TradingView)
+  // Fetch sentiment data
   useEffect(() => {
     const fetchSentiment = async () => {
       setSentimentLoading(true);
@@ -174,41 +151,31 @@ export default function TradesPage() {
         setSentimentLoading(false);
       }
     };
-
     fetchSentiment();
-    const interval = setInterval(fetchSentiment, 15 * 60 * 1000); // Refresh every 15 minutes
+    const interval = setInterval(fetchSentiment, 15 * 60 * 1000);
     return () => clearInterval(interval);
   }, [optionChainData?.pcr]);
 
   // Calculate EMA from candle data
   const calculateEMA = (candles, period) => {
     if (!candles || candles.length < period) return [];
-    
     const k = 2 / (period + 1);
     const emaData = [];
-    
-    // Start with SMA for first EMA value
     let sum = 0;
-    for (let i = 0; i < period; i++) {
-      sum += candles[i].close;
-    }
+    for (let i = 0; i < period; i++) sum += candles[i].close;
     let ema = sum / period;
     emaData.push({ time: candles[period - 1].time, value: ema });
-    
-    // Calculate EMA for remaining candles
     for (let i = period; i < candles.length; i++) {
-      ema = (candles[i].close * k) + (ema * (1 - k));
+      ema = candles[i].close * k + ema * (1 - k);
       emaData.push({ time: candles[i].time, value: ema });
     }
-    
     return emaData;
   };
 
-  // Initialize and update chart when symbol/interval changes
+  // Initialize chart
   useEffect(() => {
     const el = chartRef.current;
     if (!el) return;
-
     let chart = null;
     let candleSeries = null;
     let emaSeries = null;
@@ -216,7 +183,6 @@ export default function TradesPage() {
     let resizeObserver = null;
 
     const initChart = async () => {
-      // Wait for lightweight-charts to load
       if (typeof window.LightweightCharts === 'undefined') {
         const script = document.createElement('script');
         script.src = 'https://unpkg.com/lightweight-charts@4.1.0/dist/lightweight-charts.standalone.production.js';
@@ -224,27 +190,14 @@ export default function TradesPage() {
         document.head.appendChild(script);
         return;
       }
-
-      // Clear previous chart
       el.innerHTML = '';
-
       chart = window.LightweightCharts.createChart(el, {
-        layout: {
-          background: { type: 'solid', color: '#112240' },
-          textColor: '#94a3b8',
-        },
-        grid: {
-          vertLines: { color: 'rgba(66, 99, 235, 0.1)' },
-          horzLines: { color: 'rgba(66, 99, 235, 0.1)' },
-        },
+        layout: { background: { type: 'solid', color: '#112240' }, textColor: '#94a3b8' },
+        grid: { vertLines: { color: 'rgba(66, 99, 235, 0.1)' }, horzLines: { color: 'rgba(66, 99, 235, 0.1)' } },
         width: el.clientWidth,
         height: el.clientHeight || 400,
-        crosshair: {
-          mode: window.LightweightCharts.CrosshairMode.Normal,
-        },
-        rightPriceScale: {
-          borderColor: 'rgba(66, 99, 235, 0.3)',
-        },
+        crosshair: { mode: window.LightweightCharts.CrosshairMode.Normal },
+        rightPriceScale: { borderColor: 'rgba(66, 99, 235, 0.3)' },
         timeScale: {
           borderColor: 'rgba(66, 99, 235, 0.3)',
           timeVisible: chartInterval !== 'day' && chartInterval !== 'week',
@@ -252,7 +205,6 @@ export default function TradesPage() {
         },
         localization: {
           timeFormatter: (timestamp) => {
-            // Kite data is already in IST, just format it
             const date = new Date(timestamp * 1000);
             if (chartInterval === 'day' || chartInterval === 'week') {
               return date.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', timeZone: 'Asia/Kolkata' });
@@ -261,73 +213,44 @@ export default function TradesPage() {
           },
         },
       });
-
       candleSeries = chart.addCandlestickSeries({
-        upColor: '#10b981',
-        downColor: '#ef4444',
-        borderUpColor: '#10b981',
-        borderDownColor: '#ef4444',
-        wickUpColor: '#10b981',
-        wickDownColor: '#ef4444',
+        upColor: '#10b981', downColor: '#ef4444',
+        borderUpColor: '#10b981', borderDownColor: '#ef4444',
+        wickUpColor: '#10b981', wickDownColor: '#ef4444',
       });
-
-      // Add EMA line series with dynamic period
       emaSeries = chart.addLineSeries({
-        color: '#f59e0b',
-        lineWidth: 2,
-        title: `EMA${emaPeriod}`,
-        crosshairMarkerVisible: true,
-        priceLineVisible: false,
+        color: '#f59e0b', lineWidth: 2,
+        title: `EMA${emaPeriod}`, crosshairMarkerVisible: true, priceLineVisible: false,
       });
-
       chartInstanceRef.current = chart;
       candleSeriesRef.current = candleSeries;
 
-      // Fetch chart data
       const fetchChartData = async () => {
         try {
           const days = chartInterval === 'week' ? 365 : chartInterval === 'day' ? 60 : 5;
           const response = await fetch(`/api/nifty-chart?symbol=${chartSymbol}&interval=${chartInterval}&days=${days}`);
           const data = await response.json();
-
           if (data.candles && data.candles.length > 0) {
             candleSeries.setData(data.candles);
-            
-            // Calculate and set EMA data with selected period
             const emaData = calculateEMA(data.candles, emaPeriod);
-            if (emaData.length > 0) {
-              emaSeries.setData(emaData);
-            }
-            
+            if (emaData.length > 0) emaSeries.setData(emaData);
             chart.timeScale().fitContent();
-            console.log(`Loaded ${data.candles.length} ${chartSymbol} ${chartInterval} candles with EMA${emaPeriod}`);
-          } else {
-            console.warn(`No ${chartSymbol} data available:`, data.error);
           }
         } catch (error) {
           console.error('Failed to fetch chart data:', error);
         }
       };
-
       await fetchChartData();
-
-      // Auto-refresh for intraday intervals
       if (chartInterval === '5minute' || chartInterval === '15minute') {
         refreshInterval = setInterval(fetchChartData, 60000);
       }
-
-      // Handle resize
       resizeObserver = new ResizeObserver(() => {
-        chart.applyOptions({
-          width: el.clientWidth,
-          height: el.clientHeight,
-        });
+        chart.applyOptions({ width: el.clientWidth, height: el.clientHeight });
       });
       resizeObserver.observe(el);
     };
 
     initChart();
-
     return () => {
       if (refreshInterval) clearInterval(refreshInterval);
       if (resizeObserver) resizeObserver.disconnect();
@@ -335,9 +258,17 @@ export default function TradesPage() {
     };
   }, [chartSymbol, chartInterval, emaPeriod]);
 
+  // Helper: bias to emoji
+  const biasEmoji = (bias) => {
+    if (!bias) return '🟡';
+    if (bias.includes('bullish')) return '🟢';
+    if (bias.includes('bearish')) return '🔴';
+    return '🟡';
+  };
+
   return (
     <div className="min-h-screen bg-[#0a1628] text-slate-100">
-      {/* ================= HEADER ================= */}
+      {/* HEADER */}
       <header className="border-b border-blue-800/50 bg-[#0d1d35]/90 backdrop-blur-sm">
         <div className="container mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -346,134 +277,84 @@ export default function TradesPage() {
               Trading Dashboard
             </h1>
           </div>
-
           <div className="flex items-center gap-4">
-            {/* Kite Auth Status */}
             <button
               onClick={openKiteSettings}
               className={`px-3 py-1.5 text-sm rounded-lg border transition-colors flex items-center gap-2 ${
-                kiteAuth.checking 
+                kiteAuth.checking
                   ? 'border-slate-600/50 bg-slate-800/40 text-slate-400'
-                  : kiteAuth.isLoggedIn 
-                    ? 'border-green-600/50 bg-green-900/30 hover:bg-green-800/40 text-green-300'
-                    : 'border-orange-600/50 bg-orange-900/30 hover:bg-orange-800/40 text-orange-300'
+                  : kiteAuth.isLoggedIn
+                  ? 'border-green-600/50 bg-green-900/30 hover:bg-green-800/40 text-green-300'
+                  : 'border-orange-600/50 bg-orange-900/30 hover:bg-orange-800/40 text-orange-300'
               }`}
             >
               {kiteAuth.checking ? (
-                <>
-                  <span className="w-2 h-2 rounded-full bg-slate-400 animate-pulse"></span>
-                  Checking...
-                </>
+                <><span className="w-2 h-2 rounded-full bg-slate-400 animate-pulse"></span>Checking...</>
               ) : kiteAuth.isLoggedIn ? (
-                <>
-                  <span className="w-2 h-2 rounded-full bg-green-400"></span>
-                  Kite Connected
-                </>
+                <><span className="w-2 h-2 rounded-full bg-green-400"></span>Kite Connected</>
               ) : (
-                <>
-                  <span className="w-2 h-2 rounded-full bg-orange-400"></span>
-                  Login to Kite
-                </>
+                <><span className="w-2 h-2 rounded-full bg-orange-400"></span>Login to Kite</>
               )}
             </button>
-            
-            <Link
-              href="/orders"
-              className="px-4 py-2 text-sm rounded-lg border border-purple-600/50 bg-purple-900/40 hover:bg-purple-800/50 text-purple-200 transition-colors"
-            >
+            <Link href="/orders" className="px-4 py-2 text-sm rounded-lg border border-purple-600/50 bg-purple-900/40 hover:bg-purple-800/50 text-purple-200 transition-colors">
               🛒 Orders
             </Link>
-            
-            <Link
-              href="/"
-              className="px-4 py-2 text-sm rounded-lg border border-blue-600/50 bg-blue-900/40 hover:bg-blue-800/50 text-blue-200 transition-colors"
-            >
+            <Link href="/" className="px-4 py-2 text-sm rounded-lg border border-blue-600/50 bg-blue-900/40 hover:bg-blue-800/50 text-blue-200 transition-colors">
               Back Home
             </Link>
           </div>
         </div>
       </header>
 
-      {/* ================= MAIN CONTENT ================= */}
+      {/* MAIN CONTENT */}
       <main className="container mx-auto px-4 py-6">
-        {/* Market Data Grid - Top Section (Compact) */}
+
+        {/* Top Market Data Grid */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-1 mb-4">
-          {/* Section 1: Market Indices */}
+          {/* Market Indices */}
           <div className="bg-[#112240] border border-blue-800/40 rounded-lg p-1.5 lg:p-2 flex flex-col justify-center min-h-14 lg:min-h-16">
             <h4 className="text-blue-300 text-[10px] font-semibold mb-1 lg:mb-1.5 text-center">Market Indices</h4>
             <div className="space-y-0.5 lg:space-y-1">
-              {/* Nifty 50 */}
               <div className="flex justify-between items-center">
                 <span className="text-slate-400 text-[9px]">Nifty 50</span>
                 <div className="flex items-center gap-1">
-                  <span className="text-slate-100 text-[9px] lg:text-xs font-mono font-medium">
-                    {marketData?.indices?.nifty || '---'}
-                  </span>
+                  <span className="text-slate-100 text-[9px] lg:text-xs font-mono font-medium">{marketData?.indices?.nifty || '---'}</span>
                   {marketData?.indices?.niftyChangePercent && (
-                    <span className={`text-[8px] font-mono ${
-                      parseFloat(marketData.indices.niftyChangePercent) >= 0 
-                        ? 'text-emerald-400' 
-                        : 'text-red-400'
-                    }`}>
-                      {parseFloat(marketData.indices.niftyChangePercent) >= 0 ? '+' : ''}
-                      {parseFloat(marketData.indices.niftyChangePercent).toFixed(2)}%
+                    <span className={`text-[8px] font-mono ${parseFloat(marketData.indices.niftyChangePercent) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                      {parseFloat(marketData.indices.niftyChangePercent) >= 0 ? '+' : ''}{parseFloat(marketData.indices.niftyChangePercent).toFixed(2)}%
                     </span>
                   )}
                 </div>
               </div>
-              {/* Bank Nifty */}
               <div className="flex justify-between items-center">
                 <span className="text-slate-400 text-[9px]">Bank Nifty</span>
                 <div className="flex items-center gap-1">
-                  <span className="text-slate-100 text-[9px] lg:text-xs font-mono font-medium">
-                    {marketData?.indices?.bankNifty || '---'}
-                  </span>
+                  <span className="text-slate-100 text-[9px] lg:text-xs font-mono font-medium">{marketData?.indices?.bankNifty || '---'}</span>
                   {marketData?.indices?.bankNiftyChangePercent && (
-                    <span className={`text-[8px] font-mono ${
-                      parseFloat(marketData.indices.bankNiftyChangePercent) >= 0 
-                        ? 'text-emerald-400' 
-                        : 'text-red-400'
-                    }`}>
-                      {parseFloat(marketData.indices.bankNiftyChangePercent) >= 0 ? '+' : ''}
-                      {parseFloat(marketData.indices.bankNiftyChangePercent).toFixed(2)}%
+                    <span className={`text-[8px] font-mono ${parseFloat(marketData.indices.bankNiftyChangePercent) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                      {parseFloat(marketData.indices.bankNiftyChangePercent) >= 0 ? '+' : ''}{parseFloat(marketData.indices.bankNiftyChangePercent).toFixed(2)}%
                     </span>
                   )}
                 </div>
               </div>
-              {/* Sensex */}
               <div className="flex justify-between items-center">
                 <span className="text-slate-400 text-[9px]">Sensex</span>
                 <div className="flex items-center gap-1">
-                  <span className="text-slate-100 text-[9px] lg:text-xs font-mono font-medium">
-                    {marketData?.indices?.sensex || '---'}
-                  </span>
+                  <span className="text-slate-100 text-[9px] lg:text-xs font-mono font-medium">{marketData?.indices?.sensex || '---'}</span>
                   {marketData?.indices?.sensexChangePercent && (
-                    <span className={`text-[8px] font-mono ${
-                      parseFloat(marketData.indices.sensexChangePercent) >= 0 
-                        ? 'text-emerald-400' 
-                        : 'text-red-400'
-                    }`}>
-                      {parseFloat(marketData.indices.sensexChangePercent) >= 0 ? '+' : ''}
-                      {parseFloat(marketData.indices.sensexChangePercent).toFixed(2)}%
+                    <span className={`text-[8px] font-mono ${parseFloat(marketData.indices.sensexChangePercent) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                      {parseFloat(marketData.indices.sensexChangePercent) >= 0 ? '+' : ''}{parseFloat(marketData.indices.sensexChangePercent).toFixed(2)}%
                     </span>
                   )}
                 </div>
               </div>
-              {/* India VIX */}
               <div className="flex justify-between items-center">
                 <span className="text-slate-400 text-[9px]">India VIX</span>
                 <div className="flex items-center gap-1">
-                  <span className="text-amber-400 text-[9px] lg:text-xs font-mono font-medium">
-                    {marketData?.indices?.vix || '---'}
-                  </span>
+                  <span className="text-amber-400 text-[9px] lg:text-xs font-mono font-medium">{marketData?.indices?.vix || '---'}</span>
                   {marketData?.indices?.vixChange && (
-                    <span className={`text-[8px] font-mono ${
-                      parseFloat(marketData.indices.vixChange) >= 0 
-                        ? 'text-red-400'  // VIX up is bearish
-                        : 'text-emerald-400'  // VIX down is bullish
-                    }`}>
-                      {parseFloat(marketData.indices.vixChange) >= 0 ? '+' : ''}
-                      {parseFloat(marketData.indices.vixChange).toFixed(2)}
+                    <span className={`text-[8px] font-mono ${parseFloat(marketData.indices.vixChange) >= 0 ? 'text-red-400' : 'text-emerald-400'}`}>
+                      {parseFloat(marketData.indices.vixChange) >= 0 ? '+' : ''}{parseFloat(marketData.indices.vixChange).toFixed(2)}
                     </span>
                   )}
                 </div>
@@ -481,48 +362,36 @@ export default function TradesPage() {
             </div>
           </div>
 
-          {/* Section 2: Global Indices */}
+          {/* Global Indices */}
           <div className="bg-[#112240] border border-blue-800/40 rounded-lg p-1.5 lg:p-2 flex flex-col justify-center min-h-14 lg:min-h-16">
             <h4 className="text-blue-300 text-[10px] font-semibold mb-1 lg:mb-1.5 text-center">Global Indices</h4>
             <div className="space-y-0.5 lg:space-y-1">
               <div className="flex justify-between items-center">
                 <span className="text-slate-400 text-[9px]">DOW</span>
-                <span className="text-slate-100 text-[9px] lg:text-xs font-mono font-medium">
-                  {marketData?.global?.dow || '---'}
-                </span>
+                <span className="text-slate-100 text-[9px] lg:text-xs font-mono font-medium">{marketData?.global?.dow || '---'}</span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-slate-400 text-[9px]">GIFT Nifty</span>
-                <span className="text-slate-100 text-[9px] lg:text-xs font-mono font-medium">
-                  {marketData?.indices?.giftNifty || '---'}
-                </span>
+                <span className="text-slate-100 text-[9px] lg:text-xs font-mono font-medium">{marketData?.indices?.giftNifty || '---'}</span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-slate-400 text-[9px]">NASDAQ</span>
-                <span className="text-slate-100 text-[9px] lg:text-xs font-mono font-medium">
-                  {marketData?.global?.nasdaq || '---'}
-                </span>
+                <span className="text-slate-100 text-[9px] lg:text-xs font-mono font-medium">{marketData?.global?.nasdaq || '---'}</span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-slate-400 text-[9px]">DAX</span>
-                <span className="text-slate-100 text-[9px] lg:text-xs font-mono font-medium">
-                  {marketData?.global?.dax || '---'}
-                </span>
+                <span className="text-slate-100 text-[9px] lg:text-xs font-mono font-medium">{marketData?.global?.dax || '---'}</span>
               </div>
             </div>
           </div>
 
-          {/* Section 3: Market Sentiment */}
+          {/* Market Sentiment */}
           <div className="bg-[#112240] border border-blue-800/40 rounded-lg p-1.5 lg:p-2 flex flex-col justify-center min-h-14 lg:min-h-16">
             <h4 className="text-blue-300 text-[10px] font-semibold mb-1 lg:mb-1.5 text-center">Market Sentiment</h4>
             <div className="space-y-0.5 lg:space-y-1">
               <div className="flex justify-between items-center">
                 <span className="text-slate-400 text-[9px]">Nifty Bias</span>
-                <span className={`text-[9px] lg:text-xs font-mono font-medium ${
-                  marketData?.sentiment?.bias === 'Bullish' ? 'text-emerald-400' : 
-                  marketData?.sentiment?.bias === 'Bearish' ? 'text-red-400' : 
-                  'text-slate-300'
-                }`}>
+                <span className={`text-[9px] lg:text-xs font-mono font-medium ${marketData?.sentiment?.bias === 'Bullish' ? 'text-emerald-400' : marketData?.sentiment?.bias === 'Bearish' ? 'text-red-400' : 'text-slate-300'}`}>
                   {marketData?.sentiment?.bias || 'Neutral'}
                 </span>
               </div>
@@ -542,67 +411,61 @@ export default function TradesPage() {
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-slate-400 text-[9px]">PCR</span>
-                <span className="text-slate-100 text-[9px] lg:text-xs font-mono font-medium">
-                  {marketData?.sentiment?.pcr || '---'}
-                </span>
+                <span className="text-slate-100 text-[9px] lg:text-xs font-mono font-medium">{marketData?.sentiment?.pcr || '---'}</span>
               </div>
             </div>
           </div>
 
-          {/* Section 4: Commodities */}
+          {/* Commodities */}
           <div className="bg-[#112240] border border-blue-800/40 rounded-lg p-1.5 lg:p-2 flex flex-col justify-center min-h-14 lg:min-h-16">
             <h4 className="text-blue-300 text-[10px] font-semibold mb-1 lg:mb-1.5 text-center">Commodities</h4>
             <div className="space-y-0.5 lg:space-y-1">
               <div className="flex justify-between items-center">
                 <span className="text-slate-400 text-[9px]">Crude Oil</span>
                 <span className={`text-[9px] lg:text-xs font-mono font-medium ${(marketData?.commodities?.crudeChange ?? 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                  {marketData?.commodities?.crude || '---'} {marketData?.commodities?.crudeChange != null && ((marketData.commodities.crudeChange >= 0 ? '▲' : '▼'))}
+                  {marketData?.commodities?.crude || '---'} {marketData?.commodities?.crudeChange != null && (marketData.commodities.crudeChange >= 0 ? '▲' : '▼')}
                 </span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-slate-400 text-[9px]">Silver</span>
                 <span className={`text-[9px] lg:text-xs font-mono font-medium ${(marketData?.commodities?.silverChange ?? 0) >= 0 ? 'text-slate-100' : 'text-red-400'}`}>
-                  {marketData?.commodities?.silver || '---'} {marketData?.commodities?.silverChange != null && ((marketData.commodities.silverChange >= 0 ? '▲' : '▼'))}
+                  {marketData?.commodities?.silver || '---'} {marketData?.commodities?.silverChange != null && (marketData.commodities.silverChange >= 0 ? '▲' : '▼')}
                 </span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-slate-400 text-[9px]">Gold</span>
                 <span className={`text-[9px] lg:text-xs font-mono font-medium ${(marketData?.commodities?.goldChange ?? 0) >= 0 ? 'text-yellow-400' : 'text-red-400'}`}>
-                  {marketData?.commodities?.gold || '---'} {marketData?.commodities?.goldChange != null && ((marketData.commodities.goldChange >= 0 ? '▲' : '▼'))}
+                  {marketData?.commodities?.gold || '---'} {marketData?.commodities?.goldChange != null && (marketData.commodities.goldChange >= 0 ? '▲' : '▼')}
                 </span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-slate-400 text-[9px]">Nat. Gas</span>
                 <span className={`text-[9px] lg:text-xs font-mono font-medium ${(marketData?.commodities?.natGasChange ?? 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                  {marketData?.commodities?.natGas || '---'} {marketData?.commodities?.natGasChange != null && ((marketData.commodities.natGasChange >= 0 ? '▲' : '▼'))}
+                  {marketData?.commodities?.natGas || '---'} {marketData?.commodities?.natGasChange != null && (marketData.commodities.natGasChange >= 0 ? '▲' : '▼')}
                 </span>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Main Dashboard Grid - 3 Column Layout */}
+        {/* Main 3-Column Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 mb-4">
-          {/* LEFT COLUMN: Chartink Scanners + Sentiment */}
+
+          {/* LEFT COLUMN */}
           <div className="lg:col-span-2 space-y-3">
+
             {/* Scanners */}
             <div className="bg-[#112240] backdrop-blur border border-blue-800/40 rounded-xl p-3">
               <h2 className="text-sm font-semibold mb-2 text-blue-300">Scanners</h2>
               <ul className="space-y-2">
                 <li>
-                  <Link
-                    href="/stock-updates/scanner/bullish-bo-15min"
-                    className="flex items-center justify-between rounded-lg px-2 py-2 bg-emerald-900/30 hover:bg-emerald-800/40 border border-emerald-700/40 hover:border-emerald-600/60 transition-all group text-xs text-slate-200"
-                  >
+                  <Link href="/stock-updates/scanner/bullish-bo-15min" className="flex items-center justify-between rounded-lg px-2 py-2 bg-emerald-900/30 hover:bg-emerald-800/40 border border-emerald-700/40 hover:border-emerald-600/60 transition-all text-xs text-slate-200">
                     <span className="font-medium">Bullish BO</span>
                     <span className="text-emerald-400">→</span>
                   </Link>
                 </li>
                 <li>
-                  <Link
-                    href="/stock-updates/scanner/bearish-bo-15min"
-                    className="flex items-center justify-between rounded-lg px-2 py-2 bg-red-900/30 hover:bg-red-800/40 border border-red-700/40 hover:border-red-600/60 transition-all group text-xs text-slate-200"
-                  >
+                  <Link href="/stock-updates/scanner/bearish-bo-15min" className="flex items-center justify-between rounded-lg px-2 py-2 bg-red-900/30 hover:bg-red-800/40 border border-red-700/40 hover:border-red-600/60 transition-all text-xs text-slate-200">
                     <span className="font-medium">Bearish BO</span>
                     <span className="text-red-400">→</span>
                   </Link>
@@ -610,7 +473,7 @@ export default function TradesPage() {
               </ul>
             </div>
 
-            {/* AI Sentiment Widget - FII/DII + TradingView */}
+            {/* AI Sentiment Widget */}
             <div className="bg-[#112240] backdrop-blur border border-blue-800/40 rounded-xl p-3">
               <div className="flex items-center justify-between mb-2">
                 <h2 className="text-sm font-semibold text-blue-300">AI Sentiment</h2>
@@ -635,26 +498,89 @@ export default function TradesPage() {
                   <RefreshCw className={`w-3 h-3 text-blue-400 ${sentimentLoading ? 'animate-spin' : ''}`} />
                 </button>
               </div>
-              
+
               {sentimentData ? (
                 <div className="space-y-2 text-xs">
-                  {/* Overall Mood Score */}
+
+                  {/* Overall Score */}
                   <div className="text-center py-2 border-b border-blue-800/40">
                     <div className={`text-2xl font-bold ${
                       sentimentData.overall?.score >= 60 ? 'text-green-400' :
-                      sentimentData.overall?.score <= 40 ? 'text-red-400' :
-                      'text-yellow-400'
+                      sentimentData.overall?.score <= 40 ? 'text-red-400' : 'text-yellow-400'
                     }`}>
                       {sentimentData.overall?.score || '—'}
                     </div>
                     <div className={`text-[10px] uppercase tracking-wider ${
                       sentimentData.overall?.mood?.includes('bullish') ? 'text-green-500' :
-                      sentimentData.overall?.mood?.includes('bearish') ? 'text-red-500' :
-                      'text-yellow-500'
+                      sentimentData.overall?.mood?.includes('bearish') ? 'text-red-500' : 'text-yellow-500'
                     }`}>
-                      {sentimentData.overall?.mood?.replace('_', ' ') || 'Loading...'}
+                      {sentimentData.overall?.mood?.replace(/_/g, ' ') || 'Loading...'}
                     </div>
                   </div>
+
+                  {/* Daily vs Intraday Timeframes */}
+                  {sentimentData.timeframes && (
+                    <div className="bg-slate-900/50 rounded-lg p-2 border border-blue-800/30">
+                      <div className="grid grid-cols-2 gap-2 mb-2">
+                        <div className="text-center">
+                          <div className="text-[9px] text-slate-500 uppercase mb-1">Daily</div>
+                          <div className="text-lg">{biasEmoji(sentimentData.timeframes.daily?.bias)}</div>
+                          <div className={`text-[9px] font-mono mt-0.5 ${
+                            sentimentData.timeframes.daily?.score >= 60 ? 'text-green-400' :
+                            sentimentData.timeframes.daily?.score <= 40 ? 'text-red-400' : 'text-yellow-400'
+                          }`}>
+                            {sentimentData.timeframes.daily?.score}
+                          </div>
+                          <div className="text-[8px] text-slate-500 capitalize">
+                            {sentimentData.timeframes.daily?.bias?.replace(/_/g, ' ')}
+                          </div>
+                        </div>
+                        <div className="text-center">
+                          <div className="text-[9px] text-slate-500 uppercase mb-1">Intraday</div>
+                          <div className="text-lg">{biasEmoji(sentimentData.timeframes.intraday?.bias)}</div>
+                          <div className={`text-[9px] font-mono mt-0.5 ${
+                            sentimentData.timeframes.intraday?.score >= 60 ? 'text-green-400' :
+                            sentimentData.timeframes.intraday?.score <= 40 ? 'text-red-400' : 'text-yellow-400'
+                          }`}>
+                            {sentimentData.timeframes.intraday?.score}
+                          </div>
+                          <div className="text-[8px] text-slate-500 capitalize">
+                            {sentimentData.timeframes.intraday?.bias?.replace(/_/g, ' ')}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Divergence Warning */}
+                      {sentimentData.timeframes.divergence && (
+                        <div className="bg-amber-500/10 border border-amber-500/30 rounded px-2 py-1 flex items-center gap-1.5 mb-2">
+                          <span className="text-amber-400">⚠</span>
+                          <span className="text-amber-300 text-[10px] font-medium">Divergence — Caution</span>
+                        </div>
+                      )}
+
+                      {/* Intraday Signals collapsible */}
+                      {sentimentData.timeframes.intraday?.signals?.length > 0 && (
+                        <details className="mt-1">
+                          <summary className="text-[9px] text-slate-500 cursor-pointer hover:text-slate-400 select-none">
+                            Intraday signals ▾
+                          </summary>
+                          <div className="mt-1.5 space-y-0.5">
+                            {sentimentData.timeframes.intraday.signals.map((sig, i) => (
+                              <div key={i} className="flex items-center justify-between px-1">
+                                <span className="text-[9px] text-slate-400">{sig.factor}</span>
+                                <span className={`text-[9px] font-medium ${
+                                  sig.signal === 'bullish' ? 'text-green-400' :
+                                  sig.signal === 'bearish' ? 'text-red-400' : 'text-slate-400'
+                                }`}>
+                                  {sig.detail}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </details>
+                      )}
+                    </div>
+                  )}
 
                   {/* Sentiment Factors */}
                   {sentimentData.overall?.factors?.map((factor, idx) => (
@@ -666,19 +592,16 @@ export default function TradesPage() {
                       <div className="flex items-center gap-2">
                         <span className={`font-mono text-[10px] ${
                           factor.score >= 60 ? 'text-green-400' :
-                          factor.score <= 40 ? 'text-red-400' :
-                          'text-yellow-400'
+                          factor.score <= 40 ? 'text-red-400' : 'text-yellow-400'
                         }`}>
                           {factor.score}
                         </span>
-                        <span className="text-slate-500 text-[10px] capitalize">
-                          {factor.detail}
-                        </span>
+                        <span className="text-slate-500 text-[10px] capitalize">{factor.detail}</span>
                       </div>
                     </div>
                   ))}
 
-                  {/* FII/DII Details */}
+                  {/* FII/DII */}
                   {sentimentData.fiiDii && (
                     <div className="pt-1">
                       <div className="text-[10px] text-slate-500 mb-1">FII/DII Flow (₹ Cr)</div>
@@ -711,7 +634,7 @@ export default function TradesPage() {
                             sentimentData.indices.nifty.overall?.includes('sell') ? 'bg-red-900/50 text-red-400' :
                             'bg-yellow-900/50 text-yellow-400'
                           }`}>
-                            {sentimentData.indices.nifty.overall?.replace('_', ' ').toUpperCase() || '—'}
+                            {sentimentData.indices.nifty.overall?.replace(/_/g, ' ').toUpperCase() || '—'}
                           </span>
                         </div>
                         <span className="text-slate-500 text-[10px]">
@@ -721,7 +644,7 @@ export default function TradesPage() {
                     </div>
                   )}
 
-                  {/* Sentiment Gauge */}
+                  {/* Gauge */}
                   <div className="pt-2">
                     <div className="flex justify-between text-[10px] text-slate-500 mb-1">
                       <span>Fear</span>
@@ -729,14 +652,14 @@ export default function TradesPage() {
                       <span>Greed</span>
                     </div>
                     <div className="h-2 bg-gradient-to-r from-red-600 via-yellow-500 to-green-600 rounded-full relative">
-                      <div 
+                      <div
                         className="absolute top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full border-2 border-slate-800 shadow-lg transition-all duration-500"
                         style={{ left: `${Math.max(5, Math.min(95, sentimentData.overall?.score || 50))}%` }}
                       />
                     </div>
                   </div>
 
-                  {/* Last Updated */}
+                  {/* Timestamp */}
                   {sentimentData.timestamp && (
                     <div className="text-[9px] text-slate-600 text-center pt-1">
                       Updated: {new Date(sentimentData.timestamp).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
@@ -751,13 +674,12 @@ export default function TradesPage() {
             </div>
           </div>
 
-          {/* CENTER COLUMN: Chart Area */}
+          {/* CENTER COLUMN: Chart */}
           <div className="lg:col-span-8">
             <div className="bg-[#112240] backdrop-blur border border-blue-800/40 rounded-xl overflow-hidden h-full flex flex-col min-h-[500px]">
               <div className="flex items-center justify-between px-4 py-3 border-b border-blue-800/40">
                 <div className="flex items-center gap-3">
                   <h2 className="text-lg font-semibold text-blue-300">Market Chart</h2>
-                  {/* Symbol Picker */}
                   <select
                     className="bg-[#0a1628] border border-blue-700/50 rounded-lg px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:border-blue-500"
                     value={chartSymbol}
@@ -768,38 +690,23 @@ export default function TradesPage() {
                   </select>
                 </div>
                 <div className="flex items-center gap-2">
-                  {/* Interval Buttons */}
                   <div className="flex bg-[#0a1628] rounded-lg p-0.5">
-                    {[
-                      { value: '5minute', label: '5m' },
-                      { value: '15minute', label: '15m' },
-                      { value: 'day', label: 'D' },
-                      { value: 'week', label: 'W' },
-                    ].map((int) => (
+                    {[{ value: '5minute', label: '5m' }, { value: '15minute', label: '15m' }, { value: 'day', label: 'D' }, { value: 'week', label: 'W' }].map((int) => (
                       <button
                         key={int.value}
                         onClick={() => setChartInterval(int.value)}
-                        className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors ${
-                          chartInterval === int.value
-                            ? 'bg-blue-600 text-white'
-                            : 'text-slate-400 hover:text-slate-200'
-                        }`}
+                        className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors ${chartInterval === int.value ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-slate-200'}`}
                       >
                         {int.label}
                       </button>
                     ))}
                   </div>
-                  {/* EMA Period Selector */}
                   <div className="flex bg-[#0a1628] rounded-lg p-0.5">
                     {[9, 21, 50, 200].map((period) => (
                       <button
                         key={period}
                         onClick={() => setEmaPeriod(period)}
-                        className={`px-2 py-1 text-xs font-medium rounded-md transition-colors ${
-                          emaPeriod === period
-                            ? 'bg-amber-600 text-white'
-                            : 'text-slate-400 hover:text-slate-200'
-                        }`}
+                        className={`px-2 py-1 text-xs font-medium rounded-md transition-colors ${emaPeriod === period ? 'bg-amber-600 text-white' : 'text-slate-400 hover:text-slate-200'}`}
                       >
                         {period}
                       </button>
@@ -819,17 +726,12 @@ export default function TradesPage() {
                   </a>
                 </div>
               </div>
-              <div 
-                className="flex-1"
-                ref={chartRef}
-                key={`${chartSymbol}-${chartInterval}`}
-              />
+              <div className="flex-1" ref={chartRef} key={`${chartSymbol}-${chartInterval}`} />
             </div>
           </div>
 
-          {/* RIGHT COLUMN: Sector Performance + Options */}
+          {/* RIGHT COLUMN: Sectors */}
           <div className="lg:col-span-2 space-y-3">
-            {/* Sector Performance */}
             <div className="bg-[#112240] backdrop-blur border border-blue-800/40 rounded-xl p-3">
               <div className="flex justify-between items-center mb-2">
                 <h2 className="text-sm font-semibold text-blue-300">Sector Performance</h2>
@@ -837,17 +739,13 @@ export default function TradesPage() {
                   {new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })} | vs Prev Close
                 </span>
               </div>
-              {/* Scrollable container for all sectors */}
-              <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-blue-800 scrollbar-track-transparent">
+              <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1">
                 {sectorData.length > 0 ? (
                   sectorData.map((sector) => {
                     const sectorValue = sector.value ?? 0;
                     const absValue = Math.abs(sectorValue);
-                    // Bar width: scale so 3% change = full width
                     const barWidth = Math.min((absValue / 3) * 100, 100);
-                    // Use tvSymbol from API, fallback to cleaned symbol name
                     const tvSymbol = sector.tvSymbol || sector.symbol?.replace(/ /g, '') || sector.name?.toUpperCase().replace(/ /g, '');
-                    
                     return (
                       <a
                         key={sector.name}
@@ -856,19 +754,14 @@ export default function TradesPage() {
                         rel="noopener noreferrer"
                         className="flex items-center gap-2 group cursor-pointer hover:bg-[#0a1628]/50 rounded px-1 py-0.5"
                       >
-                        {/* Sector name */}
                         <span className="text-[10px] w-16 text-slate-300 truncate">{sector.name}</span>
-                        {/* Bar chart */}
-                        <div className="flex-1 h-4 bg-[#0a1628] rounded overflow-hidden relative">
-                          <div 
+                        <div className="flex-1 h-4 bg-[#0a1628] rounded overflow-hidden">
+                          <div
                             className={`h-full ${sectorValue >= 0 ? 'bg-gradient-to-r from-emerald-600 to-emerald-500' : 'bg-gradient-to-r from-red-600 to-red-500'} transition-all duration-500`}
                             style={{ width: `${Math.max(barWidth, 5)}%` }}
                           />
                         </div>
-                        {/* Percentage */}
-                        <span className={`text-[10px] w-12 text-right font-mono font-semibold ${
-                          sectorValue >= 0 ? 'text-emerald-400' : 'text-red-400'
-                        }`}>
+                        <span className={`text-[10px] w-12 text-right font-mono font-semibold ${sectorValue >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
                           {sectorValue >= 0 ? '+' : ''}{sectorValue.toFixed(2)}%
                         </span>
                       </a>
@@ -884,9 +777,10 @@ export default function TradesPage() {
           </div>
         </div>
 
-        {/* BOTTOM: News & Events + Options Analysis */}
+        {/* Bottom: News + Options */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-          {/* News & Events - Redesigned */}
+
+          {/* News & Events */}
           <div className="bg-[#112240] backdrop-blur border border-blue-800/40 rounded-xl p-5">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-semibold text-blue-300 flex items-center gap-2">
@@ -908,19 +802,16 @@ export default function TradesPage() {
                   }
                 }}
                 className="p-1.5 hover:bg-blue-800/40 rounded transition-colors"
-                title="Refresh"
               >
                 <RefreshCw className={`w-4 h-4 text-blue-400 ${newsLoading ? 'animate-spin' : ''}`} />
               </button>
             </div>
-            
             {newsLoading ? (
               <div className="flex items-center justify-center py-8">
                 <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-400"></div>
               </div>
             ) : (
               <div className="space-y-4">
-                {/* Important Events Section */}
                 {eventsData.length > 0 && (
                   <div>
                     <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-2">
@@ -929,12 +820,7 @@ export default function TradesPage() {
                     </h3>
                     <div className="space-y-2 max-h-32 overflow-y-auto">
                       {eventsData.slice(0, 6).map((event, idx) => (
-                        <div 
-                          key={idx} 
-                          className={`flex items-center justify-between text-xs p-2 rounded ${
-                            event.urgent ? 'bg-red-900/30 border border-red-700/50' : 'bg-slate-800/50'
-                          }`}
-                        >
+                        <div key={idx} className={`flex items-center justify-between text-xs p-2 rounded ${event.urgent ? 'bg-red-900/30 border border-red-700/50' : 'bg-slate-800/50'}`}>
                           <div className="flex items-center gap-2">
                             <span className={`text-[10px] px-1.5 py-0.5 rounded ${
                               event.category === 'expiry' ? 'bg-orange-900/50 text-orange-400' :
@@ -946,25 +832,18 @@ export default function TradesPage() {
                             }`}>
                               {event.category?.toUpperCase() || 'EVENT'}
                             </span>
-                            <span className={`${event.urgent ? 'text-red-300 font-medium' : 'text-slate-300'}`}>
+                            <span className={event.urgent ? 'text-red-300 font-medium' : 'text-slate-300'}>
                               {event.subject?.slice(0, 50)}{event.subject?.length > 50 ? '...' : ''}
                             </span>
                           </div>
-                          <span className={`text-[10px] font-mono ${
-                            event.urgent ? 'text-red-400 font-bold' : 'text-slate-500'
-                          }`}>
-                            {event.symbol || (event.daysAway !== undefined ? 
-                              (event.daysAway === 0 ? 'TODAY' : `${event.daysAway}d`) : 
-                              new Date(event.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })
-                            )}
+                          <span className={`text-[10px] font-mono ${event.urgent ? 'text-red-400 font-bold' : 'text-slate-500'}`}>
+                            {event.symbol || (event.daysAway !== undefined ? (event.daysAway === 0 ? 'TODAY' : `${event.daysAway}d`) : new Date(event.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }))}
                           </span>
                         </div>
                       ))}
                     </div>
                   </div>
                 )}
-
-                {/* Breaking News Section */}
                 {newsData.length > 0 && (
                   <div>
                     <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-2">
@@ -977,12 +856,7 @@ export default function TradesPage() {
                           <span className="text-slate-500 font-mono text-[10px] mt-0.5 min-w-[32px]">
                             {item.hoursAgo === 0 ? 'now' : `${item.hoursAgo}h`}
                           </span>
-                          <a 
-                            href={item.link} 
-                            target="_blank" 
-                            rel="noopener noreferrer"
-                            className="text-slate-300 hover:text-blue-300 transition-colors line-clamp-2 flex-1"
-                          >
+                          <a href={item.link} target="_blank" rel="noopener noreferrer" className="text-slate-300 hover:text-blue-300 transition-colors line-clamp-2 flex-1">
                             {item.title}
                             <span className="text-slate-600 text-[10px] ml-1">[{item.source}]</span>
                           </a>
@@ -991,8 +865,6 @@ export default function TradesPage() {
                     </ul>
                   </div>
                 )}
-
-                {/* No data state */}
                 {eventsData.length === 0 && newsData.length === 0 && (
                   <div className="text-slate-400 text-sm py-4 text-center">No events or news available</div>
                 )}
@@ -1000,7 +872,7 @@ export default function TradesPage() {
             )}
           </div>
 
-          {/* Options Analysis with OI Changes */}
+          {/* Options Analysis */}
           <div className="bg-[#112240] backdrop-blur border border-blue-800/40 rounded-xl p-5">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-semibold text-blue-300 flex items-center gap-2">
@@ -1008,33 +880,23 @@ export default function TradesPage() {
                 Options Analysis
               </h2>
               <div className="flex gap-2">
-                {/* Underlying Selector */}
                 <div className="flex bg-[#0a1628] rounded-lg p-0.5">
                   {['NIFTY', 'BANKNIFTY'].map((u) => (
                     <button
                       key={u}
                       onClick={() => setOptionUnderlying(u)}
-                      className={`px-3 py-1 text-xs rounded-md transition-colors ${
-                        optionUnderlying === u
-                          ? 'bg-blue-600 text-white'
-                          : 'text-slate-400 hover:text-slate-200'
-                      }`}
+                      className={`px-3 py-1 text-xs rounded-md transition-colors ${optionUnderlying === u ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-slate-200'}`}
                     >
                       {u === 'BANKNIFTY' ? 'Bank Nifty' : 'Nifty'}
                     </button>
                   ))}
                 </div>
-                {/* Expiry Selector */}
                 <div className="flex bg-[#0a1628] rounded-lg p-0.5">
                   {['weekly', 'monthly'].map((e) => (
                     <button
                       key={e}
                       onClick={() => setOptionExpiry(e)}
-                      className={`px-3 py-1 text-xs rounded-md transition-colors ${
-                        optionExpiry === e
-                          ? 'bg-blue-600 text-white'
-                          : 'text-slate-400 hover:text-slate-200'
-                      }`}
+                      className={`px-3 py-1 text-xs rounded-md transition-colors ${optionExpiry === e ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-slate-200'}`}
                     >
                       {e === 'weekly' ? 'Weekly' : 'Monthly'}
                     </button>
@@ -1049,41 +911,28 @@ export default function TradesPage() {
               <div className="text-red-400 text-center py-4">{optionChainData.error}</div>
             ) : (
               <div className="space-y-4">
-                {/* Key Metrics Grid */}
                 <div className="grid grid-cols-4 gap-3">
-                  {/* Spot & ATM */}
                   <div className="bg-[#0a1628] rounded-lg p-3">
                     <div className="text-[10px] text-slate-500 uppercase tracking-wider">Spot / ATM</div>
-                    <div className="text-lg font-mono text-slate-200 mt-1">
-                      {parseFloat(optionChainData?.spotPrice || 0).toLocaleString()}
-                    </div>
+                    <div className="text-lg font-mono text-slate-200 mt-1">{parseFloat(optionChainData?.spotPrice || 0).toLocaleString()}</div>
                     <div className="text-xs text-slate-400">ATM: {optionChainData?.atmStrike?.toLocaleString()}</div>
                   </div>
-                  {/* PCR */}
                   <div className="bg-[#0a1628] rounded-lg p-3">
                     <div className="text-[10px] text-slate-500 uppercase tracking-wider">PCR</div>
-                    <div className={`text-lg font-mono mt-1 ${
-                      optionChainData?.pcr > 1.2 ? 'text-green-400' : 
-                      optionChainData?.pcr < 0.8 ? 'text-red-400' : 'text-yellow-400'
-                    }`}>
+                    <div className={`text-lg font-mono mt-1 ${optionChainData?.pcr > 1.2 ? 'text-green-400' : optionChainData?.pcr < 0.8 ? 'text-red-400' : 'text-yellow-400'}`}>
                       {optionChainData?.pcr?.toFixed(2) || '—'}
                     </div>
-                    <div className="text-xs text-slate-400">
-                      {optionChainData?.pcr > 1.2 ? 'Bullish' : optionChainData?.pcr < 0.8 ? 'Bearish' : 'Neutral'}
-                    </div>
+                    <div className="text-xs text-slate-400">{optionChainData?.pcr > 1.2 ? 'Bullish' : optionChainData?.pcr < 0.8 ? 'Bearish' : 'Neutral'}</div>
                   </div>
-                  {/* Max Pain */}
                   <div className="bg-[#0a1628] rounded-lg p-3">
                     <div className="text-[10px] text-slate-500 uppercase tracking-wider">Max Pain</div>
-                    <div className="text-lg font-mono text-orange-400 mt-1">
-                      {optionChainData?.maxPain?.toLocaleString() || '—'}
-                    </div>
+                    <div className="text-lg font-mono text-orange-400 mt-1">{optionChainData?.maxPain?.toLocaleString() || '—'}</div>
                     <div className="text-xs text-slate-400">
-                      {optionChainData?.maxPain && optionChainData?.spotPrice ? 
-                        `${((optionChainData.maxPain - parseFloat(optionChainData.spotPrice)) / parseFloat(optionChainData.spotPrice) * 100).toFixed(1)}% from spot` : '—'}
+                      {optionChainData?.maxPain && optionChainData?.spotPrice
+                        ? `${((optionChainData.maxPain - parseFloat(optionChainData.spotPrice)) / parseFloat(optionChainData.spotPrice) * 100).toFixed(1)}% from spot`
+                        : '—'}
                     </div>
                   </div>
-                  {/* Expiry */}
                   <div className="bg-[#0a1628] rounded-lg p-3">
                     <div className="text-[10px] text-slate-500 uppercase tracking-wider">Expiry</div>
                     <div className="text-lg font-mono text-slate-200 mt-1">
@@ -1093,9 +942,7 @@ export default function TradesPage() {
                   </div>
                 </div>
 
-                {/* Support & Resistance Levels */}
                 <div className="grid grid-cols-2 gap-4">
-                  {/* Resistance */}
                   <div className="bg-[#0a1628] rounded-lg p-3">
                     <div className="text-[10px] text-red-400 uppercase tracking-wider mb-2">Resistance (Call OI)</div>
                     <div className="space-y-2">
@@ -1103,23 +950,18 @@ export default function TradesPage() {
                         <span className="text-red-400 font-medium">R1</span>
                         <span className="font-mono text-slate-200">
                           {optionChainData?.resistance?.toLocaleString() || '—'}
-                          <span className="text-slate-500 text-xs ml-2">
-                            ({(optionChainData?.resistanceOI / 100000).toFixed(1)}L)
-                          </span>
+                          <span className="text-slate-500 text-xs ml-2">({(optionChainData?.resistanceOI / 100000).toFixed(1)}L)</span>
                         </span>
                       </div>
                       <div className="flex justify-between items-center">
                         <span className="text-red-300">R2</span>
                         <span className="font-mono text-slate-300">
                           {optionChainData?.resistance2?.toLocaleString() || '—'}
-                          <span className="text-slate-500 text-xs ml-2">
-                            ({(optionChainData?.resistance2OI / 100000).toFixed(1)}L)
-                          </span>
+                          <span className="text-slate-500 text-xs ml-2">({(optionChainData?.resistance2OI / 100000).toFixed(1)}L)</span>
                         </span>
                       </div>
                     </div>
                   </div>
-                  {/* Support */}
                   <div className="bg-[#0a1628] rounded-lg p-3">
                     <div className="text-[10px] text-green-400 uppercase tracking-wider mb-2">Support (Put OI)</div>
                     <div className="space-y-2">
@@ -1127,25 +969,20 @@ export default function TradesPage() {
                         <span className="text-green-400 font-medium">S1</span>
                         <span className="font-mono text-slate-200">
                           {optionChainData?.support?.toLocaleString() || '—'}
-                          <span className="text-slate-500 text-xs ml-2">
-                            ({(optionChainData?.supportOI / 100000).toFixed(1)}L)
-                          </span>
+                          <span className="text-slate-500 text-xs ml-2">({(optionChainData?.supportOI / 100000).toFixed(1)}L)</span>
                         </span>
                       </div>
                       <div className="flex justify-between items-center">
                         <span className="text-green-300">S2</span>
                         <span className="font-mono text-slate-300">
                           {optionChainData?.support2?.toLocaleString() || '—'}
-                          <span className="text-slate-500 text-xs ml-2">
-                            ({(optionChainData?.support2OI / 100000).toFixed(1)}L)
-                          </span>
+                          <span className="text-slate-500 text-xs ml-2">({(optionChainData?.support2OI / 100000).toFixed(1)}L)</span>
                         </span>
                       </div>
                     </div>
                   </div>
                 </div>
 
-                {/* OI Change Alerts / Commentary */}
                 <div className="bg-[#0a1628] rounded-lg p-3">
                   <div className="flex items-center justify-between mb-2">
                     <div className="text-[10px] text-slate-500 uppercase tracking-wider">OI Change Alerts</div>
@@ -1154,21 +991,17 @@ export default function TradesPage() {
                   <div className="space-y-1.5 max-h-48 overflow-y-auto">
                     {optionChainData?.alerts && optionChainData.alerts.length > 0 ? (
                       optionChainData.alerts.map((alert, index) => (
-                        <div 
-                          key={index} 
-                          className={`flex items-start gap-2 text-xs py-1 px-2 rounded ${
-                            alert.type === 'bullish' ? 'bg-green-900/20 border-l-2 border-green-500' :
-                            alert.type === 'bearish' ? 'bg-red-900/20 border-l-2 border-red-500' :
-                            alert.type === 'warning' ? 'bg-yellow-900/20 border-l-2 border-yellow-500' :
-                            'bg-blue-900/20 border-l-2 border-blue-500'
-                          }`}
-                        >
+                        <div key={index} className={`flex items-start gap-2 text-xs py-1 px-2 rounded ${
+                          alert.type === 'bullish' ? 'bg-green-900/20 border-l-2 border-green-500' :
+                          alert.type === 'bearish' ? 'bg-red-900/20 border-l-2 border-red-500' :
+                          alert.type === 'warning' ? 'bg-yellow-900/20 border-l-2 border-yellow-500' :
+                          'bg-blue-900/20 border-l-2 border-blue-500'
+                        }`}>
                           <span className="text-slate-500 flex-shrink-0">{alert.time}</span>
                           <span className={`${
                             alert.type === 'bullish' ? 'text-green-400' :
                             alert.type === 'bearish' ? 'text-red-400' :
-                            alert.type === 'warning' ? 'text-yellow-400' :
-                            'text-blue-300'
+                            alert.type === 'warning' ? 'text-yellow-400' : 'text-blue-300'
                           }`}>
                             {alert.message}
                           </span>
@@ -1182,7 +1015,6 @@ export default function TradesPage() {
                   </div>
                 </div>
 
-                {/* Total OI Summary */}
                 <div className="flex justify-between text-xs text-slate-400 pt-2 border-t border-blue-800/40">
                   <span>Total Call OI: <span className="text-red-400 font-mono">{(optionChainData?.totalCallOI / 100000).toFixed(1)}L</span></span>
                   <span>Total Put OI: <span className="text-green-400 font-mono">{(optionChainData?.totalPutOI / 100000).toFixed(1)}L</span></span>
@@ -1193,6 +1025,7 @@ export default function TradesPage() {
               </div>
             )}
           </div>
+
         </div>
       </main>
     </div>
