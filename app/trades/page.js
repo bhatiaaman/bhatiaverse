@@ -80,7 +80,7 @@ export default function TradesPage() {
 
     fetchMarketData();
     // Refresh every 5 minutes
-    const interval = setInterval(fetchMarketData, 300000);
+    const interval = setInterval(fetchMarketData, 60000);
     return () => clearInterval(interval);
   }, []);
 
