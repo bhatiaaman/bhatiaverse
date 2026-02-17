@@ -49,9 +49,15 @@ function roundToStrike(price, gap) { return Math.round(price / gap) * gap; }
 
 function generateCommentary(current, previous, underlying) {
   const alerts = [];
-  // Format time in IST (Asia/Kolkata)
+  // Force time in IST as 'HH:mm IST' (24-hour)
   const now = new Date();
-  const timestamp = now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Kolkata' });
+  // Convert to IST
+  const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
+  const istOffset = 5.5 * 60 * 60 * 1000;
+  const ist = new Date(utc + istOffset);
+  const hh = ist.getHours().toString().padStart(2, '0');
+  const mm = ist.getMinutes().toString().padStart(2, '0');
+  const timestamp = `${hh}:${mm} IST`;
 
   if (!previous) {
     return [{ type: 'info', time: timestamp, message: `${underlying} options data initialized. Tracking OI changes...` }];
