@@ -7,7 +7,7 @@ import { ArrowLeft, RefreshCw, ExternalLink, TrendingUp, TrendingDown, BarChart3
 import { nseStrikeSteps } from '@/app/lib/nseStrikeSteps';
 import OrderModal from '@/components/OrderModal';
 
-export default function ScannerPage({ scanName }) {
+export default function ScannerPage({ scanName, scanSlug }) {
   const router = useRouter();
   const scannerLabel = scanName ? String(scanName) : null;
 
@@ -103,8 +103,9 @@ export default function ScannerPage({ scanName }) {
     const fetchScans = async () => {
       if (isRefreshing) return; // skip automatic fetch while we're performing a manual refresh
       try {
-        const url = scannerLabel
-          ? `/api/get-scans?scanner=${encodeURIComponent(scannerLabel)}`
+        const lookupKey = scanSlug || scannerLabel;
+        const url = lookupKey
+          ? `/api/get-scans?scanner=${encodeURIComponent(lookupKey)}`
           : '/api/get-scans';
 
         const response = await fetch(url);
@@ -142,7 +143,7 @@ export default function ScannerPage({ scanName }) {
     const interval = setInterval(fetchScans, 30000);
 
     return () => clearInterval(interval);
-  }, [selectedStock, lastAlertId, scannerLabel, isRefreshing]);
+  }, [selectedStock, lastAlertId, scannerLabel, scanSlug,isRefreshing]);
 
   // Fetch market data
   useEffect(() => {
@@ -306,7 +307,7 @@ export default function ScannerPage({ scanName }) {
       triggered_at: new Date().toISOString(),
       stocks: stocks,
       trigger_prices: prices,
-      scan_url: String(scanner).toLowerCase().replace(/[^a-z0-9]+/g, '-')
+      scan_url: scanSlug || String(scanner).toLowerCase().replace(/[^a-z0-9]+/g, '-')
     };
 
     try {
