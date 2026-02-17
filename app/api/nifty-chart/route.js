@@ -56,6 +56,16 @@ export async function GET(request) {
     return NextResponse.json({ candles: [], error: `Unknown interval: ${interval}. Supported: ${Object.keys(INTERVALS).join(', ')}` });
   }
 
+  // Helper to get IST date
+  function getISTDate(offsetDays = 0) {
+    // Get current UTC time, add 5.5 hours for IST
+    const now = new Date();
+    const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
+    const ist = new Date(utc + (5.5 * 60 * 60 * 1000));
+    if (offsetDays !== 0) ist.setDate(ist.getDate() + offsetDays);
+    return ist;
+  }
+
   try {
     const cacheKey = `${NS}:chart-${symbol}-${interval}-${days}`;
     const cached   = await redisGet(cacheKey);
@@ -71,8 +81,9 @@ export async function GET(request) {
     const kite = new KiteConnect({ api_key: apiKey });
     kite.setAccessToken(accessToken);
 
-    const toDate   = new Date();
-    const fromDate = new Date();
+    // Use IST for all date calculations
+    let toDate = getISTDate();
+    let fromDate = getISTDate();
 
     if (interval === 'week') {
       fromDate.setDate(fromDate.getDate() - Math.max(days * 7, 365));
