@@ -1,4 +1,5 @@
 'use client';
+console.log('OrderModal v2 with insights loaded'); // Add this line after imports
 
 import { useState, useEffect } from 'react';
 import { X, TrendingUp, TrendingDown, Loader2, RefreshCw, LogIn, Brain, AlertTriangle } from 'lucide-react';
