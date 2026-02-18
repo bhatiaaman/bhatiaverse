@@ -243,6 +243,25 @@ export default function BehavioralInsights({
         </div>
       )}
 
+      {/* ── Direction verdict banner ── */}
+      {result?.directionVerdict && (
+        <div className={`mx-3 mb-2 rounded-lg border p-2.5 ${
+          result.directionVerdict.suitable 
+            ? 'bg-green-900/20 border-green-500/30' 
+            : 'bg-amber-900/20 border-amber-500/30'
+        }`}>
+          <div className="flex items-center gap-2 mb-1">
+            <span className="text-sm font-semibold">
+              {result.directionVerdict.suitable ? '✅' : '⚠'} 
+              {result.directionVerdict.suitable ? ' GOOD SETUP' : ' WEAK SETUP'} FOR {result.directionVerdict.action || 'THIS TRADE'}
+            </span>
+          </div>
+          <p className="text-[11px] text-slate-400 leading-relaxed">
+            {result.directionVerdict.reason}
+          </p>
+        </div>
+      )}
+
       {/* ── Insights list ── */}
       {result?.insights?.length > 0 && (
         <div className="px-3 pb-2 space-y-1">
@@ -257,7 +276,7 @@ export default function BehavioralInsights({
               {/* When no warnings/cautions, show all by default. When there are warnings, collapse the ok ones. */}
               {badCount === 0 ? (
                 others.map(ins => (
-                  <InsightCard key={ins.id} insight={ins} defaultOpen={ins.level === 'info'} />
+                  <InsightCard key={ins.id} insight={ins} defaultOpen={true} />
                 ))
               ) : (
                 <>

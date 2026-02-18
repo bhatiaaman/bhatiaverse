@@ -214,6 +214,25 @@ const INDEX_TOKENS = {
   NIFTY: 256265, BANKNIFTY: 260105, FINNIFTY: 257801, MIDCPNIFTY: 288009,
 };
 
+// Search for stock/instrument token by symbol
+async function findInstrumentToken(symbol, exchange, apiKey, accessToken) {
+  try {
+    const res = await fetch(
+      `https://api.kite.trade/instruments/${exchange}`,
+      { headers: { 'Authorization': `token ${apiKey}:${accessToken}`, 'X-Kite-Version': '3' } }
+    );
+    if (!res.ok) return null;
+    const csv = await res.text();
+    const lines = csv.split('\n');
+    // CSV format: instrument_token,exchange_token,tradingsymbol,name,...
+    for (const line of lines) {
+      const cols = line.split(',');
+      if (cols[2] === symbol) return parseInt(cols[0]); // instrument_token
+    }
+    return null;
+  } catch { return null; }
+}
+
 // ─────────────────────────────────────────────
 // MAIN HANDLER
 // ─────────────────────────────────────────────
@@ -369,15 +388,20 @@ export async function POST(request) {
     let candles15m = null;
 
     if (hasKite) {
-      const token = INDEX_TOKENS[symbol];
+      let token = INDEX_TOKENS[symbol];
+      
+      // If not an index, search for stock token
+      if (!token && exchange) {
+        token = await findInstrumentToken(symbol, exchange, apiKey, accessToken);
+      }
+      
       if (token) {
-        // For indices — fetch both 5m and 15m
+        // Fetch both 5m and 15m candles
         [candles5m, candles15m] = await Promise.all([
           fetchCandles(token, '5minute', 7, apiKey, accessToken),
           fetchCandles(token, '15minute', 7, apiKey, accessToken),
         ]);
       }
-      // For stocks — would need instrument search, skip for now
     }
 
     if (candles5m && candles5m.length >= 20) {
@@ -538,7 +562,46 @@ export async function POST(request) {
       }
     }
 
-    // ── FINAL VERDICT ────────────────────────────────
+    // ── CHECK 13: Entry near support/resistance ─────────────────────────
+    if ((instrumentType === 'CE' || instrumentType === 'PE') && optionChain && spotPrice) {
+      const spot = parseFloat(spotPrice);
+      const support    = optionChain.support;
+      const resistance = optionChain.resistance;
+      
+      if (support && resistance) {
+        const distToSupport    = Math.abs((spot - support) / support * 100);
+        const distToResistance = Math.abs((spot - resistance) / resistance * 100);
+        
+        // Buying CE near resistance = risky
+        if (isBuyingCall && distToResistance < 0.5) {
+          riskScore += 12;
+          insights.push({ id: 'near_resistance', level: 'caution',
+            title: `Spot near R1 (₹${resistance}) — ${distToResistance.toFixed(2)}% away`,
+            detail: `Buying calls just below resistance is risky. Price may reject at ₹${resistance}. Wait for breakout confirmation or enter after close above resistance.`,
+            icon: '📍' });
+        }
+        
+        // Buying PE near support = risky
+        if (isBuyingPut && distToSupport < 0.5) {
+          riskScore += 12;
+          insights.push({ id: 'near_support', level: 'caution',
+            title: `Spot near S1 (₹${support}) — ${distToSupport.toFixed(2)}% away`,
+            detail: `Buying puts just above support is risky. Price may bounce at ₹${support}. Wait for breakdown confirmation or enter after close below support.`,
+            icon: '📍' });
+        }
+        
+        // In the middle = good entry zone
+        if (distToSupport > 1 && distToResistance > 1) {
+          insights.push({ id: 'good_entry_zone', level: 'clear',
+            title: `Away from key S/R levels`,
+            detail: `Spot at ₹${spot.toFixed(0)} is ${distToSupport.toFixed(1)}% above S1 (₹${support}) and ${distToResistance.toFixed(1)}% below R1 (₹${resistance}). Room to move.`,
+            icon: '✅' });
+        }
+      }
+    }
+
+    // ── FINAL VERDICT ────────────────────────────────────────────────────
+    riskScore = Math.min(100, riskScore);    // ── FINAL VERDICT ────────────────────────────────
     riskScore = Math.min(100, riskScore);
     const verdict =
       riskScore >= 60 ? 'danger' :
@@ -549,7 +612,57 @@ export async function POST(request) {
     const levelOrder = { warning: 0, caution: 1, info: 2, clear: 3 };
     insights.sort((a, b) => (levelOrder[a.level] ?? 9) - (levelOrder[b.level] ?? 9));
 
-    return NextResponse.json({ verdict, riskScore, insights, deepAnalysis: !!candles5m });
+    // ── Directional summary ──────────────────────────────────────────────
+    // Generate a clear direction-aware verdict
+    let directionVerdict = null;
+    if (isDirectionalTrade && candles5m) {
+      const isBuying = transactionType === 'BUY' || isBuyingCall;
+      const isSelling = transactionType === 'SELL' || isBuyingPut;
+      
+      // Count bullish vs bearish signals from candle analysis
+      let bullishSignals = 0, bearishSignals = 0;
+      
+      if (candles5m.length > 0) {
+        const ema9 = calcEMA(candles5m, 9);
+        const ema21 = calcEMA(candles5m, 21);
+        if (ema9 > ema21) bullishSignals++; else bearishSignals++;
+        
+        const vwap = calcVWAP(candles5m);
+        const lastPrice = candles5m[candles5m.length - 1].close;
+        if (vwap && lastPrice > vwap) bullishSignals++; else if (vwap) bearishSignals++;
+        
+        const rsi = calcRSI(candles5m, 14);
+        if (rsi > 55) bullishSignals++; else if (rsi < 45) bearishSignals++;
+        
+        const volAnalysis = analyzeVolume(candles5m);
+        if (volAnalysis?.signal === 'bullish') bullishSignals++;
+        else if (volAnalysis?.signal === 'bearish') bearishSignals++;
+        
+        const patterns = detectPatterns(candles5m);
+        for (const p of patterns) {
+          if (p.direction === 'bullish') bullishSignals++;
+          else if (p.direction === 'bearish') bearishSignals++;
+        }
+      }
+      
+      const netBias = bullishSignals - bearishSignals;
+      
+      if (isBuying) {
+        const action = 'BUYING';
+        if (netBias >= 2) directionVerdict = { suitable: true, action, reason: 'Multiple bullish signals support long entry.' };
+        else if (netBias >= 0) directionVerdict = { suitable: true, action, reason: 'Neutral to mildly bullish — acceptable for buying.' };
+        else if (netBias >= -1) directionVerdict = { suitable: false, action, reason: 'Mixed signals — not ideal for long entry.' };
+        else directionVerdict = { suitable: false, action, reason: 'Bearish bias — buying against the trend.' };
+      } else if (isSelling) {
+        const action = 'SELLING';
+        if (netBias <= -2) directionVerdict = { suitable: true, action, reason: 'Multiple bearish signals support short entry.' };
+        else if (netBias <= 0) directionVerdict = { suitable: true, action, reason: 'Neutral to mildly bearish — acceptable for selling.' };
+        else if (netBias <= 1) directionVerdict = { suitable: false, action, reason: 'Mixed signals — not ideal for short entry.' };
+        else directionVerdict = { suitable: false, action, reason: 'Bullish bias — selling against the trend.' };
+      }
+    }
+
+    return NextResponse.json({ verdict, riskScore, insights, deepAnalysis: !!candles5m, directionVerdict });
 
   } catch (err) {
     console.error('behavioral-agent error:', err.message);

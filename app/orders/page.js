@@ -59,6 +59,7 @@ export default function OrdersPage() {
   const [insightBadge, setInsightBadge] = useState({ count: 0, verdict: 'clear' });
   const [avgDownAlert, setAvgDownAlert] = useState(null); // { position } — blocks placement
   const [avgDownBypass, setAvgDownBypass] = useState(false); // user confirmed, skip guard once
+  const [trendConflictAlert, setTrendConflictAlert] = useState(null); // { sentiment } — warns against trend
   // Context data for behavioral agent (fetched once on mount)
   const [sentimentCtx, setSentimentCtx] = useState(null);
   const [marketCtx, setMarketCtx] = useState(null);
@@ -120,6 +121,25 @@ export default function OrdersPage() {
       if (!silent) setPositionsLoading(false);
     }
   };
+
+  // Read URL params to pre-fill form
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const urlSymbol = params.get('symbol');
+    const urlType = params.get('type');
+    const urlTransaction = params.get('transaction');
+    
+    if (urlSymbol) {
+      setSymbol(urlSymbol);
+      selectStock(urlSymbol);
+    }
+    if (urlType && ['EQ', 'CE', 'PE', 'FUT'].includes(urlType)) {
+      setInstrumentType(urlType);
+    }
+    if (urlTransaction && ['BUY', 'SELL'].includes(urlTransaction)) {
+      setTransactionType(urlTransaction);
+    }
+  }, []);
 
   useEffect(() => {
     checkKiteConnection();
@@ -271,7 +291,9 @@ export default function OrdersPage() {
       if (matchingPos) {
         const isAddingLong  = matchingPos.quantity > 0 && transactionType === 'BUY';
         const isAddingShort = matchingPos.quantity < 0 && transactionType === 'SELL';
-        const isLosingTrade = (matchingPos.pnl || 0) < -200;
+        const isLosingTrade = matchingPos.exchange === 'NFO'
+          ? (matchingPos.pnl || 0) < -500  // Options: ₹500 threshold
+          : (matchingPos.pnl || 0) < -200; // Equity: ₹200 threshold
         if ((isAddingLong || isAddingShort) && isLosingTrade) {
           setAvgDownAlert({ position: matchingPos });
           return;
@@ -279,6 +301,36 @@ export default function OrdersPage() {
       }
     }
     setAvgDownBypass(false); // reset bypass after use
+    
+    // ── Trend conflict guard ──────────────────────────────────────────────
+    // Check if trading against BOTH daily and intraday sentiment
+    if (sentimentCtx?.overall?.score != null) {
+      const dailyScore    = sentimentCtx.overall.score;
+      const intradayScore = sentimentCtx.timeframes?.intraday?.score;
+      const isBuyingCall = transactionType === 'BUY' && instrumentType === 'CE';
+      const isBuyingPut  = transactionType === 'BUY' && instrumentType === 'PE';
+      const isBuyingEQ   = transactionType === 'BUY' && instrumentType === 'EQ';
+      const isSellingEQ  = transactionType === 'SELL' && instrumentType === 'EQ';
+      
+      const bearish = dailyScore < 45;
+      const bullish = dailyScore > 55;
+      const intradayBearish = intradayScore != null && intradayScore < 45;
+      const intradayBullish = intradayScore != null && intradayScore > 55;
+      
+      // Block if against BOTH timeframes
+      const againstBoth = 
+        ((isBuyingCall || isBuyingEQ) && bearish && intradayBearish) ||
+        ((isBuyingPut || isSellingEQ) && bullish && intradayBullish);
+      
+      if (againstBoth) {
+        setTrendConflictAlert({
+          dailyScore,
+          intradayScore,
+          direction: bearish ? 'bearish' : 'bullish',
+        });
+        return;
+      }
+    }
     // ────────────────────────────────────────────────────────────────────
 
     let ts, ex;
@@ -999,6 +1051,69 @@ export default function OrdersPage() {
           </div>
         </div>
       </main>
+
+      {/* Trend Conflict Alert Modal */}
+      {trendConflictAlert && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+          <div className="bg-slate-800 border border-amber-500/40 rounded-2xl p-6 w-96 shadow-2xl">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-amber-500/20 flex items-center justify-center flex-shrink-0">
+                <span className="text-xl">↕</span>
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-amber-400">Trading Against the Trend</h3>
+                <p className="text-xs text-slate-400">Counter-trend trade alert</p>
+              </div>
+            </div>
+
+            <div className="bg-amber-900/20 border border-amber-500/20 rounded-xl p-4 mb-4">
+              <div className="grid grid-cols-2 gap-3 mb-3">
+                <div>
+                  <p className="text-xs text-slate-500">Daily Sentiment</p>
+                  <p className={`text-lg font-bold ${trendConflictAlert.dailyScore < 45 ? 'text-red-400' : 'text-green-400'}`}>
+                    {trendConflictAlert.dailyScore}/100
+                  </p>
+                  <p className="text-xs text-slate-400">{trendConflictAlert.direction}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-500">Intraday Bias</p>
+                  <p className={`text-lg font-bold ${trendConflictAlert.intradayScore < 45 ? 'text-red-400' : 'text-green-400'}`}>
+                    {trendConflictAlert.intradayScore}/100
+                  </p>
+                  <p className="text-xs text-slate-400">{trendConflictAlert.direction}</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-slate-900/50 border border-white/5 rounded-xl px-4 py-3 mb-5">
+              <p className="text-xs text-slate-300 leading-relaxed">
+                You're taking a <strong className="text-amber-400">counter-trend position</strong> against {trendConflictAlert.direction} sentiment on both daily and intraday timeframes.
+              </p>
+              <p className="text-xs text-slate-500 mt-2">
+                Counter-trend trades have lower probability. Consider waiting for trend reversal confirmation or use tighter stops.
+              </p>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setTrendConflictAlert(null)}
+                className="flex-1 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-sm font-medium transition-colors border border-white/10"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  setTrendConflictAlert(null);
+                  setAvgDownBypass(true); // reuse bypass flag for all guards
+                }}
+                className="flex-1 py-2.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 text-sm font-medium transition-colors border border-amber-500/30"
+              >
+                Place Anyway
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Averaging-Down Alert Modal */}
       {avgDownAlert && (

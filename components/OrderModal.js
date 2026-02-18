@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { X, TrendingUp, TrendingDown, Loader2, RefreshCw, LogIn } from 'lucide-react';
+import { X, TrendingUp, TrendingDown, Loader2, RefreshCw, LogIn, Brain, AlertTriangle } from 'lucide-react';
 import { nseStrikeSteps } from '@/app/lib/nseStrikeSteps';
 
 export default function OrderModal({ 
@@ -10,13 +10,13 @@ export default function OrderModal({
   symbol, 
   price, 
   defaultType = 'BUY',
-  optionType = null, // 'CE', 'PE', or null for equity
-  optionSymbol = null, // Full option trading symbol (passed from scanner, may be TradingView format)
+  optionType = null,
+  optionSymbol = null,
   onOrderPlaced 
 }) {
   const [transactionType, setTransactionType] = useState(defaultType);
   const [quantity, setQuantity] = useState(1);
-  const [product, setProduct] = useState(optionType ? 'NRML' : 'CNC'); // NRML for options
+  const [product, setProduct] = useState(optionType ? 'NRML' : 'CNC');
   const [orderType, setOrderType] = useState('MARKET');
   const [limitPrice, setLimitPrice] = useState('');
   const [triggerPrice, setTriggerPrice] = useState('');
@@ -25,12 +25,10 @@ export default function OrderModal({
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   
-  // Kite auth state
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [checkingAuth, setCheckingAuth] = useState(true);
   const [kiteApiKey, setKiteApiKey] = useState('');
   
-  // Option-specific state
   const [kiteOptionSymbol, setKiteOptionSymbol] = useState(null);
   const [optionLtp, setOptionLtp] = useState(null);
   const [strike, setStrike] = useState(null);
@@ -38,7 +36,10 @@ export default function OrderModal({
   const [lotSize, setLotSize] = useState(1);
   const [fetchingLtp, setFetchingLtp] = useState(false);
 
-  // Check Kite auth status when modal opens
+  // ─── QUICK INSIGHTS STATE ────────────────────────────────────────────
+  const [insightsLoading, setInsightsLoading] = useState(false);
+  const [insightsResult, setInsightsResult] = useState(null);
+
   useEffect(() => {
     if (isOpen) {
       checkKiteAuth();
@@ -61,10 +62,7 @@ export default function OrderModal({
   };
 
   const handleKiteLogin = () => {
-    // Open settings page in popup for full login flow
     const popup = window.open('/settings/kite', 'KiteSettings', 'width=600,height=700,scrollbars=yes');
-    
-    // Listen for success message from popup
     const handleMessage = (event) => {
       if (event.data?.type === 'KITE_LOGIN_SUCCESS') {
         checkKiteAuth();
@@ -72,19 +70,15 @@ export default function OrderModal({
       }
     };
     window.addEventListener('message', handleMessage);
-    
-    // Poll for popup close
     const checkPopup = setInterval(() => {
       if (popup?.closed) {
         clearInterval(checkPopup);
         window.removeEventListener('message', handleMessage);
-        // Re-check auth after popup closes
         setTimeout(() => checkKiteAuth(), 500);
       }
     }, 500);
   };
 
-  // Fetch option details and LTP from Kite when modal opens for options
   useEffect(() => {
     if (isOpen && optionType && symbol && price && isLoggedIn) {
       fetchOptionDetails();
@@ -93,11 +87,10 @@ export default function OrderModal({
 
   const fetchOptionDetails = async () => {
     setFetchingLtp(true);
-    setError(''); // Clear previous errors
+    setError('');
     try {
       const res = await fetch(`/api/option-ltp?symbol=${symbol}&price=${price}&type=${optionType}`);
       const data = await res.json();
-      
       if (res.ok && data.optionSymbol) {
         setKiteOptionSymbol(data.optionSymbol);
         setOptionLtp(data.ltp);
@@ -106,8 +99,6 @@ export default function OrderModal({
         if (data.lotSize) setLotSize(data.lotSize);
         setLimitPrice(data.ltp?.toString() || '');
       } else if (res.status === 401) {
-        // Auth error - don't show as error, just leave LTP unavailable
-        // The login prompt will be shown by the auth check
         setIsLoggedIn(false);
       } else {
         setError(data.error || 'Failed to fetch option details');
@@ -120,10 +111,8 @@ export default function OrderModal({
     }
   };
 
-  // Calculate expected strike based on price (using NSE strike steps data)
   const getExpectedStrike = (sym, prc, type) => {
     const p = parseFloat(prc) || 0;
-    // Use NSE strike steps data, fallback to price-based heuristic
     let step = nseStrikeSteps[sym];
     if (!step) {
       if (p >= 5000) step = 50;
@@ -132,19 +121,15 @@ export default function OrderModal({
       else if (p >= 100) step = 5;
       else step = 2.5;
     }
-    
-    return type === 'CE' 
-      ? Math.ceil(p / step) * step 
-      : Math.floor(p / step) * step;
+    return type === 'CE' ? Math.ceil(p / step) * step : Math.floor(p / step) * step;
   };
 
-  // Reset form when modal opens
   useEffect(() => {
     if (isOpen) {
       setTransactionType(defaultType);
       setQuantity(optionType ? 1 : 1);
       setProduct(optionType ? 'NRML' : 'CNC');
-      setOrderType(optionType ? 'LIMIT' : 'MARKET'); // Default to LIMIT for options
+      setOrderType(optionType ? 'LIMIT' : 'MARKET');
       setLimitPrice(price?.toString() || '');
       setTriggerPrice('');
       setExchange(optionType ? 'NFO' : 'NSE');
@@ -153,7 +138,7 @@ export default function OrderModal({
       setKiteOptionSymbol(null);
       setOptionLtp(null);
       setExpiryDay(null);
-      // Calculate expected strike immediately for UI display
+      setInsightsResult(null); // Reset insights
       if (optionType && price) {
         setStrike(getExpectedStrike(symbol, price, optionType));
       } else {
@@ -162,22 +147,75 @@ export default function OrderModal({
     }
   }, [isOpen, defaultType, price, optionType, symbol]);
 
+  // ─── FETCH QUICK INSIGHTS ────────────────────────────────────────────
+  const fetchQuickInsights = async () => {
+    if (!symbol || !transactionType) return;
+    setInsightsLoading(true);
+    try {
+      const [sentRes, posRes, ordRes] = await Promise.allSettled([
+        fetch('/api/sentiment').then(r => r.json()),
+        fetch('/api/kite-positions').then(r => r.json()),
+        fetch('/api/kite-orders?limit=10').then(r => r.json()),
+      ]);
+      
+      const sentimentCtx = sentRes.status === 'fulfilled' ? sentRes.value : null;
+      const positions = posRes.status === 'fulfilled' ? posRes.value?.positions || [] : [];
+      const openOrders = ordRes.status === 'fulfilled' ? ordRes.value?.orders || [] : [];
+      
+      const res = await fetch('/api/behavioral-agent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          symbol,
+          tradingsymbol: kiteOptionSymbol || optionSymbol || symbol,
+          exchange: optionType ? 'NFO' : 'NSE',
+          instrumentType: optionType || 'EQ',
+          transactionType,
+          quantity: quantity || 1,
+          price: optionType ? (optionLtp || price) : price,
+          spotPrice: price || 0,
+          context: {
+            positions,
+            openOrders,
+            sentimentScore: sentimentCtx?.overall?.score,
+            sentimentBias: sentimentCtx?.overall?.mood,
+            intradayScore: sentimentCtx?.timeframes?.intraday?.score,
+            intradayBias: sentimentCtx?.timeframes?.intraday?.bias,
+            vix: null,
+            sectorData: [],
+            pcr: null,
+            optionChain: null,
+          },
+        }),
+      });
+      
+      const data = await res.json();
+      setInsightsResult(data);
+    } catch (err) {
+      console.error('Quick insights error:', err);
+    } finally {
+      setInsightsLoading(false);
+    }
+  };
+
+  // Trigger insights when transaction type changes
+  useEffect(() => {
+    if (isOpen && symbol && transactionType && isLoggedIn) {
+      fetchQuickInsights();
+    }
+  }, [isOpen, symbol, transactionType, isLoggedIn, kiteOptionSymbol]);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
     if (!isLoggedIn) {
       setError('Please login to Kite first');
       return;
     }
-    
     setLoading(true);
     setError('');
     setSuccess('');
-
     try {
-      // Use Kite option symbol for options, otherwise stock symbol
       const tradingSymbol = optionType ? (kiteOptionSymbol || optionSymbol) : symbol;
-      
       const orderData = {
         tradingsymbol: tradingSymbol,
         exchange,
@@ -187,41 +225,31 @@ export default function OrderModal({
         order_type: orderType,
         variety: 'regular',
       };
-
       if (orderType === 'LIMIT' && limitPrice) {
         orderData.price = parseFloat(limitPrice);
       }
-
       if (['SL', 'SL-M'].includes(orderType) && triggerPrice) {
         orderData.trigger_price = parseFloat(triggerPrice);
         if (orderType === 'SL' && limitPrice) {
           orderData.price = parseFloat(limitPrice);
         }
       }
-
       const response = await fetch('/api/place-order', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(orderData),
       });
-
       const result = await response.json();
-
       if (!response.ok) {
         throw new Error(result.error || 'Failed to place order');
       }
-
       setSuccess(`Order placed! ID: ${result.order_id}`);
-      
       if (onOrderPlaced) {
         onOrderPlaced(result);
       }
-
-      // Close modal after 2 seconds
       setTimeout(() => {
         onClose();
       }, 2000);
-
     } catch (err) {
       setError(err.message);
     } finally {
@@ -231,22 +259,32 @@ export default function OrderModal({
 
   if (!isOpen) return null;
 
-  // For options, use option LTP; for stocks, use stock price
   const displayPrice = optionType ? (optionLtp || 0) : (price || 0);
   const estimatedValue = quantity * (parseFloat(limitPrice) || displayPrice);
 
+  // ─── VERDICT CONFIG ───────────────────────────────────────────────────
+  const getVerdictColor = (verdict) => {
+    switch (verdict) {
+      case 'danger': return { bg: 'bg-red-900/20', border: 'border-red-500/40', text: 'text-red-400', dot: 'bg-red-500' };
+      case 'warning': return { bg: 'bg-amber-900/20', border: 'border-amber-500/30', text: 'text-amber-400', dot: 'bg-amber-500' };
+      case 'caution': return { bg: 'bg-yellow-900/15', border: 'border-yellow-500/20', text: 'text-yellow-400', dot: 'bg-yellow-500' };
+      default: return { bg: 'bg-green-900/20', border: 'border-green-500/30', text: 'text-green-400', dot: 'bg-green-500' };
+    }
+  };
+
+  const getDirectionColor = (suitable) => {
+    return suitable
+      ? { bg: 'bg-green-900/20', border: 'border-green-500/30', text: 'text-green-400', icon: '✅' }
+      : { bg: 'bg-amber-900/20', border: 'border-amber-500/30', text: 'text-amber-400', icon: '⚠' };
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
-      {/* Backdrop */}
-      <div 
-        className="absolute inset-0 bg-black/70 backdrop-blur-sm"
-        onClick={onClose}
-      />
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
       
-      {/* Modal */}
-      <div className="relative bg-slate-800 border border-slate-600 rounded-xl shadow-2xl w-full max-w-md mx-4 overflow-hidden">
+      <div className="relative bg-slate-800 border border-slate-600 rounded-xl shadow-2xl w-full max-w-md mx-4 max-h-[90vh] overflow-y-auto">
         {/* Header */}
-        <div className={`px-5 py-4 border-b border-slate-700 flex items-center justify-between ${
+        <div className={`px-5 py-4 border-b border-slate-700 flex items-center justify-between sticky top-0 z-10 ${
           transactionType === 'BUY' ? 'bg-green-900/30' : 'bg-red-900/30'
         }`}>
           <div className="flex items-center gap-3">
@@ -305,16 +343,12 @@ export default function OrderModal({
                 <RefreshCw className={`w-4 h-4 text-slate-400 ${fetchingLtp ? 'animate-spin' : ''}`} />
               </button>
             )}
-            <button
-              onClick={onClose}
-              className="p-2 hover:bg-slate-700 rounded-lg transition-colors"
-            >
+            <button onClick={onClose} className="p-2 hover:bg-slate-700 rounded-lg transition-colors">
               <X className="w-5 h-5 text-slate-400" />
             </button>
           </div>
         </div>
 
-        {/* Auth Check */}
         {checkingAuth ? (
           <div className="p-8 flex flex-col items-center justify-center">
             <Loader2 className="w-8 h-8 text-blue-400 animate-spin mb-3" />
@@ -347,8 +381,92 @@ export default function OrderModal({
             </button>
           </div>
         ) : (
-        /* Form */
         <form onSubmit={handleSubmit} className="p-5 space-y-4">
+          
+          {/* ═══ QUICK INSIGHTS BANNER ═══ */}
+          {insightsLoading && (
+            <div className="p-3 bg-slate-700/50 border border-white/10 rounded-xl flex items-center gap-2">
+              <Brain size={16} className="text-purple-400 animate-pulse" />
+              <span className="text-xs text-slate-300">Analyzing trade setup...</span>
+            </div>
+          )}
+
+          {insightsResult && !insightsLoading && (
+            <div className="space-y-2">
+              {/* Score + Verdict */}
+              {(() => {
+                const vc = getVerdictColor(insightsResult.verdict);
+                return (
+                  <div className={`p-3 rounded-xl border ${vc.bg} ${vc.border}`}>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <div className="flex items-center gap-2">
+                        <div className="relative">
+                          <svg width="32" height="32" viewBox="0 0 32 32" className="-rotate-90">
+                            <circle cx="16" cy="16" r="14" fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth="3" />
+                            <circle 
+                              cx="16" cy="16" r="14" fill="none" 
+                              stroke={vc.dot.replace('bg-', '#')} 
+                              strokeWidth="3"
+                              strokeDasharray={`${(insightsResult.riskScore / 100) * 88} 88`}
+                              strokeLinecap="round"
+                            />
+                          </svg>
+                          <div className="absolute inset-0 flex items-center justify-center">
+                            <span className={`text-xs font-bold ${vc.text}`}>{insightsResult.riskScore}</span>
+                          </div>
+                        </div>
+                        <div>
+                          <div className={`text-sm font-semibold ${vc.text}`}>
+                            {insightsResult.verdict === 'danger' ? 'High Risk' :
+                             insightsResult.verdict === 'warning' ? 'Caution' :
+                             insightsResult.verdict === 'caution' ? 'Review' : 'Looks Good'}
+                          </div>
+                          <div className="text-[10px] text-slate-500">Risk Score</div>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={fetchQuickInsights}
+                        className="p-1.5 hover:bg-white/5 rounded transition-colors"
+                        title="Refresh"
+                      >
+                        <RefreshCw className="w-3.5 h-3.5 text-slate-400" />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Direction Verdict */}
+              {insightsResult.directionVerdict && (() => {
+                const dc = getDirectionColor(insightsResult.directionVerdict.suitable);
+                return (
+                  <div className={`p-2.5 rounded-lg border ${dc.bg} ${dc.border}`}>
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <span className="text-sm">{dc.icon}</span>
+                      <span className={`text-xs font-semibold ${dc.text}`}>
+                        {insightsResult.directionVerdict.suitable ? 'GOOD SETUP' : 'WEAK SETUP'} FOR {insightsResult.directionVerdict.action || 'THIS TRADE'}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-400 leading-relaxed">
+                      {insightsResult.directionVerdict.reason}
+                    </p>
+                  </div>
+                );
+              })()}
+
+              {/* Link to full analysis */}
+              <a
+                href={`/orders?symbol=${encodeURIComponent(symbol)}&type=${encodeURIComponent(optionType || 'EQ')}&transaction=${encodeURIComponent(transactionType)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="block text-center text-xs text-blue-400 hover:text-blue-300 py-1 hover:underline"
+              >
+                See Full Analysis →
+              </a>
+            </div>
+          )}
+
           {/* Buy/Sell Toggle */}
           <div className="flex gap-2">
             <button
@@ -375,7 +493,7 @@ export default function OrderModal({
             </button>
           </div>
 
-          {/* Product Type */}
+          {/* Rest of form (unchanged) */}
           <div>
             <label className="block text-slate-400 text-xs mb-1.5">Product Type</label>
             <div className="flex gap-2">
@@ -404,7 +522,6 @@ export default function OrderModal({
             </div>
           </div>
 
-          {/* Order Type */}
           <div>
             <label className="block text-slate-400 text-xs mb-1.5">Order Type</label>
             <div className="flex gap-2">
@@ -423,7 +540,6 @@ export default function OrderModal({
                 </button>
               ))}
             </div>
-            {/* Warning for Market orders on Options */}
             {optionType && orderType === 'MARKET' && (
               <div className="mt-2 p-2 bg-amber-900/30 border border-amber-600/50 rounded-lg">
                 <p className="text-amber-400 text-xs flex items-center gap-1.5">
@@ -434,7 +550,6 @@ export default function OrderModal({
             )}
           </div>
 
-          {/* Quantity and Price/LTP Row */}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-slate-400 text-xs mb-1.5">Quantity</label>
@@ -478,7 +593,6 @@ export default function OrderModal({
             )}
           </div>
 
-          {/* Trigger Price for SL orders */}
           {['SL', 'SL-M'].includes(orderType) && (
             <div>
               <label className="block text-slate-400 text-xs mb-1.5">Trigger Price</label>
@@ -493,7 +607,6 @@ export default function OrderModal({
             </div>
           )}
 
-          {/* Estimated Value */}
           <div className="bg-slate-700/50 rounded-lg p-3 flex justify-between items-center">
             <span className="text-slate-400 text-sm">Estimated Value</span>
             <span className="text-white font-mono font-semibold">
@@ -501,7 +614,6 @@ export default function OrderModal({
             </span>
           </div>
 
-          {/* Error/Success Messages */}
           {error && (
             <div className="bg-red-900/30 border border-red-700 text-red-400 px-4 py-3 rounded-lg text-sm">
               {error}
@@ -514,7 +626,6 @@ export default function OrderModal({
             </div>
           )}
 
-          {/* Submit Button */}
           <button
             type="submit"
             disabled={loading}
@@ -534,7 +645,6 @@ export default function OrderModal({
             )}
           </button>
 
-          {/* Disclaimer */}
           <p className="text-slate-500 text-[10px] text-center">
             Orders are placed via Kite Connect API. Market orders execute at current market price.
           </p>
