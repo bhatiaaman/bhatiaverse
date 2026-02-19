@@ -132,13 +132,34 @@ export default function BehavioralInsights({
         const deepOnly = prev.insights.filter(i => !passive.insights.find(p => p.id === i.id));
         return { ...prev, insights: [...passive.insights, ...deepOnly], riskScore: Math.min(100, passive.riskScore + (prev.deepRiskScore || 0)) };
       }
-      return { ...passive, deepAnalysis: false };
+      // New symbol/type — clear direction verdict (it's stale from old analysis)
+      return { ...passive, deepAnalysis: false, directionVerdict: null };
     });
     setState('passive');
 
     const warnCount = passive.insights.filter(i => i.level === 'warning' || i.level === 'caution').length;
     onPassiveReady?.(warnCount, passive.verdict);
   }, [symbol, tradingsymbol, instrumentType, transactionType, positions?.length, openOrders?.length]);
+
+  // ── Auto re-run deep analysis when tradingsymbol/instrumentType changes ────
+  const prevTradingsymbolRef = useRef(tradingsymbol);
+  const prevInstrumentTypeRef = useRef(instrumentType);
+  
+  useEffect(() => {
+    // If user had run deep analysis before, and now symbol/type changed, auto re-run
+    if ((state === 'done' || state === 'passive') && symbol) {
+      const symbolChanged = tradingsymbol !== prevTradingsymbolRef.current;
+      const typeChanged = instrumentType !== prevInstrumentTypeRef.current;
+      
+      if (symbolChanged || typeChanged) {
+        console.log('[Insights] Symbol/type changed, re-running deep analysis');
+        runDeepAnalysis();
+      }
+    }
+    
+    prevTradingsymbolRef.current = tradingsymbol;
+    prevInstrumentTypeRef.current = instrumentType;
+  }, [tradingsymbol, instrumentType, state, symbol]);
 
   // ── Deep analysis ────────────────────────────────────────────────────────────
   const runDeepAnalysis = async () => {
@@ -259,6 +280,81 @@ export default function BehavioralInsights({
           <p className="text-[11px] text-slate-400 leading-relaxed">
             {result.directionVerdict.reason}
           </p>
+        </div>
+      )}
+
+      {/* ── Station Analysis Card ── */}
+      {result?.stationAnalysis?.available && (
+        <div className="mx-3 mb-2">
+          <div className={`rounded-xl border p-3 ${
+            result.stationAnalysis.atStation
+              ? result.stationAnalysis.tradeEvaluation.suitable
+                ? 'bg-green-900/15 border-green-500/25'
+                : 'bg-amber-900/15 border-amber-500/25'
+              : 'bg-slate-800/50 border-white/10'
+          }`}>
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <span className="text-base">🎯</span>
+                <span className="text-xs font-semibold text-white">
+                  {result.stationAnalysis.atStation ? 'AT STATION' : 'No Station Nearby'}
+                </span>
+              </div>
+              {result.stationAnalysis.nearestStation && (
+                <span className={`text-[10px] px-1.5 py-0.5 rounded ${
+                  result.stationAnalysis.nearestStation.quality >= 7
+                    ? 'bg-green-600/30 text-green-300'
+                    : 'bg-slate-600/30 text-slate-300'
+                }`}>
+                  Q: {result.stationAnalysis.nearestStation.quality}/10
+                </span>
+              )}
+            </div>
+            
+            {result.stationAnalysis.nearestStation && (
+              <div className="space-y-1.5">
+                <div className="flex items-baseline gap-2">
+                  <span className="text-[11px] text-slate-500">Level:</span>
+                  <span className="text-sm font-mono font-semibold text-white">
+                    ₹{result.stationAnalysis.nearestStation.price.toFixed(2)}
+                  </span>
+                  <span className="text-[10px] text-slate-400">
+                    ({result.stationAnalysis.nearestStation.distance.toFixed(2)}% away)
+                  </span>
+                </div>
+                
+                <div className="flex items-baseline gap-2">
+                  <span className="text-[11px] text-slate-500">Type:</span>
+                  <span className={`text-xs font-medium ${
+                    result.stationAnalysis.nearestStation.type === 'SUPPORT' ? 'text-green-400' :
+                    result.stationAnalysis.nearestStation.type === 'RESISTANCE' ? 'text-red-400' :
+                    'text-purple-400'
+                  }`}>
+                    {result.stationAnalysis.nearestStation.type}
+                  </span>
+                </div>
+                
+                {result.stationAnalysis.nearestStation.factors?.length > 0 && (
+                  <div className="mt-1.5">
+                    <span className="text-[10px] text-slate-500">Confluence:</span>
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {result.stationAnalysis.nearestStation.factors.map((factor, i) => (
+                        <span key={i} className="text-[9px] px-1.5 py-0.5 rounded bg-white/5 text-slate-400">
+                          {factor}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                
+                {result.stationAnalysis.nearestStation.tests > 0 && (
+                  <div className="text-[10px] text-slate-500 mt-1">
+                    {result.stationAnalysis.nearestStation.tests} prior test{result.stationAnalysis.nearestStation.tests > 1 ? 's' : ''}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       )}
 

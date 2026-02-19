@@ -542,11 +542,11 @@ export default function OrdersPage() {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-          {/* Left Panel: Stock Selection & Order Form (3/5) */}
-          <div className="lg:col-span-3 space-y-4">
-            <div className="bg-gradient-to-br from-slate-800/50 to-slate-900/50 rounded-2xl border border-white/10 p-5">
-              <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          {/* Left Panel: Order Form (35% = 4/12) */}
+          <div className="lg:col-span-3 space-y-3">
+            <div className="bg-gradient-to-br from-slate-800/50 to-slate-900/50 rounded-2xl border border-white/10 p-6">
+              <h2 className="text-lg font-semibold mb-5 flex items-center gap-2">
                 <ShoppingCart size={20} className="text-blue-400" /> Place Order
               </h2>
               <div className="mb-4 relative">
@@ -612,18 +612,13 @@ export default function OrdersPage() {
                     </div>
                   )}
                   <div className="p-4 bg-slate-900/50 rounded-xl border border-white/5">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <span className="text-gray-400 text-sm">Spot Price</span>
-                        <p className="text-lg font-semibold">{symbol}</p>
+                    <div className="space-y-1.5">
+                      <span className="text-gray-400 text-xs">Spot Price</span>
+                      <div className="flex items-center justify-between">
+                        <p className="text-lg font-bold">{symbol}</p>
+                        <span className="text-xl font-bold">₹{spotPrice ? spotPrice.toLocaleString() : '--'}</span>
                       </div>
-                      <div className="flex items-center gap-3">
-                        {ltpLoading
-                          ? <RefreshCw size={20} className="animate-spin text-gray-400" />
-                          : spotPrice
-                            ? <span className="text-2xl font-bold">₹{spotPrice.toLocaleString()}</span>
-                            : <span className="text-gray-500">--</span>
-                        }
+                      <div className="flex items-center gap-1.5 justify-end">
                         <div className="flex items-center gap-1 bg-slate-800/50 rounded-lg px-2 py-1 border border-white/10">
                           <BarChart2 size={14} className="text-gray-400 mr-1" />
                           <button
@@ -656,7 +651,7 @@ export default function OrdersPage() {
             </div>
 
             {symbol && spotPrice && (
-              <div className="bg-gradient-to-br from-slate-800/50 to-slate-900/50 rounded-2xl border border-white/10 p-5">
+              <div className="bg-gradient-to-br from-slate-800/50 to-slate-900/50 rounded-2xl border border-white/10 p-6">
                 <div className="mb-4">
                   <label className="text-sm text-gray-400 mb-1.5 block">Instrument Type</label>
                   <div className="grid grid-cols-3 gap-2">
@@ -792,7 +787,7 @@ export default function OrdersPage() {
                   <div className="grid grid-cols-2 gap-3">
                     <button
                       onClick={() => setTransactionType('BUY')}
-                      className={`py-3 rounded-xl font-semibold flex items-center justify-center gap-2 ${transactionType === 'BUY' ? 'bg-gradient-to-r from-green-500 to-emerald-600 text-white shadow-lg' : 'bg-green-500/10 border border-green-500/30 text-green-400'}`}
+                      className={`py-2 rounded-xl font-semibold flex items-center justify-center gap-2 ${transactionType === 'BUY' ? 'bg-gradient-to-r from-green-500 to-emerald-600 text-white shadow-lg' : 'bg-green-500/10 border border-green-500/30 text-green-400'}`}
                     >
                       <TrendingUp size={18} /> BUY
                     </button>
@@ -906,7 +901,7 @@ export default function OrdersPage() {
                 <button
                   onClick={placeOrder}
                   disabled={orderPlacing || !symbol}
-                  className={`w-full py-3.5 rounded-xl font-bold text-white flex items-center justify-center gap-2 ${transactionType === 'BUY' ? 'bg-gradient-to-r from-green-500 to-emerald-600' : 'bg-gradient-to-r from-red-500 to-rose-600'} disabled:opacity-50`}
+                  className={`w-full py-2.5 rounded-xl font-bold text-white flex items-center justify-center gap-2 ${transactionType === 'BUY' ? 'bg-gradient-to-r from-green-500 to-emerald-600' : 'bg-gradient-to-r from-red-500 to-rose-600'} disabled:opacity-50`}
                 >
                   {orderPlacing
                     ? <><RefreshCw size={18} className="animate-spin" /> Placing...</>
@@ -917,8 +912,8 @@ export default function OrdersPage() {
             )}
           </div>
 
-          {/* Right Panel: Insights + Positions + Open Orders (2/5) */}
-          <div className="lg:col-span-2 flex flex-col gap-3">
+          {/* Center Panel: Trade Insights (40% = 5/12) */}
+          <div className="lg:col-span-5 max-h-[calc(100vh-12rem)] overflow-y-auto">
 
             {/* Behavioral Insights */}
             <BehavioralInsights
@@ -939,6 +934,12 @@ export default function OrdersPage() {
               optionChainData={optionCtx}
               onPassiveReady={(count, verdict) => setInsightBadge({ count, verdict })}
             />
+          </div>
+
+          {/* Right Panel: Positions + Open Orders (25% = 3/12) */}
+          <div className="lg:col-span-3 flex flex-col gap-4">
+
+            {/* Positions */}
             <div className="bg-gradient-to-br from-slate-800/50 to-slate-900/50 rounded-2xl border border-white/10 p-4">
               <div className="flex items-center justify-between mb-3">
                 <h2 className="text-base font-semibold flex items-center gap-2">

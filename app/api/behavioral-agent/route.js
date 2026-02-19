@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getKiteCredentials } from '@/app/lib/kite-credentials';
+import { detectStations } from './lib/station-detector.js';
 
 // ─────────────────────────────────────────────
 // HELPERS
@@ -600,7 +601,53 @@ export async function POST(request) {
       }
     }
 
+    // ── CHECK 14: Station Analysis ────────────────────────────────────────
+    let stationAnalysis = null;
+    if (candles5m && candles5m.length >= 50) {
+      try {
+        stationAnalysis = detectStations({
+          candles: {
+            candles5m,
+            candles15m: candles15m || null,
+            candlesDaily: null, // Will add Daily candles in future
+          },
+          currentPrice: spotPrice || candles5m[candles5m.length - 1].close,
+          transactionType,
+        });
+
+        if (stationAnalysis.available) {
+          const { atStation, nearestStation, tradeEvaluation } = stationAnalysis;
+
+          if (!atStation) {
+            // Not at a station = add risk
+            riskScore += tradeEvaluation.riskAdjustment || 20;
+            insights.push({
+              id: 'not_at_station',
+              level: 'warning',
+              title: '⚠ Not at a station — no structural edge',
+              detail: tradeEvaluation.reason,
+              icon: '📍',
+            });
+          } else {
+            // At a station
+            riskScore += tradeEvaluation.riskAdjustment || 0;
+            const level = tradeEvaluation.suitable ? 'clear' : 'warning';
+            insights.push({
+              id: 'at_station',
+              level,
+              title: `${tradeEvaluation.suitable ? '✅' : '⚠'} At ${nearestStation.type} station (Q: ${nearestStation.quality}/10)`,
+              detail: tradeEvaluation.reason,
+              icon: '🎯',
+            });
+          }
+        }
+      } catch (err) {
+        console.error('Station detection error:', err.message);
+      }
+    }
+
     // ── FINAL VERDICT ────────────────────────────────────────────────────
+    riskScore = Math.min(100, riskScore);    // ── FINAL VERDICT ────────────────────────────────────────────────────
     riskScore = Math.min(100, riskScore);    // ── FINAL VERDICT ────────────────────────────────
     riskScore = Math.min(100, riskScore);
     const verdict =
@@ -662,7 +709,7 @@ export async function POST(request) {
       }
     }
 
-    return NextResponse.json({ verdict, riskScore, insights, deepAnalysis: !!candles5m, directionVerdict });
+    return NextResponse.json({ verdict, riskScore, insights, deepAnalysis: !!candles5m, directionVerdict, stationAnalysis });
 
   } catch (err) {
     console.error('behavioral-agent error:', err.message);
