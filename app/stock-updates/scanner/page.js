@@ -6,6 +6,7 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { ArrowLeft, RefreshCw, ExternalLink, TrendingUp, TrendingDown, BarChart3, Globe, Gauge, Droplets, Clock, Zap, ChevronRight, Eye } from 'lucide-react';
 import { nseStrikeSteps } from '@/app/lib/nseStrikeSteps';
 import OrderModal from '@/components/OrderModal';
+import { usePageVisibility } from '@/app/hooks/usePageVisibility';
 
 export default function ScannerPage({ scanName, scanSlug }) {
   const router = useRouter();
@@ -32,6 +33,7 @@ export default function ScannerPage({ scanName, scanSlug }) {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [orderModalOpen, setOrderModalOpen] = useState(false);
   const [orderStock, setOrderStock] = useState(null);
+  const isVisible = usePageVisibility();
 
   const openOrderModal = (symbol, price, optionType = null, transactionType = 'BUY') => {
     let optionSymbol = null;
@@ -140,7 +142,7 @@ export default function ScannerPage({ scanName, scanSlug }) {
     };
 
     fetchScans();
-    const interval = setInterval(fetchScans, 30000);
+    const interval = isVisible ? setInterval(fetchScans, 30000) : null;
 
     return () => clearInterval(interval);
   }, [selectedStock, lastAlertId, scannerLabel, scanSlug,isRefreshing]);
@@ -160,7 +162,7 @@ export default function ScannerPage({ scanName, scanSlug }) {
 
     fetchMarketData();
     // Refresh every 5 minutes
-    const interval = setInterval(fetchMarketData, 300000);
+    const interval = isVisible ? setInterval(fetchMarketData, 300000) : null;
 
     return () => clearInterval(interval);
   }, []);

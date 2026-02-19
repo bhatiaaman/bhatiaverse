@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
+import { usePageVisibility } from '@/app/hooks/usePageVisibility';
 import Link from 'next/link';
 import { 
   ArrowLeft, 
@@ -96,6 +97,8 @@ export default function OrdersPage() {
     }
   };
 
+  const isVisible = usePageVisibility();
+
   const isMarketHours = () => {
     const now = new Date();
     const ist = new Date(now.getTime() + 5.5 * 60 * 60 * 1000);
@@ -148,8 +151,8 @@ export default function OrdersPage() {
 
     // Auto-refresh positions every 5s during market hours
     const interval = setInterval(() => {
-      if (isMarketHours()) fetchPositions(true); // silent = no spinner
-    }, 5000);
+      if (isMarketHours() && isVisible) fetchPositions(true); // silent, only if tab visible
+    }, 15000); // 15 seconds
 
     return () => clearInterval(interval);
   }, []);
@@ -544,7 +547,8 @@ export default function OrdersPage() {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           {/* Left Panel: Order Form (35% = 4/12) */}
-          <div className="lg:col-span-3 space-y-3">
+          {/* Left Panel: Order Form (40% = 5/12) */}
+          <div className="lg:col-span-5 space-y-3">
             <div className="bg-gradient-to-br from-slate-800/50 to-slate-900/50 rounded-2xl border border-white/10 p-6">
               <h2 className="text-lg font-semibold mb-5 flex items-center gap-2">
                 <ShoppingCart size={20} className="text-blue-400" /> Place Order
@@ -612,11 +616,11 @@ export default function OrdersPage() {
                     </div>
                   )}
                   <div className="p-4 bg-slate-900/50 rounded-xl border border-white/5">
-                    <div className="space-y-1.5">
+                    <div className="space-y-2">
                       <span className="text-gray-400 text-xs">Spot Price</span>
-                      <div className="flex items-center justify-between">
-                        <p className="text-lg font-bold">{symbol}</p>
-                        <span className="text-xl font-bold">₹{spotPrice ? spotPrice.toLocaleString() : '--'}</span>
+                      <div className="flex items-center justify-between gap-4">
+                        <p className="text-xl font-bold flex-shrink-0">{symbol}</p>
+                        <span className="text-2xl font-bold flex-shrink-0">₹{spotPrice ? spotPrice.toLocaleString() : '--'}</span>
                       </div>
                       <div className="flex items-center gap-1.5 justify-end">
                         <div className="flex items-center gap-1 bg-slate-800/50 rounded-lg px-2 py-1 border border-white/10">
@@ -787,7 +791,7 @@ export default function OrdersPage() {
                   <div className="grid grid-cols-2 gap-3">
                     <button
                       onClick={() => setTransactionType('BUY')}
-                      className={`py-2 rounded-xl font-semibold flex items-center justify-center gap-2 ${transactionType === 'BUY' ? 'bg-gradient-to-r from-green-500 to-emerald-600 text-white shadow-lg' : 'bg-green-500/10 border border-green-500/30 text-green-400'}`}
+                      className={`py-2.5 rounded-xl font-semibold flex items-center justify-center gap-2 ${transactionType === 'BUY' ? 'bg-gradient-to-r from-green-500 to-emerald-600 text-white shadow-lg' : 'bg-green-500/10 border border-green-500/30 text-green-400'}`}
                     >
                       <TrendingUp size={18} /> BUY
                     </button>
@@ -913,7 +917,7 @@ export default function OrdersPage() {
           </div>
 
           {/* Center Panel: Trade Insights (40% = 5/12) */}
-          <div className="lg:col-span-5 max-h-[calc(100vh-12rem)] overflow-y-auto">
+          <div className="lg:col-span-4 max-h-[calc(100vh-12rem)] overflow-y-auto">
 
             {/* Behavioral Insights */}
             <BehavioralInsights
@@ -940,10 +944,10 @@ export default function OrdersPage() {
           <div className="lg:col-span-3 flex flex-col gap-4">
 
             {/* Positions */}
-            <div className="bg-gradient-to-br from-slate-800/50 to-slate-900/50 rounded-2xl border border-white/10 p-4">
-              <div className="flex items-center justify-between mb-3">
-                <h2 className="text-base font-semibold flex items-center gap-2">
-                  <Wallet size={18} className="text-green-400" /> Positions
+            <div className="bg-gradient-to-br from-slate-800/50 to-slate-900/50 rounded-xl border border-white/10 p-3">
+              <div className="flex items-center justify-between mb-2">
+                <h2 className="text-sm font-semibold flex items-center gap-1.5">
+                  <Wallet size={16} className="text-green-400" /> Positions
                   {livePriceActive && (
                     <span className="text-xs text-green-400 font-normal flex items-center gap-1">
                       <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse inline-block" />
@@ -1004,7 +1008,7 @@ export default function OrdersPage() {
               }
             </div>
             <div className="bg-gradient-to-br from-amber-900/20 to-orange-900/20 rounded-2xl border border-amber-500/20 p-4 flex-1">
-              <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center justify-between mb-2">
                 <h2 className="text-sm font-semibold flex items-center gap-2">
                   <Clock size={16} className="text-amber-400" /> Open Orders
                 </h2>

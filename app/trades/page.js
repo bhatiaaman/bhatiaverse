@@ -4,6 +4,7 @@
   import Link from 'next/link';
   import { TrendingUp, RefreshCw } from 'lucide-react';
   import { useTheme } from '../../lib/theme-context';
+  import { usePageVisibility } from '@/app/hooks/usePageVisibility';
 
   export default function TradesPage() {
     const { isDark, toggleTheme } = useTheme();
@@ -25,6 +26,7 @@
       const ist = new Date(Date.now() + 5.5 * 60 * 60 * 1000);
       return (ist.getUTCHours() * 60 + ist.getUTCMinutes()) >= 555;
     };
+    const isVisible = usePageVisibility();
     // Chart state
     const [chartSymbol, setChartSymbol] = useState('NIFTY');
     const [chartInterval, setChartInterval] = useState('15minute');
@@ -74,7 +76,7 @@
         }
       };
       fetchMarketData();
-      const interval = setInterval(() => { if (isMarketHours()) fetchMarketData(); }, 60000);
+      const interval = setInterval(() => { if (isMarketHours() && isVisible) fetchMarketData(); }, 60000);
       return () => clearInterval(interval);
     }, []);
 
@@ -96,7 +98,7 @@
         }
       };
       fetchSectorData();
-      const interval = setInterval(() => { if (isMarketHours()) fetchSectorData(); }, 300000);
+      const interval = setInterval(() => { if (isMarketHours() && isVisible) fetchSectorData(); }, 300000);
       return () => clearInterval(interval);
     }, []);
 
@@ -155,7 +157,7 @@
         }
       };
       fetchSentiment();
-      const interval = setInterval(() => { if (isMarketHours()) fetchSentiment(); }, 15 * 60 * 1000);
+      const interval = setInterval(() => { if (isMarketHours() && isVisible) fetchSentiment(); }, 15 * 60 * 1000);
       return () => clearInterval(interval);
     }, [optionChainData?.pcr]);
 

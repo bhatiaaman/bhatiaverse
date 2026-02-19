@@ -19,14 +19,14 @@ const VERDICT = {
 
 // ─── Score arc (SVG gauge) ───────────────────────────────────────────────────
 function ScoreGauge({ score, verdict }) {
-  const r = 28;
+  const r = 26;
   const circ = 2 * Math.PI * r;
   const pct = Math.min(100, Math.max(0, score));
   const dash = (pct / 100) * circ;
   const color = score >= 60 ? '#f87171' : score >= 40 ? '#fbbf24' : score >= 20 ? '#facc15' : '#4ade80';
   return (
     <div className="relative flex items-center justify-center w-16 h-16 flex-shrink-0">
-      <svg width="64" height="64" viewBox="0 0 64 64" className="-rotate-90">
+      <svg width="56" height="56" viewBox="0 0 64 64" className="-rotate-90">
         <circle cx="32" cy="32" r={r} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="5" />
         <circle cx="32" cy="32" r={r} fill="none" stroke={color} strokeWidth="5"
           strokeDasharray={`${dash} ${circ - dash}`} strokeLinecap="round"
@@ -153,7 +153,14 @@ export default function BehavioralInsights({
       
       if (symbolChanged || typeChanged) {
         console.log('[Insights] Symbol/type changed, re-running deep analysis');
-        runDeepAnalysis();
+        // Debounce: wait 300ms before re-running (in case user is rapidly toggling CE/PE)
+        const timer = setTimeout(() => runDeepAnalysis(), 300);
+        
+        // Update refs immediately to prevent duplicate triggers
+        prevTradingsymbolRef.current = tradingsymbol;
+        prevInstrumentTypeRef.current = instrumentType;
+        
+        return () => clearTimeout(timer);
       }
     }
     
@@ -286,7 +293,7 @@ export default function BehavioralInsights({
       {/* ── Station Analysis Card ── */}
       {result?.stationAnalysis?.available && (
         <div className="mx-3 mb-2">
-          <div className={`rounded-xl border p-3 ${
+          <div className={`rounded-lg border p-2.5 ${
             result.stationAnalysis.atStation
               ? result.stationAnalysis.tradeEvaluation.suitable
                 ? 'bg-green-900/15 border-green-500/25'
