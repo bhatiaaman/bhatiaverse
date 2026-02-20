@@ -39,6 +39,15 @@ export async function POST(request) {
   try {
     const { requestToken, apiSecret, useEnvSecret } = await request.json();
 
+    // Debug logging
+    console.log('[Kite Token] Request received:', {
+      hasRequestToken: !!requestToken,
+      requestTokenLength: requestToken?.length || 0,
+      useEnvSecret,
+      hasApiSecretInRequest: !!apiSecret,
+      apiSecretLength: apiSecret?.length || 0,
+    });
+
     if (!requestToken) {
       return NextResponse.json({ success: false, error: 'Request token is required' }, { status: 400 });
     }
@@ -50,18 +59,35 @@ export async function POST(request) {
     }
 
     // Get secret from request or process.env
-    const secretToUse = useEnvSecret
-      ? (process.env.KITE_SECRET || process.env.KITE_API_SECRET)
-      : apiSecret;
+    // Try multiple env var names and trim whitespace
+    let secretToUse;
+    if (useEnvSecret) {
+      secretToUse = process.env.KITE_SECRET 
+        || process.env.KITE_API_SECRET 
+        || process.env.NEXT_PUBLIC_KITE_SECRET; // Some users might use this
+      
+      // Trim whitespace if present
+      if (secretToUse) {
+        secretToUse = secretToUse.trim();
+      }
+    } else {
+      secretToUse = apiSecret?.trim();
+    }
 
-    if (!secretToUse) {
+    // Check if we actually got a secret
+    if (!secretToUse || secretToUse.length === 0) {
       return NextResponse.json({
         success: false,
         error: useEnvSecret
-          ? 'API Secret not found in environment variables'
+          ? 'API Secret not found in environment variables (KITE_SECRET or KITE_API_SECRET)'
           : 'API Secret is required',
       }, { status: 400 });
     }
+
+    // Debug: Show which secret source was used
+    console.log('[Kite Token] Using secret from:', useEnvSecret ? 'ENV' : 'REQUEST');
+    console.log('[Kite Token] Secret length:', secretToUse?.length || 0);
+    console.log('[Kite Token] API Key:', apiKey?.substring(0, 4) + '***');
 
     // SHA256(api_key + request_token + api_secret)
     const checksum = crypto

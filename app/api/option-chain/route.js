@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { KiteConnect } from 'kiteconnect';
+import { detectMarketActivity, generateActionableInsights } from './lib/market-activity-detector.js';
 import { getKiteCredentials } from '@/app/lib/kite-credentials';
 
 const REDIS_URL = process.env.UPSTASH_REDIS_REST_URL;
@@ -220,6 +221,7 @@ export async function GET(request) {
     const spotData = await kite.getOHLC([`NSE:${config.spotSymbol}`]);
     const spotPrice = spotData[`NSE:${config.spotSymbol}`]?.last_price;
     if (!spotPrice) throw new Error(`Could not fetch ${underlying} spot price`);
+    const spot = spotPrice;
 
     const allOptions    = await getNFOInstruments(kite);
     const expiries      = getExpiries(allOptions, config.name);
@@ -283,9 +285,27 @@ export async function GET(request) {
     };
 
     const newAlerts = generateCommentary(currentMetrics, previousData, underlying);
+
     if (newAlerts.length > 0) alertHistory = [...newAlerts, ...alertHistory].slice(0, 10);
 
     await redisSet(historyKey, { current: currentMetrics, alerts: alertHistory }, HISTORY_TTL);
+
+    // ── Market Activity Detection ──
+    let marketActivity;
+    if (previousData && previousData.totalCallOI !== undefined && previousData.totalPutOI !== undefined && previousData.spot !== undefined) {
+      marketActivity = detectMarketActivity(
+        { totalCallOI, totalPutOI, spot },
+        { totalCallOI: previousData.totalCallOI, totalPutOI: previousData.totalPutOI, spot: previousData.spot }
+      );
+    } else {
+      marketActivity = { activity: 'Initializing', strength: 0, description: 'First fetch', actionable: '', emoji: '⏳' };
+    }
+
+    // ── Actionable Insights ──
+    const actionableInsights = generateActionableInsights(
+      { support: support.level, resistance: resistance.level, maxPain, pcr }, 
+      spot
+    );
 
     const response = {
       underlying, expiryType,
@@ -300,6 +320,8 @@ export async function GET(request) {
       resistance: resistance.level, resistanceOI: resistance.oi,
       resistance2: resistance2.level, resistance2OI: resistance2.oi,
       totalCallOI, totalPutOI,
+      marketActivity,        // NEW - Activity type (Long Buildup, Short Covering, etc.)
+      actionableInsights,    // NEW - Array of actionable messages
       alerts: alertHistory,
       optionChain: optionData.sort((a, b) => a.strike - b.strike),
       timestamp: new Date().toISOString(),

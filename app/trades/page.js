@@ -468,10 +468,23 @@
                     )}
                   </span>
                 </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-slate-400 text-[9px]">PCR</span>
-                  <span className="text-slate-100 text-[9px] lg:text-xs font-mono font-medium">{marketData?.sentiment?.pcr || '---'}</span>
+
+
+                <div className="bg-slate-800/50 rounded-lg p-2">
+                  <div className="flex items-center justify-between mb-1">
+                    <div className="text-slate-400 text-[9px]">Market Activity</div>
+                    {optionChainData?.marketActivity?.emoji && (
+                      <span className="text-sm">{optionChainData.marketActivity.emoji}</span>
+                    )}
+                  </div>
+                  <div className="text-white font-bold text-[10px] mb-1">
+                    {optionChainData?.marketActivity?.activity || 'Loading...'}
+                  </div>
+                  <div className="text-[9px] text-slate-400">
+                    PCR: {optionChainData?.pcr?.toFixed(2) || '---'}
+                  </div>
                 </div>
+
               </div>
             </div>
 
@@ -936,7 +949,7 @@
                 </div>
               )}
             </div>
-
+            
             {/* Options Analysis */}
             <div className="bg-[#112240] backdrop-blur border border-blue-800/40 rounded-xl p-5">
               <div className="flex items-center justify-between mb-4">
@@ -1050,31 +1063,40 @@
 
                   <div className="bg-[#0a1628] rounded-lg p-3">
                     <div className="flex items-center justify-between mb-2">
-                      <div className="text-[10px] text-slate-500 uppercase tracking-wider">OI Change Alerts</div>
-                      <div className="text-[10px] text-slate-600">Auto-refreshes every 1 min</div>
+                      <div className="text-[10px] text-slate-500 uppercase tracking-wider">Options Analysis</div>
+                      {optionChainData?.marketActivity?.strength > 0 && (
+                        <div className="flex items-center gap-1">
+                          {[...Array(Math.ceil(optionChainData.marketActivity.strength / 2))].map((_, i) => (
+                            <div key={i} className="w-1 h-3 bg-blue-500 rounded-full"></div>
+                          ))}
+                        </div>
+                      )}
                     </div>
-                    <div className="space-y-1.5 max-h-48 overflow-y-auto">
-                      {optionChainData?.alerts && optionChainData.alerts.length > 0 ? (
-                        optionChainData.alerts.map((alert, index) => (
-                          <div key={index} className={`flex items-start gap-2 text-xs py-1 px-2 rounded ${
-                            alert.type === 'bullish' ? 'bg-green-900/20 border-l-2 border-green-500' :
-                            alert.type === 'bearish' ? 'bg-red-900/20 border-l-2 border-red-500' :
-                            alert.type === 'warning' ? 'bg-yellow-900/20 border-l-2 border-yellow-500' :
-                            'bg-blue-900/20 border-l-2 border-blue-500'
-                          }`}>
-                            <span className="text-slate-500 flex-shrink-0">{alert.time}</span>
-                            <span className={`${
-                              alert.type === 'bullish' ? 'text-green-400' :
-                              alert.type === 'bearish' ? 'text-red-400' :
-                              alert.type === 'warning' ? 'text-yellow-400' : 'text-blue-300'
-                            }`}>
-                              {alert.message}
-                            </span>
+                    
+                    <div className="text-sm text-white mb-2">
+                      {optionChainData?.marketActivity?.description || 'Analyzing market activity...'}
+                    </div>
+                    
+                    {optionChainData?.marketActivity?.actionable && (
+                      <div className="text-xs text-blue-400 bg-blue-500/10 rounded px-2 py-1.5 border border-blue-500/20 mb-2">
+                        💡 {optionChainData.marketActivity.actionable}
+                      </div>
+                    )}
+                    
+                    <div className="space-y-2 max-h-32 overflow-y-auto">
+                      {optionChainData?.actionableInsights?.slice(0, 3).map((insight, idx) => (
+                        <div key={idx} className="text-xs text-slate-300 flex items-start gap-2 bg-slate-800/30 rounded p-2">
+                          <span className="text-base">{insight.emoji}</span>
+                          <div className="flex-1">
+                            <div className="font-medium text-slate-200">{insight.message}</div>
+                            <div className="text-slate-400 text-[10px] mt-0.5">{insight.action}</div>
                           </div>
-                        ))
-                      ) : (
+                        </div>
+                      ))}
+                      
+                      {(!optionChainData?.actionableInsights || optionChainData.actionableInsights.length === 0) && (
                         <div className="text-slate-500 text-xs py-2 text-center">
-                          Tracking OI changes... Alerts will appear here when significant changes occur.
+                          Analyzing options data... Insights will appear shortly.
                         </div>
                       )}
                     </div>
@@ -1090,6 +1112,7 @@
                 </div>
               )}
             </div>
+       
 
           </div>
         </main>

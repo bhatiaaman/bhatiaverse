@@ -74,7 +74,7 @@ function KiteSettingsContent() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           requestToken: pendingRequestToken,
-          apiSecret: useEnvSecret ? null : config.apiSecret,
+          apiSecret: config.apiSecret || '',  // Send empty string instead of null
           useEnvSecret: useEnvSecret,
         }),
       });
