@@ -378,9 +378,14 @@
                   <span className="text-slate-400 text-[9px]">Nifty 50</span>
                   <div className="flex items-center gap-1">
                     <span className="text-slate-100 text-[9px] lg:text-xs font-mono font-medium">{marketData?.indices?.nifty || '---'}</span>
+                    {marketData?.indices?.niftyChange && (
+                      <span className={`text-[8px] font-mono ${parseFloat(marketData.indices.niftyChange) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                        {parseFloat(marketData.indices.niftyChange) >= 0 ? '+' : ''}{parseFloat(marketData.indices.niftyChange).toFixed(2)}
+                      </span>
+                    )}
                     {marketData?.indices?.niftyChangePercent && (
                       <span className={`text-[8px] font-mono ${parseFloat(marketData.indices.niftyChangePercent) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                        {parseFloat(marketData.indices.niftyChangePercent) >= 0 ? '+' : ''}{parseFloat(marketData.indices.niftyChangePercent).toFixed(2)}%
+                        ({parseFloat(marketData.indices.niftyChangePercent) >= 0 ? '+' : ''}{parseFloat(marketData.indices.niftyChangePercent).toFixed(2)}%)
                       </span>
                     )}
                   </div>
@@ -389,9 +394,14 @@
                   <span className="text-slate-400 text-[9px]">Bank Nifty</span>
                   <div className="flex items-center gap-1">
                     <span className="text-slate-100 text-[9px] lg:text-xs font-mono font-medium">{marketData?.indices?.bankNifty || '---'}</span>
+                    {marketData?.indices?.bankNiftyChange && (
+                      <span className={`text-[8px] font-mono ${parseFloat(marketData.indices.bankNiftyChange) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                        {parseFloat(marketData.indices.bankNiftyChange) >= 0 ? '+' : ''}{parseFloat(marketData.indices.bankNiftyChange).toFixed(2)}
+                      </span>
+                    )}
                     {marketData?.indices?.bankNiftyChangePercent && (
                       <span className={`text-[8px] font-mono ${parseFloat(marketData.indices.bankNiftyChangePercent) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                        {parseFloat(marketData.indices.bankNiftyChangePercent) >= 0 ? '+' : ''}{parseFloat(marketData.indices.bankNiftyChangePercent).toFixed(2)}%
+                        ({parseFloat(marketData.indices.bankNiftyChangePercent) >= 0 ? '+' : ''}{parseFloat(marketData.indices.bankNiftyChangePercent).toFixed(2)}%)
                       </span>
                     )}
                   </div>
@@ -400,9 +410,14 @@
                   <span className="text-slate-400 text-[9px]">Sensex</span>
                   <div className="flex items-center gap-1">
                     <span className="text-slate-100 text-[9px] lg:text-xs font-mono font-medium">{marketData?.indices?.sensex || '---'}</span>
+                    {marketData?.indices?.sensexChange && (
+                      <span className={`text-[8px] font-mono ${parseFloat(marketData.indices.sensexChange) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                        {parseFloat(marketData.indices.sensexChange) >= 0 ? '+' : ''}{parseFloat(marketData.indices.sensexChange).toFixed(2)}
+                      </span>
+                    )}
                     {marketData?.indices?.sensexChangePercent && (
                       <span className={`text-[8px] font-mono ${parseFloat(marketData.indices.sensexChangePercent) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                        {parseFloat(marketData.indices.sensexChangePercent) >= 0 ? '+' : ''}{parseFloat(marketData.indices.sensexChangePercent).toFixed(2)}%
+                        ({parseFloat(marketData.indices.sensexChangePercent) >= 0 ? '+' : ''}{parseFloat(marketData.indices.sensexChangePercent).toFixed(2)}%)
                       </span>
                     )}
                   </div>
@@ -428,6 +443,16 @@
                 <div className="flex justify-between items-center">
                   <span className="text-slate-400 text-[9px]">DOW</span>
                   <span className="text-slate-100 text-[9px] lg:text-xs font-mono font-medium">{marketData?.global?.dow || '---'}</span>
+                  {marketData?.global?.dowChange && (
+                    <span className={`text-[8px] font-mono ${parseFloat(marketData.global.dowChange) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                      {parseFloat(marketData.global.dowChange) >= 0 ? '+' : ''}{parseFloat(marketData.global.dowChange).toFixed(2)}
+                    </span>
+                  )}
+                  {marketData?.global?.dowChangePercent && (
+                    <span className={`text-[8px] font-mono ${parseFloat(marketData.global.dowChangePercent) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                      ({parseFloat(marketData.global.dowChangePercent) >= 0 ? '+' : ''}{parseFloat(marketData.global.dowChangePercent).toFixed(2)}%)
+                    </span>
+                  )}
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-slate-400 text-[9px]">GIFT Nifty</span>
@@ -436,10 +461,30 @@
                 <div className="flex justify-between items-center">
                   <span className="text-slate-400 text-[9px]">NASDAQ</span>
                   <span className="text-slate-100 text-[9px] lg:text-xs font-mono font-medium">{marketData?.global?.nasdaq || '---'}</span>
+                  {marketData?.global?.nasdaqChange && (
+                    <span className={`text-[8px] font-mono ${parseFloat(marketData.global.nasdaqChange) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                      {parseFloat(marketData.global.nasdaqChange) >= 0 ? '+' : ''}{parseFloat(marketData.global.nasdaqChange).toFixed(2)}
+                    </span>
+                  )}
+                  {marketData?.global?.nasdaqChangePercent && (
+                    <span className={`text-[8px] font-mono ${parseFloat(marketData.global.nasdaqChangePercent) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                      ({parseFloat(marketData.global.nasdaqChangePercent) >= 0 ? '+' : ''}{parseFloat(marketData.global.nasdaqChangePercent).toFixed(2)}%)
+                    </span>
+                  )}
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-slate-400 text-[9px]">DAX</span>
                   <span className="text-slate-100 text-[9px] lg:text-xs font-mono font-medium">{marketData?.global?.dax || '---'}</span>
+                  {marketData?.global?.daxChange && (
+                    <span className={`text-[8px] font-mono ${parseFloat(marketData.global.daxChange) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                      {parseFloat(marketData.global.daxChange) >= 0 ? '+' : ''}{parseFloat(marketData.global.daxChange).toFixed(2)}
+                    </span>
+                  )}
+                  {marketData?.global?.daxChangePercent && (
+                    <span className={`text-[8px] font-mono ${parseFloat(marketData.global.daxChangePercent) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                      ({parseFloat(marketData.global.daxChangePercent) >= 0 ? '+' : ''}{parseFloat(marketData.global.daxChangePercent).toFixed(2)}%)
+                    </span>
+                  )}
                 </div>
               </div>
             </div>

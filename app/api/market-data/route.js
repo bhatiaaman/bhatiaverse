@@ -158,10 +158,17 @@ async function fetchGlobalIndices() {
       fetch('https://query1.finance.yahoo.com/v8/finance/chart/%5EIXIC?interval=1d', { headers: { 'User-Agent': 'Mozilla/5.0' } }).then(r => r.json()),
       fetch('https://query1.finance.yahoo.com/v8/finance/chart/%5EGDAXI?interval=1d', { headers: { 'User-Agent': 'Mozilla/5.0' } }).then(r => r.json()),
     ]);
+    function extract(meta) {
+      const price = meta.regularMarketPrice;
+      const prevClose = meta.chartPreviousClose || meta.previousClose;
+      const change = price - prevClose;
+      const changePercent = (change / prevClose) * 100;
+      return { price, prevClose, change, changePercent };
+    }
     return {
-      dow:    dow.chart.result[0].meta.regularMarketPrice,
-      nasdaq: nasdaq.chart.result[0].meta.regularMarketPrice,
-      dax:    dax.chart.result[0].meta.regularMarketPrice,
+      dow: extract(dow.chart.result[0].meta),
+      nasdaq: extract(nasdaq.chart.result[0].meta),
+      dax: extract(dax.chart.result[0].meta),
     };
   } catch (error) {
     console.error('Global indices fetch error:', error);
@@ -398,9 +405,15 @@ export async function GET() {
         niftyEMA9:           niftyEMA9                  ? niftyEMA9.toFixed(2)                 : null,
       },
       global: {
-        dow:    globalIndices?.dow    ? globalIndices.dow.toFixed(2)    : null,
-        nasdaq: globalIndices?.nasdaq ? globalIndices.nasdaq.toFixed(2) : null,
-        dax:    globalIndices?.dax    ? globalIndices.dax.toFixed(2)    : null,
+        dow:    globalIndices?.dow?.price           ? globalIndices.dow.price.toFixed(2)           : null,
+        dowChange: globalIndices?.dow?.change       ? globalIndices.dow.change.toFixed(2)          : null,
+        dowChangePercent: globalIndices?.dow?.changePercent ? globalIndices.dow.changePercent.toFixed(2) : null,
+        nasdaq: globalIndices?.nasdaq?.price        ? globalIndices.nasdaq.price.toFixed(2)        : null,
+        nasdaqChange: globalIndices?.nasdaq?.change ? globalIndices.nasdaq.change.toFixed(2)       : null,
+        nasdaqChangePercent: globalIndices?.nasdaq?.changePercent ? globalIndices.nasdaq.changePercent.toFixed(2) : null,
+        dax:    globalIndices?.dax?.price           ? globalIndices.dax.price.toFixed(2)           : null,
+        daxChange: globalIndices?.dax?.change       ? globalIndices.dax.change.toFixed(2)          : null,
+        daxChangePercent: globalIndices?.dax?.changePercent ? globalIndices.dax.changePercent.toFixed(2) : null,
       },
       sentiment: {
         bias:       bias,
