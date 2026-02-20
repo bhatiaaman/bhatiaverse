@@ -193,19 +193,87 @@ function analyzeVolume(candles) {
   const avgVol = candles.slice(-20, -5).reduce((s, c) => s + c.volume, 0) / 15;
   const lastCandle = recent[recent.length - 1];
   const prevCandle = recent[recent.length - 2];
-
-  const volRatio = avgVol > 0 ? lastCandle.volume / avgVol : 1;
   const priceUp = lastCandle.close > prevCandle.close;
   const volUp = lastCandle.volume > prevCandle.volume;
+  const volRatio = avgVol > 0 ? lastCandle.volume / avgVol : 1;
+  let signal = 'neutral', detail = '', actionable = '';
 
-  let signal = 'neutral', detail = '';
-  if (priceUp && volUp && volRatio > 1.5) { signal = 'bullish'; detail = `Volume ${volRatio.toFixed(1)}x avg — strong buying confirmation`; }
-  else if (!priceUp && volUp && volRatio > 1.5) { signal = 'bearish'; detail = `Volume ${volRatio.toFixed(1)}x avg — strong selling pressure`; }
-  else if (priceUp && !volUp) { signal = 'weak_bullish'; detail = 'Price rising on declining volume — weak move, may not sustain'; }
-  else if (!priceUp && !volUp) { signal = 'weak_bearish'; detail = 'Price falling on declining volume — weak selling, may find support'; }
-  else { detail = `Volume near average (${volRatio.toFixed(1)}x)`; }
+  // 1. Volume Climax (Exhaustion)
+  const maxVol = Math.max(...recent.map(c => c.volume));
+  if (lastCandle.volume === maxVol && volRatio > 2.5 && Math.abs(lastCandle.close - prevCandle.close) < Math.abs(prevCandle.close - recent[recent.length-3].close) * 0.5) {
+    signal = 'climax';
+    detail = `Volume climax: ${volRatio.toFixed(1)}x avg, price stalling`;
+    actionable = 'Caution: Volume climax detected. Watch for reversal or sharp pullback.';
+  }
+  // 2. Volume Gap
+  else if (Math.abs(lastCandle.volume - prevCandle.volume) > avgVol * 1.5) {
+    signal = 'gap';
+    detail = `Volume gap: ${lastCandle.volume > prevCandle.volume ? 'up' : 'down'} by ${(lastCandle.volume - prevCandle.volume).toLocaleString()}`;
+    actionable = 'Unusual volume gap — expect volatility.';
+  }
+  // 3. Steady Volume Rise
+  else if (recent.slice(-3).every((c, i, arr) => i === 0 || c.volume > arr[i-1].volume)) {
+    signal = 'steady_rise';
+    detail = 'Steady volume rise over last 3 candles';
+    actionable = 'Rising volume trend — watch for breakout or continuation.';
+  }
+  // 4. Volume/Price Divergence
+  else if ((priceUp && lastCandle.volume < prevCandle.volume) || (!priceUp && lastCandle.volume > prevCandle.volume)) {
+    signal = 'divergence';
+    detail = 'Price and volume diverging — trend may be weakening.';
+    actionable = 'Divergence: Price move not confirmed by volume — trend may be weakening.';
+  }
+  // 5. Volume Dry-up at Support/Resistance (assume support/resistance is prev close for demo)
+  else if (volRatio < 0.5 && Math.abs(lastCandle.close - prevCandle.close) < 0.2 * prevCandle.close) {
+    signal = 'dryup_sr';
+    detail = `Volume dry-up at key level (${volRatio.toFixed(1)}x avg)`;
+    actionable = 'Volume dry-up at key level — wait for confirmation before trading.';
+  }
+  // 6. Breakout with Volume Confirmation
+  else if (volRatio > 2 && Math.abs(lastCandle.close - prevCandle.close) > 0.5 * prevCandle.close) {
+    signal = 'breakout';
+    detail = `Breakout with volume: ${volRatio.toFixed(1)}x avg`;
+    actionable = 'Breakout confirmed by volume — consider trading in breakout direction.';
+  }
+  // 7. Fakeout (Breakout Without Volume)
+  else if (volRatio < 1 && Math.abs(lastCandle.close - prevCandle.close) > 0.5 * prevCandle.close) {
+    signal = 'fakeout';
+    detail = 'Breakout lacks volume confirmation — risk of fakeout.';
+    actionable = 'Breakout lacks volume confirmation — risk of fakeout.';
+  }
+  // 8. Churn (High Volume, Small Price Move)
+  else if (volRatio > 1.5 && Math.abs(lastCandle.close - prevCandle.close) < 0.1 * prevCandle.close) {
+    signal = 'churn';
+    detail = 'Churn: High volume, little price movement.';
+    actionable = 'Churn detected — large players may be active, watch for next move.';
+  }
+  // Existing patterns for completeness
+  else if (priceUp && volUp && volRatio > 1.5) {
+    signal = 'bullish';
+    detail = `Volume ${volRatio.toFixed(1)}x avg — strong buying confirmation`;
+    actionable = 'Momentum is strong; consider long trades on pullbacks.';
+  }
+  else if (!priceUp && volUp && volRatio > 1.5) {
+    signal = 'bearish';
+    detail = `Volume ${volRatio.toFixed(1)}x avg — strong selling pressure`;
+    actionable = 'Momentum is strong; consider shorts on rallies.';
+  }
+  else if (priceUp && !volUp) {
+    signal = 'weak_bullish';
+    detail = 'Price rising on declining volume — weak move, may not sustain';
+    actionable = 'Be cautious with long trades; wait for volume confirmation.';
+  }
+  else if (!priceUp && !volUp) {
+    signal = 'weak_bearish';
+    detail = 'Price falling on declining volume — weak selling, may find support';
+    actionable = 'Weak selling; aggressive shorts may be risky.';
+  }
+  else {
+    detail = `Volume near average (${volRatio.toFixed(1)}x)`;
+    actionable = 'No clear volume signal; wait for decisive move.';
+  }
 
-  return { signal, detail, volRatio: parseFloat(volRatio.toFixed(2)), lastVolume: lastCandle.volume };
+  return { signal, detail, actionable, volRatio: parseFloat(volRatio.toFixed(2)), lastVolume: lastCandle.volume };
 }
 
 // ─────────────────────────────────────────────
@@ -510,12 +578,21 @@ export async function POST(request) {
           (volAnalysis.signal === 'bearish' && isBuyingCall) ||
           (volAnalysis.signal === 'bullish' && isBuyingPut);
 
-        const level = isConflict ? 'caution' : volAnalysis.signal.includes('weak') ? 'info' : 'clear';
+        const level = isConflict ? 'caution' : volAnalysis.signal.includes('weak') ? 'info' : volAnalysis.signal === 'spike' ? 'warning' : volAnalysis.signal === 'dryup' ? 'info' : 'clear';
         if (isConflict) riskScore += 10;
-        insights.push({ id: 'volume', level,
+        insights.push({
+          id: 'volume',
+          level,
           title: `Volume (5min): ${volAnalysis.detail.split('—')[0].trim()}`,
           detail: volAnalysis.detail,
-          icon: volAnalysis.signal === 'bullish' ? '✅' : volAnalysis.signal === 'bearish' ? '⚠' : 'ℹ' });
+          actionable: volAnalysis.actionable,
+          icon:
+            volAnalysis.signal === 'bullish' ? '✅' :
+            volAnalysis.signal === 'bearish' ? '⚠' :
+            volAnalysis.signal === 'spike' ? '🔥' :
+            volAnalysis.signal === 'dryup' ? '💤' :
+            'ℹ'
+        });
       }
 
       // ── CHECK 11: Candlestick patterns ───────────
