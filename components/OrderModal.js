@@ -1,5 +1,4 @@
 'use client';
-console.log('OrderModal v2 with insights loaded'); // Add this line after imports
 
 import { useState, useEffect } from 'react';
 import { X, TrendingUp, TrendingDown, Loader2, RefreshCw, LogIn, Brain, AlertTriangle } from 'lucide-react';
@@ -40,12 +39,27 @@ export default function OrderModal({
   // ─── QUICK INSIGHTS STATE ────────────────────────────────────────────
   const [insightsLoading, setInsightsLoading] = useState(false);
   const [insightsResult, setInsightsResult] = useState(null);
+  const [avgDownAlert, setAvgDownAlert] = useState(null); // Averaging down warning
+  const [positions, setPositions] = useState([]);
 
   useEffect(() => {
     if (isOpen) {
       checkKiteAuth();
+      fetchPositions();
     }
   }, [isOpen]);
+
+  const fetchPositions = async () => {
+    try {
+      const res = await fetch('/api/kite-positions');
+      const data = await res.json();
+      if (data.positions) {
+        setPositions(data.positions);
+      }
+    } catch (err) {
+      console.error('Error fetching positions:', err);
+    }
+  };
 
   const checkKiteAuth = async () => {
     setCheckingAuth(true);
@@ -212,6 +226,44 @@ export default function OrderModal({
       setError('Please login to Kite first');
       return;
     }
+
+    // ── Averaging down guard ──────────────────────────────────────────────
+    if (!avgDownAlert && positions.length > 0) {
+      const tradingSymbol = optionType ? (kiteOptionSymbol || optionSymbol) : symbol;
+      const matchingPos = positions.find(p => 
+        (p.tradingsymbol === tradingSymbol || p.tradingsymbol === symbol) &&
+        p.quantity !== 0
+      );
+
+      if (matchingPos) {
+        const isAddingLong  = matchingPos.quantity > 0 && transactionType === 'BUY';
+        const isAddingShort = matchingPos.quantity < 0 && transactionType === 'SELL';
+        
+        // Calculate UNREALIZED P&L for current open position
+        const avgPrice = matchingPos.average_price || 0;
+        const ltp = matchingPos.last_price || 0;
+        const qty = Math.abs(matchingPos.quantity);
+        const isLong = matchingPos.quantity > 0;
+        
+        const unrealizedPnl = isLong 
+          ? (ltp - avgPrice) * qty
+          : (avgPrice - ltp) * qty;
+        
+        const lossThreshold = exchange === 'NFO' ? -500 : -200;
+        const isLosingTrade = unrealizedPnl < lossThreshold;
+
+        if ((isAddingLong || isAddingShort) && isLosingTrade) {
+          setAvgDownAlert({ position: matchingPos, unrealizedPnl, avgPrice, ltp });
+          return;
+        }
+      }
+    }
+
+    // Clear alert if bypass confirmed
+    if (avgDownAlert) {
+      setAvgDownAlert(null);
+    }
+
     setLoading(true);
     setError('');
     setSuccess('');
@@ -652,6 +704,64 @@ export default function OrderModal({
         </form>
         )}
       </div>
+
+      {/* Averaging Down Alert Modal */}
+      {avgDownAlert && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm rounded-xl">
+          <div className="bg-slate-800 border-2 border-red-500/60 rounded-xl p-5 w-[90%] max-w-sm shadow-2xl">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-red-500/20 flex items-center justify-center flex-shrink-0">
+                <span className="text-2xl">⚠️</span>
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-red-400">Averaging Down Warning</h3>
+                <p className="text-xs text-slate-400">Adding to losing position</p>
+              </div>
+            </div>
+
+            <div className="bg-red-900/20 border border-red-500/20 rounded-lg p-3 mb-4">
+              <div className="text-xs text-slate-400 mb-1">Position</div>
+              <div className="text-sm font-bold text-white mb-2">
+                {avgDownAlert.position.tradingsymbol}
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div>
+                  <div className="text-slate-500">Entry</div>
+                  <div className="text-white font-mono">₹{avgDownAlert.avgPrice?.toFixed(2)}</div>
+                </div>
+                <div>
+                  <div className="text-slate-500">LTP</div>
+                  <div className="text-white font-mono">₹{avgDownAlert.ltp?.toFixed(2)}</div>
+                </div>
+              </div>
+              <div className="mt-2 text-red-400 font-semibold">
+                ₹{Math.abs(Math.round(avgDownAlert.unrealizedPnl || 0)).toLocaleString()} Unrealized Loss
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-300 mb-4 leading-relaxed">
+              Your position is underwater. Adding more will increase your average entry price and risk exposure.
+            </p>
+
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setAvgDownAlert(null)}
+                className="flex-1 py-2.5 rounded-lg bg-white/5 hover:bg-white/10 text-sm font-medium transition-colors border border-white/10"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSubmit}
+                className="flex-1 py-2.5 rounded-lg bg-red-500/20 hover:bg-red-500/30 text-red-400 text-sm font-medium transition-colors border border-red-500/30"
+              >
+                Place Anyway
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -294,11 +294,23 @@ export default function OrdersPage() {
       if (matchingPos) {
         const isAddingLong  = matchingPos.quantity > 0 && transactionType === 'BUY';
         const isAddingShort = matchingPos.quantity < 0 && transactionType === 'SELL';
-        const isLosingTrade = matchingPos.exchange === 'NFO'
-          ? (matchingPos.pnl || 0) < -500  // Options: ₹500 threshold
-          : (matchingPos.pnl || 0) < -200; // Equity: ₹200 threshold
+        
+        // Calculate UNREALIZED P&L for current open position (not cumulative)
+        const avgPrice = matchingPos.average_price || 0;
+        const ltp = matchingPos.last_price || 0;
+        const qty = Math.abs(matchingPos.quantity);
+        const isLong = matchingPos.quantity > 0;
+        
+        // Unrealized P&L = (Current Price - Entry Price) × Quantity
+        const unrealizedPnl = isLong 
+          ? (ltp - avgPrice) * qty  // Long: profit if LTP > entry
+          : (avgPrice - ltp) * qty; // Short: profit if entry > LTP
+        
+        // Threshold based on instrument type
+        const lossThreshold = matchingPos.exchange === 'NFO' ? -500 : -200;
+        const isLosingTrade = unrealizedPnl < lossThreshold;
         if ((isAddingLong || isAddingShort) && isLosingTrade) {
-          setAvgDownAlert({ position: matchingPos });
+          setAvgDownAlert({ position: matchingPos, unrealizedPnl, avgPrice, ltp });
           return;
         }
       }
@@ -1140,7 +1152,7 @@ export default function OrdersPage() {
               <div className="flex items-center justify-between mb-2">
                 <span className="text-sm font-medium text-white">{avgDownAlert.position.tradingsymbol}</span>
                 <span className="text-sm font-bold text-red-400">
-                  ₹{Math.round(avgDownAlert.position.pnl || 0).toLocaleString()} P&L
+                  ₹{Math.round(avgDownAlert.unrealizedPnl || 0).toLocaleString()} Unrealized Loss
                 </span>
               </div>
               <div className="grid grid-cols-3 gap-2 text-xs text-slate-400">
@@ -1164,7 +1176,7 @@ export default function OrdersPage() {
             {/* Warning message */}
             <div className="bg-amber-900/20 border border-amber-500/20 rounded-xl px-4 py-3 mb-5">
               <p className="text-xs text-amber-300 leading-relaxed">
-                You're about to add more to a position that is currently <strong className="text-red-400">₹{Math.abs(Math.round(avgDownAlert.position.pnl || 0)).toLocaleString()} in loss</strong>. 
+                You're about to add more to a position that is currently <strong className="text-red-400">₹{Math.abs(Math.round(avgDownAlert.unrealizedPnl || 0)).toLocaleString()} underwater</strong> (Entry: ₹{avgDownAlert.avgPrice?.toFixed(2)} → LTP: ₹{avgDownAlert.ltp?.toFixed(2)}). 
                 Averaging into losing trades increases risk exposure and can lead to larger drawdowns.
               </p>
               <p className="text-xs text-slate-500 mt-2">
