@@ -41,6 +41,7 @@ const MARKET_INDICES = {
   VIX:       { symbol: 'INDIA VIX',         exchange: 'NSE', token: 264969 },
   FINNIFTY:  { symbol: 'NIFTY FIN SERVICE', exchange: 'NSE', token: 257801 },
   MIDCAP:    { symbol: 'NIFTY MIDCAP 100',  exchange: 'NSE', token: 256777 },
+  GIFTNIFTY: { symbol: 'GIFT NIFTY',        exchange: 'NSEIX', token: 291849 },
 };
 
 async function fetchIndianIndicesFromKite(apiKey, accessToken) {
@@ -58,9 +59,11 @@ async function fetchIndianIndicesFromKite(apiKey, accessToken) {
       const data = ohlcData[`${idx.exchange}:${idx.symbol}`];
       if (!data) return null;
       const lastPrice = data.last_price;
-      const prevClose = data.ohlc?.close || lastPrice;
-      const change = lastPrice - prevClose;
-      const changePercent = prevClose > 0 ? (change / prevClose) * 100 : 0;
+      let prevClose = data.ohlc?.close || null;
+      // For GIFT Nifty, if prevClose is missing, try to get from Redis
+      if (key === 'GIFTNIFTY' && !prevClose) prevClose = null; // will handle outside
+      const change = (prevClose !== null) ? lastPrice - prevClose : null;
+      const changePercent = (prevClose && prevClose !== 0) ? (change / prevClose) * 100 : null;
       return { price: lastPrice, prevClose, change, changePercent, open: data.ohlc?.open, high: data.ohlc?.high, low: data.ohlc?.low };
     };
 
@@ -71,6 +74,7 @@ async function fetchIndianIndicesFromKite(apiKey, accessToken) {
       vix:       processIndex('VIX'),
       finNifty:  processIndex('FINNIFTY'),
       midcap:    processIndex('MIDCAP'),
+      giftNifty: processIndex('GIFTNIFTY'),
     };
   } catch (error) {
     console.error('Kite indices fetch error:', error.message);
@@ -382,7 +386,29 @@ export async function GET() {
       else if (niftyData.changePercent < -0.5) bias = 'Bearish';
     }
 
-    let giftNiftyPrice = giftNifty;
+
+    // GIFT Nifty fallback: store and use yesterday's price if prevClose is missing
+    let giftNiftyPrice = kiteIndices?.giftNifty?.price;
+    let giftNiftyPrevClose = kiteIndices?.giftNifty?.prevClose;
+    let giftNiftyChange = kiteIndices?.giftNifty?.change;
+    let giftNiftyChangePercent = kiteIndices?.giftNifty?.changePercent;
+
+    const GIFT_NIFTY_CLOSE_KEY = `${NS}:gift-nifty-prev-close`;
+    if (giftNiftyPrice) {
+      // If prevClose is missing, try to get from Redis
+      if (!giftNiftyPrevClose) {
+        const cachedPrevClose = await redisGet(GIFT_NIFTY_CLOSE_KEY);
+        if (cachedPrevClose) {
+          giftNiftyPrevClose = cachedPrevClose;
+          giftNiftyChange = giftNiftyPrice - cachedPrevClose;
+          giftNiftyChangePercent = cachedPrevClose !== 0 ? (giftNiftyChange / cachedPrevClose) * 100 : null;
+        }
+      } else {
+        // If prevClose is available, update Redis for next day
+        await redisSet(GIFT_NIFTY_CLOSE_KEY, giftNiftyPrevClose, 60 * 60 * 24 * 2); // 2 days expiry
+      }
+    }
+    if (!giftNiftyPrice && giftNifty) giftNiftyPrice = giftNifty;
     if (!giftNiftyPrice && niftyData) giftNiftyPrice = niftyData.price + 15;
 
     const marketData = {
@@ -400,6 +426,8 @@ export async function GET() {
         bankNiftyChange:     bankNifty?.change          ? bankNifty.change.toFixed(2)          : null,
         bankNiftyChangePercent: bankNifty?.changePercent ? bankNifty.changePercent.toFixed(2) : null,
         giftNifty:           giftNiftyPrice             ? (typeof giftNiftyPrice === 'number' ? giftNiftyPrice.toFixed(2) : giftNiftyPrice) : null,
+        giftNiftyChange:     (giftNiftyChange !== undefined && giftNiftyChange !== null) ? giftNiftyChange.toFixed(2) : null,
+        giftNiftyChangePercent: (giftNiftyChangePercent !== undefined && giftNiftyChangePercent !== null) ? giftNiftyChangePercent.toFixed(2) : null,
         vix:                 vix?.price                 ? vix.price.toFixed(2)                 : (typeof vix === 'number' ? vix.toFixed(2) : null),
         vixChange:           vix?.change                ? vix.change.toFixed(2)                : null,
         niftyEMA9:           niftyEMA9                  ? niftyEMA9.toFixed(2)                 : null,
