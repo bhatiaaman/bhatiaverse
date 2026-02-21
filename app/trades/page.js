@@ -358,6 +358,9 @@
               <Link href="/orders" className="px-4 py-2 text-sm rounded-lg border border-purple-600/50 bg-purple-900/40 hover:bg-purple-800/50 text-purple-200 transition-colors">
                 🛒 Orders
               </Link>
+              <Link href="/trades/pre-market" className="px-4 py-2 text-sm rounded-lg border border-yellow-600/50 bg-yellow-900/40 hover:bg-yellow-800/50 text-yellow-200 transition-colors">
+                🌅 Pre-Market
+              </Link>
               <Link href="/" className="px-4 py-2 text-sm rounded-lg border border-blue-600/50 bg-blue-900/40 hover:bg-blue-800/50 text-blue-200 transition-colors">
                 Back Home
               </Link>
