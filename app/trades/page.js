@@ -27,6 +27,8 @@
       return (ist.getUTCHours() * 60 + ist.getUTCMinutes()) >= 555;
     };
     const isVisible = usePageVisibility();
+    const [commentary, setCommentary] = useState(null);
+    const [commentaryLoading, setCommentaryLoading] = useState(true); 
     // Chart state
     const [chartSymbol, setChartSymbol] = useState('NIFTY');
     const [chartInterval, setChartInterval] = useState('15minute');
@@ -137,6 +139,30 @@
       };
       fetchNewsAndEvents();
       const interval = setInterval(fetchNewsAndEvents, 5 * 60 * 1000);
+      return () => clearInterval(interval);
+    }, []);
+
+    // Add fetch function (around line 150)
+    useEffect(() => {
+      const fetchCommentary = async () => {
+        try {
+          const response = await fetch('/api/market-commentary');
+          const data = await response.json();
+          setCommentary(data.commentary);
+        } catch (error) {
+          console.error('Failed to fetch commentary:', error);
+        } finally {
+          setCommentaryLoading(false);
+        }
+      };
+      
+      fetchCommentary();
+      
+      // Refresh every 5 minutes
+      const interval = setInterval(() => {
+        if (isMarketHours() && isVisible) fetchCommentary();
+      }, 5 * 60 * 1000);
+      
       return () => clearInterval(interval);
     }, []);
 
@@ -370,6 +396,80 @@
 
         {/* MAIN CONTENT */}
         <main className="container mx-auto px-4 py-6">
+
+          {/* Market Commentary Banner */}
+          {commentary && (
+            <div className="mb-4 bg-gradient-to-r from-blue-900/50 via-purple-900/50 to-blue-900/50 border border-blue-700/50 rounded-xl p-4 backdrop-blur-sm">
+              <div className="flex items-start gap-4">
+                {/* State Badge */}
+                <div className="flex-shrink-0">
+                  <div className={`px-4 py-2 rounded-lg font-semibold text-sm flex items-center gap-2 ${
+                    commentary.bias === 'BULLISH' ? 'bg-green-900/50 text-green-300 border border-green-700/50' :
+                    commentary.bias === 'BEARISH' ? 'bg-red-900/50 text-red-300 border border-red-700/50' :
+                    'bg-yellow-900/50 text-yellow-300 border border-yellow-700/50'
+                  }`}>
+                    <span className="text-lg">{commentary.stateEmoji}</span>
+                    <span>{commentary.state}</span>
+                  </div>
+                </div>
+
+                {/* Commentary Content */}
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-lg">{commentary.biasEmoji}</span>
+                    <h3 className="text-lg font-bold text-white">
+                      {commentary.headline}
+                    </h3>
+                  </div>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+                    <div className="flex items-center gap-2">
+                      <span className="text-slate-400">Market Bias:</span>
+                      <span className={`font-semibold ${
+                        commentary.bias === 'BULLISH' ? 'text-green-400' :
+                        commentary.bias === 'BEARISH' ? 'text-red-400' :
+                        'text-yellow-400'
+                      }`}>
+                        {commentary.bias}
+                      </span>
+                    </div>
+                    
+                    {commentary.keyLevel && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-slate-400">Key Level:</span>
+                        <span className="font-mono font-semibold text-blue-300">
+                          {commentary.keyLevel}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="mt-2 flex items-start gap-2">
+                    <span className="text-slate-400 text-sm flex-shrink-0">Action:</span>
+                    <span className="text-cyan-300 text-sm font-medium">
+                      {commentary.action}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Refresh Button */}
+                <button
+                  onClick={async () => {
+                    setCommentaryLoading(true);
+                    const res = await fetch('/api/market-commentary?refresh=1');
+                    const data = await res.json();
+                    setCommentary(data.commentary);
+                    setCommentaryLoading(false);
+                  }}
+                  className="flex-shrink-0 p-2 hover:bg-blue-800/40 rounded-lg transition-colors"
+                  title="Refresh commentary"
+                >
+                  <RefreshCw className={`w-4 h-4 text-blue-400 ${commentaryLoading ? 'animate-spin' : ''}`} />
+                </button>
+              </div>
+            </div>
+          )}
+
 
           {/* Top Market Data Grid */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-1 mb-4">

@@ -5,14 +5,18 @@ import Link from 'next/link';
 import { ArrowLeft, RefreshCw, Clock, TrendingUp, TrendingDown } from 'lucide-react';
 
 export default function PreMarketPage() {
-    const [tradingPlan, setTradingPlan] = useState('');
+  const [tradingPlan, setTradingPlan] = useState('');
+  const [generatingPlan, setGeneratingPlan] = useState(false);
+  const [preMarketMovers, setPreMarketMovers] = useState(null);
+  const [moversLoading, setMoversLoading] = useState(true);
 
-    useEffect(() => {
-      if (typeof window !== 'undefined') {
-        const savedPlan = localStorage.getItem('tradingPlan') || '';
-        setTradingPlan(savedPlan);
-      }
-    }, []);
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const savedPlan = localStorage.getItem('tradingPlan') || '';
+      setTradingPlan(savedPlan);
+    }
+  }, []);
+
   const [globalMarkets, setGlobalMarkets] = useState(null);
   const [keyLevels, setKeyLevels] = useState({ nifty: null, banknifty: null });
   const [gapData, setGapData] = useState({ nifty: null, banknifty: null });
@@ -29,7 +33,6 @@ export default function PreMarketPage() {
       const today = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 9, 15, 0);
       
       if (now > today) {
-        // Market already opened or it's past market hours
         const tomorrow = new Date(today);
         tomorrow.setDate(tomorrow.getDate() + 1);
         const diff = tomorrow - now;
@@ -57,7 +60,36 @@ export default function PreMarketPage() {
   // Fetch all data
   useEffect(() => {
     fetchAllData();
-    const interval = setInterval(fetchAllData, 30000); // Refresh every 30s
+    const interval = setInterval(fetchAllData, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Fetch pre-market movers
+  useEffect(() => {
+    const fetchMovers = async () => {
+      try {
+        const response = await fetch('/api/pre-market/movers?limit=10');
+        const data = await response.json();
+        setPreMarketMovers(data);
+      } catch (error) {
+        console.error('Failed to fetch movers:', error);
+      } finally {
+        setMoversLoading(false);
+      }
+    };
+    
+    fetchMovers();
+    
+    const interval = setInterval(() => {
+      const now = new Date();
+      const hours = now.getHours();
+      const minutes = now.getMinutes();
+      
+      if (hours === 9 && minutes < 15) {
+        fetchMovers();
+      }
+    }, 60000);
+    
     return () => clearInterval(interval);
   }, []);
 
@@ -119,13 +151,49 @@ export default function PreMarketPage() {
     }
   };
 
+  const generateAIPlan = async () => {
+    setGeneratingPlan(true);
+    try {
+      const res = await fetch('/api/pre-market/generate-plan', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          gapData: currentGapData,
+          keyLevels: currentKeyLevels,
+          globalMarkets,
+          calendar,
+          optionsData: null,
+          symbol: selectedIndex,
+        }),
+      });
+      
+      if (!res.ok) {
+        throw new Error('Failed to generate plan');
+      }
+      
+      const data = await res.json();
+      const plan = data.plan || data.fallbackPlan || 'Failed to generate plan';
+      setTradingPlan(plan);
+      
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('tradingPlan', plan);
+      }
+    } catch (error) {
+      console.error('Plan generation error:', error);
+      setTradingPlan('Error generating plan. Please try again.');
+    } finally {
+      setGeneratingPlan(false);
+    }
+  };
+
   const currentKeyLevels = keyLevels[selectedIndex.toLowerCase()];
   const currentGapData = gapData[selectedIndex.toLowerCase()];
   const pivotData = currentKeyLevels?.[selectedPivotType];
 
   return (
     <div className="min-h-screen bg-[#0a1628] text-slate-100">
-      {/* Header */}
       <header className="border-b border-blue-800/50 bg-[#0d1d35]/90 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
@@ -158,7 +226,6 @@ export default function PreMarketPage() {
       </header>
 
       <main className="container mx-auto px-6 py-6">
-        {/* Global Markets Banner */}
         <div className="bg-[#112240] border border-blue-800/40 rounded-xl p-4 mb-6 overflow-x-auto">
           <h2 className="text-sm font-semibold text-blue-300 mb-3">🌍 Global Markets Overview</h2>
           <div className="flex gap-6 min-w-max">
@@ -182,7 +249,6 @@ export default function PreMarketPage() {
             ))}
           </div>
 
-          {/* Commodities */}
           <div className="flex gap-6 mt-3 min-w-max pt-3 border-t border-blue-800/30">
             {globalMarkets?.commodities?.map((commodity) => (
               <div key={commodity.symbol} className="flex items-center gap-2">
@@ -200,12 +266,8 @@ export default function PreMarketPage() {
           </div>
         </div>
 
-        {/* Main Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          
-          {/* Left: Key Levels */}
           <div className="lg:col-span-4 space-y-6">
-            {/* Index Selector */}
             <div className="bg-[#112240] border border-blue-800/40 rounded-xl p-4">
               <div className="flex gap-2 mb-4">
                 {['NIFTY', 'BANKNIFTY'].map(idx => (
@@ -223,7 +285,6 @@ export default function PreMarketPage() {
                 ))}
               </div>
 
-              {/* Gap Information */}
               {currentGapData?.success && (
                 <div className={`p-3 rounded-lg mb-4 ${
                   currentGapData.gap.type === 'GAP_UP' ? 'bg-green-900/20 border border-green-700/50' :
@@ -263,7 +324,6 @@ export default function PreMarketPage() {
                 </div>
               )}
 
-              {/* Pivot Type Selector */}
               <div className="flex gap-1 mb-3 bg-slate-800/30 p-1 rounded-lg">
                 {['standard', 'fibonacci', 'camarilla'].map(type => (
                   <button
@@ -280,10 +340,8 @@ export default function PreMarketPage() {
                 ))}
               </div>
 
-              {/* Pivot Levels */}
               {pivotData && (
                 <div className="space-y-2">
-                  {/* Resistances */}
                   <div className="space-y-1">
                     {(selectedPivotType === 'camarilla' ? ['r4', 'r3', 'r2', 'r1'] : ['r3', 'r2', 'r1']).map(level => (
                       <div key={level} className="flex items-center justify-between py-1.5 px-2 bg-red-900/20 rounded border-l-2 border-red-500/50">
@@ -293,7 +351,6 @@ export default function PreMarketPage() {
                     ))}
                   </div>
 
-                  {/* Pivot */}
                   {selectedPivotType !== 'camarilla' && (
                     <div className="flex items-center justify-between py-2 px-2 bg-blue-900/20 rounded border-l-2 border-blue-500/50">
                       <span className="text-xs font-medium text-blue-400 uppercase">Pivot</span>
@@ -301,7 +358,6 @@ export default function PreMarketPage() {
                     </div>
                   )}
 
-                  {/* Supports */}
                   <div className="space-y-1">
                     {(selectedPivotType === 'camarilla' ? ['s1', 's2', 's3', 's4'] : ['s1', 's2', 's3']).map(level => (
                       <div key={level} className="flex items-center justify-between py-1.5 px-2 bg-green-900/20 rounded border-l-2 border-green-500/50">
@@ -313,7 +369,6 @@ export default function PreMarketPage() {
                 </div>
               )}
 
-              {/* Strategy Recommendation */}
               {currentGapData?.recommendation && (
                 <div className="mt-4 p-3 bg-blue-900/20 border border-blue-700/50 rounded-lg">
                   <div className="text-xs font-semibold text-blue-300 mb-1">{currentGapData.recommendation.strategy}</div>
@@ -333,9 +388,7 @@ export default function PreMarketPage() {
             </div>
           </div>
 
-          {/* Right: Economic Calendar & Plan */}
           <div className="lg:col-span-8 space-y-6">
-            {/* Economic Calendar */}
             <div className="bg-[#112240] border border-blue-800/40 rounded-xl p-4">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-lg font-semibold text-blue-300">📅 Today's Economic Calendar</h2>
@@ -384,20 +437,129 @@ export default function PreMarketPage() {
               </div>
             </div>
 
-            {/* Trading Plan */}
             <div className="bg-[#112240] border border-blue-800/40 rounded-xl p-4">
-              <h2 className="text-lg font-semibold text-blue-300 mb-4">📝 Today's Trading Plan</h2>
-              <textarea
-                className="w-full h-64 bg-slate-900/50 border border-slate-700 rounded-lg p-3 text-sm text-slate-200 font-mono focus:outline-none focus:border-blue-500 resize-none"
-                placeholder="Write your trading plan here...
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-semibold text-blue-300">📊 Pre-Market Movers</h2>
+                <div className="flex items-center gap-2">
+                  {preMarketMovers?.isPreMarketTime && (
+                    <span className="px-2 py-1 bg-green-900/30 text-green-400 text-xs rounded border border-green-700/50 animate-pulse">
+                      ⚡ LIVE
+                    </span>
+                  )}
+                  <button
+                    onClick={async () => {
+                      setMoversLoading(true);
+                      const res = await fetch('/api/pre-market/movers?limit=10');
+                      const data = await res.json();
+                      setPreMarketMovers(data);
+                      setMoversLoading(false);
+                    }}
+                    className="p-1.5 hover:bg-blue-800/40 rounded transition-colors"
+                  >
+                    <RefreshCw className={`w-4 h-4 text-blue-400 ${moversLoading ? 'animate-spin' : ''}`} />
+                  </button>
+                </div>
+              </div>
 
-Example:
-- Market Bias: Bullish (Gap up expected)
-- Entry: Long above 23,350 after 9:30 AM
-- Target: 23,500 (R1 level)
-- Stop Loss: 23,300
-- Risk: 50 points = ₹5,000 (1 lot)
-- Notes: Avoid first 15 mins, watch for confirmation"
+              {moversLoading ? (
+                <div className="text-center py-8 text-slate-400">Loading pre-market data...</div>
+              ) : !preMarketMovers?.success ? (
+                <div className="text-center py-8">
+                  <div className="text-red-400 text-sm mb-2">{preMarketMovers?.error || 'Failed to load'}</div>
+                  {!preMarketMovers?.isPreMarketTime && (
+                    <div className="text-slate-500 text-xs">Pre-market data available 9:00-9:15 AM IST</div>
+                  )}
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <h3 className="text-sm font-semibold text-green-400 mb-3 flex items-center gap-2">
+                      <span>🔥</span>Top Gainers
+                    </h3>
+                    <div className="space-y-2 max-h-96 overflow-y-auto">
+                      {preMarketMovers.gainers?.length > 0 ? (
+                        preMarketMovers.gainers.map((stock) => (
+                          <div key={stock.symbol} className="bg-green-900/20 border border-green-700/30 rounded-lg p-3">
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="font-semibold text-slate-200">{stock.symbol}</span>
+                              <span className="text-green-400 font-bold">+{stock.changePercent.toFixed(2)}%</span>
+                            </div>
+                            <div className="flex items-center justify-between text-xs text-slate-400">
+                              <div><span className="text-slate-500">LTP:</span> <span className="text-slate-300 font-mono">₹{stock.lastPrice}</span></div>
+                              <div><span className="text-slate-500">Vol:</span> <span className="text-slate-300 font-mono">{(stock.volume / 1000).toFixed(0)}K</span></div>
+                            </div>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="text-slate-500 text-sm text-center py-4">No significant gainers</div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div>
+                    <h3 className="text-sm font-semibold text-red-400 mb-3 flex items-center gap-2">
+                      <span>📉</span>Top Losers
+                    </h3>
+                    <div className="space-y-2 max-h-96 overflow-y-auto">
+                      {preMarketMovers.losers?.length > 0 ? (
+                        preMarketMovers.losers.map((stock) => (
+                          <div key={stock.symbol} className="bg-red-900/20 border border-red-700/30 rounded-lg p-3">
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="font-semibold text-slate-200">{stock.symbol}</span>
+                              <span className="text-red-400 font-bold">{stock.changePercent.toFixed(2)}%</span>
+                            </div>
+                            <div className="flex items-center justify-between text-xs text-slate-400">
+                              <div><span className="text-slate-500">LTP:</span> <span className="text-slate-300 font-mono">₹{stock.lastPrice}</span></div>
+                              <div><span className="text-slate-500">Vol:</span> <span className="text-slate-300 font-mono">{(stock.volume / 1000).toFixed(0)}K</span></div>
+                            </div>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="text-slate-500 text-sm text-center py-4">No significant losers</div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {preMarketMovers?.summary && (
+                <div className="mt-4 pt-4 border-t border-blue-800/40 flex items-center justify-between text-xs text-slate-400">
+                  <div>
+                    <span className="text-green-400">{preMarketMovers.summary.totalGainers} Gainers</span>
+                    {' / '}
+                    <span className="text-red-400">{preMarketMovers.summary.totalLosers} Losers</span>
+                  </div>
+                  <div>
+                    Avg Change: <span className={preMarketMovers.summary.avgChangePercent >= 0 ? 'text-green-400' : 'text-red-400'}>
+                      {preMarketMovers.summary.avgChangePercent >= 0 ? '+' : ''}{preMarketMovers.summary.avgChangePercent}%
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="bg-[#112240] border border-blue-800/40 rounded-xl p-4">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-semibold text-blue-300">📝 Today's Trading Plan</h2>
+                <button
+                  onClick={generateAIPlan}
+                  disabled={generatingPlan}
+                  className="px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
+                >
+                  {generatingPlan ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      Generating...
+                    </>
+                  ) : (
+                    <>✨ Generate Plan</>
+                  )}
+                </button>
+              </div>
+              
+              <textarea
+                className="w-full h-80 bg-slate-900/50 border border-slate-700 rounded-lg p-3 text-sm text-slate-200 font-mono focus:outline-none focus:border-blue-500 resize-none"
+                placeholder="Click 'Generate Plan' to create a trading plan based on current market data..."
                 value={tradingPlan}
                 onChange={(e) => {
                   setTradingPlan(e.target.value);
@@ -405,14 +567,30 @@ Example:
                     localStorage.setItem('tradingPlan', e.target.value);
                   }
                 }}
-                onChange={(e) => localStorage.setItem('tradingPlan', e.target.value)}
               />
+              
               <div className="flex gap-2 mt-3">
-                <button className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-sm font-medium transition-colors">
-                  Save Plan
+                <button 
+                  onClick={() => {
+                    if (typeof window !== 'undefined') {
+                      localStorage.setItem('tradingPlan', tradingPlan);
+                      alert('Plan saved successfully!');
+                    }
+                  }}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-sm font-medium transition-colors"
+                >
+                  💾 Save Plan
                 </button>
-                <button className="px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-sm font-medium transition-colors">
-                  Export PDF
+                <button 
+                  onClick={() => {
+                    setTradingPlan('');
+                    if (typeof window !== 'undefined') {
+                      localStorage.removeItem('tradingPlan');
+                    }
+                  }}
+                  className="px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-sm font-medium transition-colors"
+                >
+                  🗑️ Clear
                 </button>
               </div>
             </div>
