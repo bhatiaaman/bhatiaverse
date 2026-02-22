@@ -12,7 +12,7 @@
     "@anthropic-ai/sdk": "^0.78.0",
     "@upstash/redis": "^1.36.2",
     "gsap": "^3.13.0",
-    "kiteconnect": "^4.0.0",
+    "kiteconnect": "^5.1.0",
     "lightweight-charts": "^4.0.0",
     "lucide-react": "^0.553.0",
     "next": "^16.1.6",
@@ -25,8 +25,8 @@
     "babel-plugin-react-compiler": "1.0.0",
     "baseline-browser-mapping": "^2.9.19",
     "eslint": "^10.0.1",
-    "eslint-config-next": "^12.0.4",
+    "eslint-config-next": "^16.1.6",
     "tailwindcss": "^4",
-    "vercel": "^50.22.1"
+    "vercel": "^28.18.5"
   }
 }
