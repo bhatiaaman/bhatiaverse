@@ -15,7 +15,7 @@ export default function PreMarketPage() {
   // Collapsible sections
   const [sectionsCollapsed, setSectionsCollapsed] = useState({
     globalMarkets: false,
-    movers: true,
+    calendar: false,
   });
 
   useEffect(() => {
@@ -444,7 +444,7 @@ export default function PreMarketPage() {
             </div>
           </div>
 
-          {/* MIDDLE COLUMN - Trading Plan & Calendar (5 cols) */}
+          {/* MIDDLE COLUMN - Trading Plan & Movers (5 cols) */}
           <div className="lg:col-span-5 space-y-6">
             
             {/* Trading Plan - PRIORITY #1 */}
@@ -468,7 +468,7 @@ export default function PreMarketPage() {
               </div>
               
               <textarea
-                className="w-full h-96 bg-slate-900/50 border border-slate-700 rounded-lg p-3 text-sm text-slate-200 font-mono focus:outline-none focus:border-blue-500 resize-none"
+                className="w-full h-80 bg-slate-900/50 border border-slate-700 rounded-lg p-3 text-sm text-slate-200 font-mono focus:outline-none focus:border-blue-500 resize-none"
                 placeholder="Click 'Generate Plan' to create a trading plan based on current market data..."
                 value={tradingPlan}
                 onChange={(e) => {
@@ -505,57 +505,116 @@ export default function PreMarketPage() {
               </div>
             </div>
 
-            {/* Economic Calendar */}
+            {/* Pre-Market Movers - Side by Side */}
             <div className="bg-[#112240] border border-blue-800/40 rounded-xl p-4">
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-semibold text-blue-300">📅 Economic Calendar</h2>
-                {calendar?.summary && (
-                  <div className="flex gap-2 text-xs">
-                    <span className="px-2 py-1 bg-red-900/30 text-red-400 rounded">
-                      🔴 {calendar.summary.high}
+                <div className="flex items-center gap-2">
+                  <h2 className="text-lg font-semibold text-blue-300">📊 Pre-Market Movers</h2>
+                  {preMarketMovers?.isPreMarketTime && (
+                    <span className="px-2 py-1 bg-green-900/30 text-green-400 text-xs rounded border border-green-700/50 animate-pulse">
+                      ⚡ LIVE
                     </span>
-                    <span className="px-2 py-1 bg-yellow-900/30 text-yellow-400 rounded">
-                      🟡 {calendar.summary.medium}
-                    </span>
-                  </div>
-                )}
+                  )}
+                </div>
+                <button
+                  onClick={async () => {
+                    setMoversLoading(true);
+                    const res = await fetch('/api/pre-market/movers?limit=10');
+                    const data = await res.json();
+                    setPreMarketMovers(data);
+                    setMoversLoading(false);
+                  }}
+                  className="p-1.5 hover:bg-blue-800/40 rounded transition-colors"
+                >
+                  <RefreshCw className={`w-4 h-4 text-blue-400 ${moversLoading ? 'animate-spin' : ''}`} />
+                </button>
               </div>
 
-              <div className="space-y-2 max-h-80 overflow-y-auto">
-                {calendar?.events?.map((event, idx) => (
-                  <div key={idx} className={`flex items-center justify-between p-3 rounded-lg border ${
-                    event.status === 'COMPLETED' ? 'bg-slate-800/30 border-slate-700/50 opacity-60' :
-                    event.status === 'SOON' ? 'bg-amber-900/20 border-amber-700/50' :
-                    'bg-slate-800/50 border-slate-700/50'
-                  }`}>
-                    <div className="flex items-center gap-3">
-                      <div className={`w-2 h-2 rounded-full ${
-                        event.impact === 'HIGH' ? 'bg-red-500' :
-                        event.impact === 'MEDIUM' ? 'bg-yellow-500' :
-                        'bg-green-500'
-                      }`} />
-                      <div>
-                        <div className="text-sm font-medium text-slate-200">{event.event}</div>
-                        <div className="text-xs text-slate-400 flex items-center gap-2 mt-0.5">
-                          <span>{event.country}</span>
-                          {event.previous && <span>Prev: {event.previous}</span>}
-                        </div>
+              {moversLoading ? (
+                <div className="text-center py-8 text-slate-400 text-sm">Loading pre-market data...</div>
+              ) : !preMarketMovers?.success ? (
+                <div className="text-center py-8">
+                  <div className="text-red-400 text-sm mb-2">{preMarketMovers?.error || 'Failed to load'}</div>
+                  {!preMarketMovers?.isPreMarketTime && (
+                    <div className="text-slate-500 text-xs">Pre-market data available 9:00-9:15 AM IST</div>
+                  )}
+                </div>
+              ) : (
+                <>
+                  <div className="grid grid-cols-2 gap-4">
+                    {/* Top Gainers */}
+                    <div>
+                      <h3 className="text-sm font-semibold text-green-400 mb-3 flex items-center gap-2">
+                        <span>🔥</span>Top Gainers
+                      </h3>
+                      <div className="space-y-2 max-h-96 overflow-y-auto">
+                        {preMarketMovers.gainers?.length > 0 ? (
+                          preMarketMovers.gainers.map((stock) => (
+                            <div key={stock.symbol} className="bg-green-900/20 border border-green-700/30 rounded-lg p-3">
+                              <div className="flex items-center justify-between mb-1">
+                                <span className="font-semibold text-slate-200 text-sm">{stock.symbol}</span>
+                                <span className="text-green-400 font-bold text-sm">+{stock.changePercent.toFixed(2)}%</span>
+                              </div>
+                              <div className="flex items-center justify-between text-xs text-slate-400">
+                                <div><span className="text-slate-500">LTP:</span> <span className="text-slate-300 font-mono">₹{stock.lastPrice}</span></div>
+                                <div><span className="text-slate-500">Vol:</span> <span className="text-slate-300 font-mono">{(stock.volume / 1000).toFixed(0)}K</span></div>
+                              </div>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="text-slate-500 text-sm text-center py-4">No significant gainers</div>
+                        )}
                       </div>
                     </div>
-                    <div className="text-right">
-                      <div className="text-sm font-mono text-slate-300">{event.time}</div>
-                      {event.minutesUntil > 0 && (
-                        <div className="text-xs text-slate-500">{event.minutesUntil}m</div>
-                      )}
+
+                    {/* Top Losers */}
+                    <div>
+                      <h3 className="text-sm font-semibold text-red-400 mb-3 flex items-center gap-2">
+                        <span>📉</span>Top Losers
+                      </h3>
+                      <div className="space-y-2 max-h-96 overflow-y-auto">
+                        {preMarketMovers.losers?.length > 0 ? (
+                          preMarketMovers.losers.map((stock) => (
+                            <div key={stock.symbol} className="bg-red-900/20 border border-red-700/30 rounded-lg p-3">
+                              <div className="flex items-center justify-between mb-1">
+                                <span className="font-semibold text-slate-200 text-sm">{stock.symbol}</span>
+                                <span className="text-red-400 font-bold text-sm">{stock.changePercent.toFixed(2)}%</span>
+                              </div>
+                              <div className="flex items-center justify-between text-xs text-slate-400">
+                                <div><span className="text-slate-500">LTP:</span> <span className="text-slate-300 font-mono">₹{stock.lastPrice}</span></div>
+                                <div><span className="text-slate-500">Vol:</span> <span className="text-slate-300 font-mono">{(stock.volume / 1000).toFixed(0)}K</span></div>
+                              </div>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="text-slate-500 text-sm text-center py-4">No significant losers</div>
+                        )}
+                      </div>
                     </div>
                   </div>
-                ))}
-              </div>
+
+                  {/* Summary */}
+                  {preMarketMovers?.summary && (
+                    <div className="mt-4 pt-4 border-t border-blue-800/40 flex items-center justify-between text-xs text-slate-400">
+                      <div>
+                        <span className="text-green-400">{preMarketMovers.summary.totalGainers} Gainers</span>
+                        {' / '}
+                        <span className="text-red-400">{preMarketMovers.summary.totalLosers} Losers</span>
+                      </div>
+                      <div>
+                        Avg Change: <span className={preMarketMovers.summary.avgChangePercent >= 0 ? 'text-green-400' : 'text-red-400'}>
+                          {preMarketMovers.summary.avgChangePercent >= 0 ? '+' : ''}{preMarketMovers.summary.avgChangePercent}%
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
             </div>
 
           </div>
 
-          {/* RIGHT COLUMN - Markets & Movers (3 cols) */}
+          {/* RIGHT COLUMN - Global Markets & Calendar (3 cols) */}
           <div className="lg:col-span-3 space-y-6">
             
             {/* Global Markets - Collapsible */}
@@ -600,64 +659,52 @@ export default function PreMarketPage() {
               )}
             </div>
 
-            {/* Pre-Market Movers - Collapsible */}
+            {/* Economic Calendar - Collapsible */}
             <div className="bg-[#112240] border border-blue-800/40 rounded-xl overflow-hidden">
               <button
-                onClick={() => toggleSection('movers')}
+                onClick={() => toggleSection('calendar')}
                 className="w-full flex items-center justify-between p-4 hover:bg-blue-900/20 transition-colors"
               >
                 <div className="flex items-center gap-2">
-                  <h2 className="text-sm font-semibold text-blue-300">📊 Pre-Market Movers</h2>
-                  {preMarketMovers?.isPreMarketTime && (
-                    <span className="px-2 py-0.5 bg-green-900/30 text-green-400 text-[10px] rounded border border-green-700/50 animate-pulse">
-                      LIVE
+                  <h2 className="text-sm font-semibold text-blue-300">📅 Economic Calendar</h2>
+                  {calendar?.summary && (
+                    <span className="px-2 py-0.5 bg-red-900/30 text-red-400 text-[10px] rounded">
+                      {calendar.summary.high} High
                     </span>
                   )}
                 </div>
-                {sectionsCollapsed.movers ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
+                {sectionsCollapsed.calendar ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
               </button>
 
-              {!sectionsCollapsed.movers && (
-                <div className="p-4 pt-0">
-                  {moversLoading ? (
-                    <div className="text-center py-4 text-slate-400 text-sm">Loading...</div>
-                  ) : !preMarketMovers?.success ? (
-                    <div className="text-center py-4 text-slate-500 text-xs">
-                      Available 9:00-9:15 AM IST
-                    </div>
-                  ) : (
-                    <div className="space-y-4">
-                      <div>
-                        <h3 className="text-xs font-semibold text-green-400 mb-2">Top Gainers</h3>
-                        <div className="space-y-2">
-                          {preMarketMovers.gainers?.slice(0, 5).map((stock) => (
-                            <div key={stock.symbol} className="bg-green-900/10 border border-green-700/20 rounded p-2">
-                              <div className="flex items-center justify-between">
-                                <span className="text-xs font-semibold text-slate-200">{stock.symbol}</span>
-                                <span className="text-xs text-green-400 font-bold">+{stock.changePercent.toFixed(2)}%</span>
-                              </div>
-                              <div className="text-[10px] text-slate-500 mt-0.5">₹{stock.lastPrice}</div>
-                            </div>
-                          ))}
+              {!sectionsCollapsed.calendar && (
+                <div className="p-4 pt-0 space-y-2 max-h-96 overflow-y-auto">
+                  {calendar?.events?.map((event, idx) => (
+                    <div key={idx} className={`p-2 rounded border ${
+                      event.status === 'COMPLETED' ? 'bg-slate-800/30 border-slate-700/50 opacity-60' :
+                      event.status === 'SOON' ? 'bg-amber-900/20 border-amber-700/50' :
+                      'bg-slate-800/50 border-slate-700/50'
+                    }`}>
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex items-start gap-2 flex-1">
+                          <div className={`w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0 ${
+                            event.impact === 'HIGH' ? 'bg-red-500' :
+                            event.impact === 'MEDIUM' ? 'bg-yellow-500' :
+                            'bg-green-500'
+                          }`} />
+                          <div className="flex-1 min-w-0">
+                            <div className="text-xs font-medium text-slate-200 truncate">{event.event}</div>
+                            <div className="text-[10px] text-slate-500 mt-0.5">{event.country}</div>
+                          </div>
                         </div>
-                      </div>
-
-                      <div>
-                        <h3 className="text-xs font-semibold text-red-400 mb-2">Top Losers</h3>
-                        <div className="space-y-2">
-                          {preMarketMovers.losers?.slice(0, 5).map((stock) => (
-                            <div key={stock.symbol} className="bg-red-900/10 border border-red-700/20 rounded p-2">
-                              <div className="flex items-center justify-between">
-                                <span className="text-xs font-semibold text-slate-200">{stock.symbol}</span>
-                                <span className="text-xs text-red-400 font-bold">{stock.changePercent.toFixed(2)}%</span>
-                              </div>
-                              <div className="text-[10px] text-slate-500 mt-0.5">₹{stock.lastPrice}</div>
-                            </div>
-                          ))}
+                        <div className="text-right flex-shrink-0">
+                          <div className="text-xs font-mono text-slate-300">{event.time}</div>
+                          {event.minutesUntil > 0 && (
+                            <div className="text-[10px] text-slate-500">{event.minutesUntil}m</div>
+                          )}
                         </div>
                       </div>
                     </div>
-                  )}
+                  ))}
                 </div>
               )}
             </div>
