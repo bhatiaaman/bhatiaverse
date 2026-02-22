@@ -1,5 +1,5 @@
 // app/api/market-commentary/route.js
-// Rule-based commentary (no AI required)
+// Rule-based commentary with tomorrow's gap consideration
 
 import { NextResponse } from 'next/server';
 
@@ -39,22 +39,23 @@ export async function GET(request) {
       const cached = await redisGet(CACHE_KEY);
       if (cached) {
         const age = Date.now() - new Date(cached.timestamp).getTime();
-        if (age < 5 * 60 * 1000) { // 5 minutes
+        if (age < 5 * 60 * 1000) {
           return NextResponse.json({ ...cached, fromCache: true, cacheAge: age });
         }
       }
     }
 
-    // Fetch market data
+    // Fetch market data AND gap data
     const baseUrl = request.url.split('/api/')[0];
     
-    const [marketData, optionChainData] = await Promise.all([
+    const [marketData, optionChainData, gapData] = await Promise.all([
       fetch(`${baseUrl}/api/market-data`).then(r => r.json()),
       fetch(`${baseUrl}/api/option-chain?underlying=NIFTY&expiry=weekly`).then(r => r.json()).catch(() => null),
+      fetch(`${baseUrl}/api/pre-market/gap-calculator?symbol=NIFTY`).then(r => r.json()).catch(() => null),
     ]);
 
-    // Generate rule-based commentary
-    const commentary = generateRuleBasedCommentary(marketData, optionChainData);
+    // Generate commentary WITH gap consideration
+    const commentary = generateRuleBasedCommentary(marketData, optionChainData, gapData);
 
     const result = {
       success: true,
@@ -63,7 +64,6 @@ export async function GET(request) {
       timestamp: new Date().toISOString(),
     };
 
-    // Cache for 5 minutes
     await redisSet(CACHE_KEY, result, 300);
 
     return NextResponse.json(result);
@@ -89,23 +89,24 @@ export async function GET(request) {
   }
 }
 
-function generateRuleBasedCommentary(marketData, optionChain) {
+function generateRuleBasedCommentary(marketData, optionChain, gapData) {
   const nifty = parseFloat(marketData.indices?.nifty || 0);
   const niftyChange = parseFloat(marketData.indices?.niftyChangePercent || 0);
   const niftyHigh = parseFloat(marketData.indices?.niftyHigh || nifty);
   const niftyLow = parseFloat(marketData.indices?.niftyLow || nifty);
   const niftyEMA9 = parseFloat(marketData.indices?.niftyEMA9 || nifty);
   const bias = marketData.sentiment?.bias || 'Neutral';
-  const advances = marketData.sentiment?.advances || 0;
-  const declines = marketData.sentiment?.declines || 0;
   
   const pcr = optionChain?.pcr || null;
   const support = optionChain?.support || niftyLow;
   const resistance = optionChain?.resistance || niftyHigh;
   
-  const range = niftyHigh - niftyLow;
-  const rangePercent = (range / niftyLow) * 100;
-  const distanceFromEMA = ((nifty - niftyEMA9) / niftyEMA9) * 100;
+  // GAP DATA - KEY ADDITION
+  const hasGapData = gapData?.success;
+  const gapType = gapData?.gap?.type;
+  const gapSize = gapData?.gap?.size;
+  const gapPercent = gapData?.gap?.percent || 0;
+  const expectedOpen = gapData?.expectedOpen;
   
   let state = 'CONSOLIDATING';
   let stateEmoji = '↔️';
@@ -115,7 +116,73 @@ function generateRuleBasedCommentary(marketData, optionChain) {
   let action = '';
   let keyLevel = support;
 
-  // Rule 1: Tight Range (< 0.3%)
+  // PRIORITY: If gap data available, use it for tomorrow's outlook
+  if (hasGapData && Math.abs(gapPercent) > 0.3) {
+    
+    if (gapType === 'GAP_UP') {
+      if (gapSize === 'Large') {
+        state = 'GAP UP EXPECTED';
+        stateEmoji = '🚀';
+        tradingBias = 'BULLISH';
+        biasEmoji = '🟢';
+        headline = `Strong gap up expected at ${expectedOpen} (+${gapPercent.toFixed(2)}%)`;
+        action = `Wait for 9:30 AM consolidation. Enter longs only if holds above ${nifty.toFixed(0)}. Avoid chasing.`;
+        keyLevel = nifty.toFixed(0);
+      } else if (gapSize === 'Medium') {
+        state = 'GAP UP EXPECTED';
+        stateEmoji = '📈';
+        tradingBias = 'BULLISH';
+        biasEmoji = '🟢';
+        headline = `Moderate gap up expected at ${expectedOpen} (+${gapPercent.toFixed(2)}%)`;
+        action = `Buy dips if sustains above ${nifty.toFixed(0)}. Target ${resistance?.toFixed(0)}.`;
+        keyLevel = nifty.toFixed(0);
+      } else {
+        state = 'SMALL GAP UP';
+        stateEmoji = '📈';
+        tradingBias = 'BULLISH';
+        biasEmoji = '🟢';
+        headline = `Small gap up expected - momentum likely to continue`;
+        action = `Buy on breakout above opening range high. Trail stop loss.`;
+        keyLevel = expectedOpen?.toFixed(0) || nifty.toFixed(0);
+      }
+      return { state, stateEmoji, bias: tradingBias, biasEmoji, keyLevel, headline, action, fullText: `${stateEmoji} ${state}\n${headline}\n\n${biasEmoji} ${action}` };
+    }
+    
+    if (gapType === 'GAP_DOWN') {
+      if (gapSize === 'Large') {
+        state = 'GAP DOWN EXPECTED';
+        stateEmoji = '⚠️';
+        tradingBias = 'BEARISH';
+        biasEmoji = '🔴';
+        headline = `Sharp gap down expected at ${expectedOpen} (${gapPercent.toFixed(2)}%)`;
+        action = `High chance of bounce. Avoid shorts initially. Look for reversal signals.`;
+        keyLevel = expectedOpen?.toFixed(0) || nifty.toFixed(0);
+      } else if (gapSize === 'Medium') {
+        state = 'GAP DOWN EXPECTED';
+        stateEmoji = '📉';
+        tradingBias = 'BEARISH';
+        biasEmoji = '🔴';
+        headline = `Moderate gap down expected at ${expectedOpen} (${gapPercent.toFixed(2)}%)`;
+        action = `Sell rallies if fails to reclaim ${nifty.toFixed(0)}. Target ${support?.toFixed(0)}.`;
+        keyLevel = nifty.toFixed(0);
+      } else {
+        state = 'SMALL GAP DOWN';
+        stateEmoji = '📉';
+        tradingBias = 'BEARISH';
+        biasEmoji = '🔴';
+        headline = `Small gap down expected - weakness may continue`;
+        action = `Short on breakdown below opening range low.`;
+        keyLevel = expectedOpen?.toFixed(0) || nifty.toFixed(0);
+      }
+      return { state, stateEmoji, bias: tradingBias, biasEmoji, keyLevel, headline, action, fullText: `${stateEmoji} ${state}\n${headline}\n\n${biasEmoji} ${action}` };
+    }
+  }
+  
+  // FALLBACK: Current market analysis (if no gap data or flat opening)
+  const range = niftyHigh - niftyLow;
+  const rangePercent = (range / niftyLow) * 100;
+  const distanceFromEMA = ((nifty - niftyEMA9) / niftyEMA9) * 100;
+
   if (rangePercent < 0.3) {
     state = 'TIGHT RANGE';
     stateEmoji = '📊';
@@ -125,8 +192,6 @@ function generateRuleBasedCommentary(marketData, optionChain) {
     biasEmoji = '🟡';
     keyLevel = niftyLow.toFixed(0);
   }
-  
-  // Rule 2: Strong Trend (> 1% move)
   else if (Math.abs(niftyChange) > 1) {
     if (niftyChange > 0) {
       state = 'TRENDING UP';
@@ -146,8 +211,6 @@ function generateRuleBasedCommentary(marketData, optionChain) {
       keyLevel = resistance?.toFixed(0) || niftyHigh.toFixed(0);
     }
   }
-  
-  // Rule 3: Moderate Move (0.5-1%)
   else if (Math.abs(niftyChange) > 0.5) {
     if (niftyChange > 0 && nifty > niftyEMA9) {
       state = 'TRENDING UP';
@@ -166,19 +229,16 @@ function generateRuleBasedCommentary(marketData, optionChain) {
       action = `Short on bounces to ${(nifty + 20).toFixed(0)}-${(nifty + 30).toFixed(0)} with SL above ${(nifty + 50).toFixed(0)}`;
       keyLevel = niftyEMA9.toFixed(0);
     } else {
-      state = 'MIXED SIGNALS';
-      stateEmoji = '⚠️';
+      state = 'CONSOLIDATING';
+      stateEmoji = '↔️';
       tradingBias = 'NEUTRAL';
       biasEmoji = '🟡';
-      headline = `Conflicting signals - price at ${nifty.toFixed(0)} vs EMA9 ${niftyEMA9.toFixed(0)}`;
-      action = `Wait for clear direction. Watch ${support?.toFixed(0)} support and ${resistance?.toFixed(0)} resistance`;
-      keyLevel = niftyEMA9.toFixed(0);
+      headline = `Range-bound between ${support?.toLocaleString()} - ${resistance?.toLocaleString()}`;
+      action = `Trade the range or wait for breakout. Buy near support, sell near resistance`;
+      keyLevel = support?.toFixed(0);
     }
   }
-  
-  // Rule 4: Small Move (< 0.5%)
   else {
-    // Check if near support/resistance
     const distToSupport = support ? ((nifty - support) / support) * 100 : 999;
     const distToResistance = resistance ? ((resistance - nifty) / nifty) * 100 : 999;
     
@@ -209,25 +269,7 @@ function generateRuleBasedCommentary(marketData, optionChain) {
     }
   }
   
-  // Rule 5: Reversal Setup (price crossed EMA recently)
-  if (Math.abs(distanceFromEMA) < 0.5 && Math.abs(niftyChange) > 0.3) {
-    state = 'REVERSAL SETUP';
-    stateEmoji = '🔄';
-    headline = `Price testing EMA9 at ${niftyEMA9.toFixed(0)} - potential reversal`;
-    
-    if (nifty > niftyEMA9 && niftyChange > 0) {
-      tradingBias = 'BULLISH';
-      biasEmoji = '🟢';
-      action = `Bullish reversal if sustains above ${niftyEMA9.toFixed(0)}. Long on confirmation with SL ${(niftyEMA9 - 20).toFixed(0)}`;
-    } else if (nifty < niftyEMA9 && niftyChange < 0) {
-      tradingBias = 'BEARISH';
-      biasEmoji = '🔴';
-      action = `Bearish reversal if breaks below ${niftyEMA9.toFixed(0)}. Short on confirmation with SL ${(niftyEMA9 + 20).toFixed(0)}`;
-    }
-    keyLevel = niftyEMA9.toFixed(0);
-  }
-  
-  // Rule 6: PCR-based sentiment override
+  // PCR adjustment
   if (pcr) {
     if (pcr > 1.3 && tradingBias === 'BEARISH') {
       tradingBias = 'NEUTRAL';
@@ -238,14 +280,6 @@ function generateRuleBasedCommentary(marketData, optionChain) {
       biasEmoji = '🟡';
       action = `${action} [PCR ${pcr.toFixed(2)} suggests caution on longs]`;
     }
-  }
-  
-  // Rule 7: Market Breadth confirmation
-  const advDecRatio = declines > 0 ? advances / declines : advances > 0 ? 999 : 1;
-  if (advDecRatio > 2 && tradingBias !== 'BULLISH') {
-    action = `${action} [Strong advance/decline favors bulls]`;
-  } else if (advDecRatio < 0.5 && tradingBias !== 'BEARISH') {
-    action = `${action} [Weak advance/decline favors bears]`;
   }
   
   const fullText = `${stateEmoji} ${state}\n${headline}\n\n${biasEmoji} ${tradingBias}\nKey Level: ${keyLevel}\n\n${action}`;

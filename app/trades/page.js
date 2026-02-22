@@ -2,7 +2,7 @@
 
   import React, { useState, useEffect, useRef } from 'react';
   import Link from 'next/link';
-  import { TrendingUp, RefreshCw } from 'lucide-react';
+  import { TrendingUp, RefreshCw,ChevronDown, ChevronUp,AlertCircle  } from 'lucide-react';
   import { useTheme } from '../../lib/theme-context';
   import { usePageVisibility } from '@/app/hooks/usePageVisibility';
 
@@ -29,6 +29,7 @@
     const isVisible = usePageVisibility();
     const [commentary, setCommentary] = useState(null);
     const [commentaryLoading, setCommentaryLoading] = useState(true); 
+    const [commentaryCollapsed, setCommentaryCollapsed] = useState(false);
     // Chart state
     const [chartSymbol, setChartSymbol] = useState('NIFTY');
     const [chartInterval, setChartInterval] = useState('15minute');
@@ -397,13 +398,15 @@
         {/* MAIN CONTENT */}
         <main className="container mx-auto px-4 py-6">
 
-          {/* Market Commentary Banner */}
           {commentary && (
-            <div className="mb-4 bg-gradient-to-r from-blue-900/50 via-purple-900/50 to-blue-900/50 border border-blue-700/50 rounded-xl p-4 backdrop-blur-sm">
-              <div className="flex items-start gap-4">
-                {/* State Badge */}
-                <div className="flex-shrink-0">
-                  <div className={`px-4 py-2 rounded-lg font-semibold text-sm flex items-center gap-2 ${
+            <div className="mb-4 bg-gradient-to-r from-purple-900/50 via-blue-900/50 to-purple-900/50 border border-purple-700/50 rounded-xl backdrop-blur-sm overflow-hidden">
+              {/* Collapsible Header */}
+              <button
+                onClick={() => setCommentaryCollapsed(!commentaryCollapsed)}
+                className="w-full flex items-center justify-between p-4 hover:bg-blue-900/20 transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  <div className={`px-3 py-1.5 rounded-lg font-semibold text-sm flex items-center gap-2 ${
                     commentary.bias === 'BULLISH' ? 'bg-green-900/50 text-green-300 border border-green-700/50' :
                     commentary.bias === 'BEARISH' ? 'bg-red-900/50 text-red-300 border border-red-700/50' :
                     'bg-yellow-900/50 text-yellow-300 border border-yellow-700/50'
@@ -411,32 +414,35 @@
                     <span className="text-lg">{commentary.stateEmoji}</span>
                     <span>{commentary.state}</span>
                   </div>
+                  <span className="text-lg">{commentary.biasEmoji}</span>
+                  <h3 className="text-base font-bold text-white">
+                    {commentary.headline}
+                  </h3>
                 </div>
+                
+                <div className="flex items-center gap-2">
+                  <span className={`text-xs font-semibold px-2 py-1 rounded ${
+                    commentary.bias === 'BULLISH' ? 'text-green-400' :
+                    commentary.bias === 'BEARISH' ? 'text-red-400' :
+                    'text-yellow-400'
+                  }`}>
+                    {commentary.bias}
+                  </span>
+                  {commentaryCollapsed ? (
+                    <ChevronDown className="w-5 h-5 text-slate-400" />
+                  ) : (
+                    <ChevronUp className="w-5 h-5 text-slate-400" />
+                  )}
+                </div>
+              </button>
 
-                {/* Commentary Content */}
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className="text-lg">{commentary.biasEmoji}</span>
-                    <h3 className="text-lg font-bold text-white">
-                      {commentary.headline}
-                    </h3>
-                  </div>
-                  
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
-                    <div className="flex items-center gap-2">
-                      <span className="text-slate-400">Market Bias:</span>
-                      <span className={`font-semibold ${
-                        commentary.bias === 'BULLISH' ? 'text-green-400' :
-                        commentary.bias === 'BEARISH' ? 'text-red-400' :
-                        'text-yellow-400'
-                      }`}>
-                        {commentary.bias}
-                      </span>
-                    </div>
-                    
+              {/* Collapsible Content */}
+              {!commentaryCollapsed && (
+                <div className="px-4 pb-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm mb-3">
                     {commentary.keyLevel && (
                       <div className="flex items-center gap-2">
-                        <span className="text-slate-400">Key Level:</span>
+                        <span className="text-slate-400">Watch Level:</span>
                         <span className="font-mono font-semibold text-blue-300">
                           {commentary.keyLevel}
                         </span>
@@ -444,32 +450,16 @@
                     )}
                   </div>
 
-                  <div className="mt-2 flex items-start gap-2">
-                    <span className="text-slate-400 text-sm flex-shrink-0">Action:</span>
+                  <div className="flex items-start gap-2 bg-cyan-900/20 border border-cyan-700/30 rounded-lg p-3">
+                    <AlertCircle className="w-4 h-4 text-cyan-400 flex-shrink-0 mt-0.5" />
                     <span className="text-cyan-300 text-sm font-medium">
                       {commentary.action}
                     </span>
                   </div>
                 </div>
-
-                {/* Refresh Button */}
-                <button
-                  onClick={async () => {
-                    setCommentaryLoading(true);
-                    const res = await fetch('/api/market-commentary?refresh=1');
-                    const data = await res.json();
-                    setCommentary(data.commentary);
-                    setCommentaryLoading(false);
-                  }}
-                  className="flex-shrink-0 p-2 hover:bg-blue-800/40 rounded-lg transition-colors"
-                  title="Refresh commentary"
-                >
-                  <RefreshCw className={`w-4 h-4 text-blue-400 ${commentaryLoading ? 'animate-spin' : ''}`} />
-                </button>
-              </div>
+              )}
             </div>
           )}
-
 
           {/* Top Market Data Grid */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-1 mb-4">
