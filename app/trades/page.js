@@ -19,6 +19,30 @@
     const [optionLoading, setOptionLoading] = useState(true);
     const [optionUnderlying, setOptionUnderlying] = useState('NIFTY');
     const [optionExpiry, setOptionExpiry] = useState('weekly');
+
+    // Helper: check if today is in last week of month
+    function isLastWeekOfMonth(date = new Date()) {
+      const d = new Date(date);
+      const lastDay = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+      const lastTuesday = new Date(lastDay);
+      // Find last Tuesday of the month
+      lastTuesday.setDate(lastDay.getDate() - ((lastDay.getDay() + 5) % 7));
+      // If today is after or equal to last Tuesday, it's last week
+      return d >= lastTuesday;
+    }
+
+    // Auto-select expiry type for NIFTY
+    useEffect(() => {
+      if (optionUnderlying === 'NIFTY') {
+        if (isLastWeekOfMonth()) {
+          setOptionExpiry('monthly');
+        } else {
+          setOptionExpiry('weekly');
+        }
+      } else if (optionUnderlying === 'BANKNIFTY') {
+        setOptionExpiry('monthly'); // Always monthly for BankNifty
+      }
+    }, [optionUnderlying]);
     const [sentimentData, setSentimentData] = useState(null);
     const [sentimentLoading, setSentimentLoading] = useState(true);
     const [kiteAuth, setKiteAuth] = useState({ isLoggedIn: false, checking: true });
@@ -33,7 +57,7 @@
     // Chart state
     const [chartSymbol, setChartSymbol] = useState('NIFTY');
     const [chartInterval, setChartInterval] = useState('15minute');
-    const [emaPeriods, setEmaPeriods] = useState([9]);
+    const [emaPeriods, setEmaPeriods] = useState([9,21]);
     const chartRef = useRef(null);
     const chartInstanceRef = useRef(null);
     const candleSeriesRef = useRef(null);
@@ -1118,15 +1142,19 @@
                     ))}
                   </div>
                   <div className="flex bg-[#0a1628] rounded-lg p-0.5">
-                    {['weekly', 'monthly'].map((e) => (
-                      <button
-                        key={e}
-                        onClick={() => setOptionExpiry(e)}
-                        className={`px-3 py-1 text-xs rounded-md transition-colors ${optionExpiry === e ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-slate-200'}`}
-                      >
-                        {e === 'weekly' ? 'Weekly' : 'Monthly'}
-                      </button>
-                    ))}
+                    {['weekly', 'monthly'].map((e) => {
+                      const isDisabled = optionUnderlying === 'BANKNIFTY' && e === 'weekly';
+                      return (
+                        <button
+                          key={e}
+                          onClick={() => !isDisabled && setOptionExpiry(e)}
+                          className={`px-3 py-1 text-xs rounded-md transition-colors ${optionExpiry === e ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-slate-200'} ${isDisabled ? 'opacity-40 cursor-not-allowed' : ''}`}
+                          disabled={isDisabled}
+                        >
+                          {e === 'weekly' ? 'Weekly' : 'Monthly'}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
               </div>

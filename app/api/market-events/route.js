@@ -288,36 +288,35 @@ function getMarketEvents() {
   // Reset to start of day for comparison
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   
-  // Find next Thursday (weekly expiry) - if today is Thursday, it's today
-  let nextThursday = new Date(today);
+  // Find next Tuesday (weekly expiry for NIFTY, BANKNIFTY, F&O stocks)
+  let nextTuesday = new Date(today);
   const dayOfWeek = today.getDay();
-  
-  if (dayOfWeek === 4) {
-    // Today is Thursday
-    nextThursday = today;
-  } else if (dayOfWeek < 4) {
-    // Before Thursday this week
-    nextThursday.setDate(today.getDate() + (4 - dayOfWeek));
+  if (dayOfWeek === 2) {
+    // Today is Tuesday
+    nextTuesday = today;
+  } else if (dayOfWeek < 2) {
+    // Before Tuesday this week
+    nextTuesday.setDate(today.getDate() + (2 - dayOfWeek));
   } else {
-    // After Thursday, go to next week
-    nextThursday.setDate(today.getDate() + (7 - dayOfWeek + 4));
+    // After Tuesday, go to next week
+    nextTuesday.setDate(today.getDate() + (7 - dayOfWeek + 2));
   }
-  
-  // Find last Thursday of month (monthly expiry)
-  const lastThursdayOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-  while (lastThursdayOfMonth.getDay() !== 4) {
-    lastThursdayOfMonth.setDate(lastThursdayOfMonth.getDate() - 1);
+
+  // Find last Tuesday of month (monthly expiry)
+  const lastTuesdayOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  while (lastTuesdayOfMonth.getDay() !== 2) {
+    lastTuesdayOfMonth.setDate(lastTuesdayOfMonth.getDate() - 1);
   }
-  
-  const daysToWeeklyExpiry = Math.round((nextThursday - today) / (1000 * 60 * 60 * 24));
-  const daysToMonthlyExpiry = Math.round((lastThursdayOfMonth - today) / (1000 * 60 * 60 * 24));
-  
+
+  const daysToWeeklyExpiry = Math.round((nextTuesday - today) / (1000 * 60 * 60 * 24));
+  const daysToMonthlyExpiry = Math.round((lastTuesdayOfMonth - today) / (1000 * 60 * 60 * 24));
+
   // Always show weekly expiry if within 5 days
   if (daysToWeeklyExpiry <= 5 && daysToWeeklyExpiry >= 0) {
-    const isMonthly = nextThursday.getTime() === lastThursdayOfMonth.getTime();
+    const isMonthly = nextTuesday.getTime() === lastTuesdayOfMonth.getTime();
     events.push({
       subject: isMonthly ? `Monthly F&O Expiry (NIFTY, BANKNIFTY)` : `Weekly F&O Expiry`,
-      date: nextThursday.toISOString(),
+      date: nextTuesday.toISOString(),
       daysAway: daysToWeeklyExpiry,
       type: 'expiry',
       category: 'expiry',
@@ -327,13 +326,13 @@ function getMarketEvents() {
       urgent: daysToWeeklyExpiry <= 1,
     });
   }
-  
+
   // Show monthly expiry separately if different from weekly and within 10 days
   if (daysToMonthlyExpiry <= 10 && daysToMonthlyExpiry >= 0 && 
-      nextThursday.getTime() !== lastThursdayOfMonth.getTime()) {
+      nextTuesday.getTime() !== lastTuesdayOfMonth.getTime()) {
     events.push({
       subject: `Monthly F&O Expiry (NIFTY, BANKNIFTY)`,
-      date: lastThursdayOfMonth.toISOString(),
+      date: lastTuesdayOfMonth.toISOString(),
       daysAway: daysToMonthlyExpiry,
       type: 'expiry',
       category: 'expiry',
@@ -341,7 +340,7 @@ function getMarketEvents() {
       urgent: daysToMonthlyExpiry === 0,
     });
   }
-  
+
   return events;
 }
 
