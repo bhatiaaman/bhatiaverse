@@ -281,6 +281,7 @@ export async function GET(request) {
       resistanceOI: resistance.oi,
       totalCallOI,
       totalPutOI,
+      spot: spotPrice,  // ← ADD AFTER totalPutOI
       timestamp: new Date().toISOString(),
     };
 
