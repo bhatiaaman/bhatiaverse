@@ -29,7 +29,17 @@ export async function GET(request) {
     let previousClose, currentPrice, giftNiftyPrice, niftyData;
     
     if (symbol === 'NIFTY') {
-      previousClose = parseFloat(marketData.indices.niftyPreviousClose);
+      // Defensive: If previousClose is from today's incomplete candle, use the correct one
+      let prevClose = parseFloat(marketData.indices.niftyPreviousClose);
+      let prevCloseNum = Number(prevClose);
+      // If prevClose is same as current price and market is not open, fallback to previous day's close
+      if (prevCloseNum === parseFloat(marketData.indices.nifty) && prevCloseNum !== 0) {
+        // Try to get from historical prices if available
+        if (marketData.indices.niftyHistorical && marketData.indices.niftyHistorical.length >= 2) {
+          prevCloseNum = marketData.indices.niftyHistorical[marketData.indices.niftyHistorical.length - 2];
+        }
+      }
+      previousClose = prevCloseNum;
       currentPrice = parseFloat(marketData.indices.nifty);
       giftNiftyPrice = parseFloat(marketData.indices.giftNifty);
       

@@ -464,11 +464,11 @@
               {!commentaryCollapsed && (
                 <div className="px-4 pb-4">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm mb-3">
-                    {commentary.keyLevel && (
+                    {marketData?.indices?.niftyPreviousClose && (
                       <div className="flex items-center gap-2">
                         <span className="text-slate-400">Watch Level:</span>
                         <span className="font-mono font-semibold text-blue-300">
-                          {commentary.keyLevel}
+                          {marketData.indices.niftyPreviousClose}
                         </span>
                       </div>
                     )}

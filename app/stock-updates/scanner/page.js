@@ -224,62 +224,155 @@ export default function ScannerPage({ scanName, scanSlug }) {
     window.open(tvUrl, '_blank');
   };
 
-  const pad2 = (n) => String(n).padStart(2, '0');
+  //const pad2 = (n) => String(n).padStart(2, '0');
 
   const monthNames = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
 
-  const getLastTuesdayExpiry = (date = new Date()) => {
-    const year = date.getFullYear();
-    const month = date.getMonth(); // 0-based
-    // get last day of month
-    let d = new Date(year, month + 1, 0);
-    // walk back to Tuesday (Tuesday === 2)
-    while (d.getDay() !== 2) {
-      d.setDate(d.getDate() - 1);
+ // ═══════════════════════════════════════════════════════════════════════
+// OPTION EXPIRY CALCULATOR WITH NSE HOLIDAY SUPPORT - 2026
+// ═══════════════════════════════════════════════════════════════════════
+// Rule: If Tuesday (expiry day) is a holiday, expiry moves to PREVIOUS trading day
+
+// NSE Holiday Calendar 2026 (Official)
+const NSE_HOLIDAYS_2026 = [
+  '2026-01-15', // Thursday - Municipal Corporation Election - Maharashtra
+  '2026-01-26', // Monday - Republic Day
+  '2026-03-03', // Tuesday - Holi ← WEEKLY EXPIRY affected
+  '2026-03-26', // Thursday - Shri Ram Navami
+  '2026-03-31', // Tuesday - Shri Mahavir Jayanti ← MONTHLY EXPIRY affected
+  '2026-04-03', // Friday - Good Friday
+  '2026-04-14', // Tuesday - Dr. Baba Saheb Ambedkar Jayanti ← WEEKLY EXPIRY affected
+  '2026-05-01', // Friday - Maharashtra Day
+  '2026-05-28', // Thursday - Bakri Id
+  '2026-06-26', // Friday - Muharram
+  '2026-09-14', // Monday - Ganesh Chaturthi
+  '2026-10-02', // Friday - Mahatma Gandhi Jayanti
+  '2026-10-20', // Tuesday - Dussehra ← WEEKLY EXPIRY affected
+  '2026-11-10', // Tuesday - Diwali-Balipratipada ← WEEKLY EXPIRY affected
+  '2026-11-24', // Tuesday - Prakash Gurpurb Sri Guru Nanak Dev ← MONTHLY EXPIRY affected
+  '2026-12-25', // Friday - Christmas
+];
+
+// Helper: pad numbers
+const pad2 = (n) => String(n).padStart(2, '0');
+
+// Check if a date is NSE holiday
+const isNSEHoliday = (date) => {
+  const year = date.getFullYear();
+  const month = pad2(date.getMonth() + 1);
+  const day = pad2(date.getDate());
+  const dateStr = `${year}-${month}-${day}`;
+  return NSE_HOLIDAYS_2026.includes(dateStr);
+};
+
+// Check if a date is weekend (Saturday or Sunday)
+const isWeekend = (date) => {
+  const day = date.getDay();
+  return day === 0 || day === 6; // Sunday=0, Saturday=6
+};
+
+// Check if a date is a trading day
+const isTradingDay = (date) => {
+  return !isWeekend(date) && !isNSEHoliday(date);
+};
+
+// Get previous trading day (skip weekends and holidays)
+const getPreviousTradingDay = (date) => {
+  let d = new Date(date);
+  d.setDate(d.getDate() - 1);
+  
+  // Keep going back until we find a trading day
+  while (!isTradingDay(d)) {
+    d.setDate(d.getDate() - 1);
+  }
+  
+  return d;
+};
+
+// Get last Tuesday of month (accounting for holidays)
+const getLastTuesdayExpiry = (date = new Date()) => {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  
+  let year = date.getFullYear();
+  let month = date.getMonth();
+  
+  // Get last Tuesday of current month
+  let lastDay = new Date(year, month + 1, 0); // Last day of month
+  while (lastDay.getDay() !== 2) { // Tuesday = 2
+    lastDay.setDate(lastDay.getDate() - 1);
+  }
+  
+  // If that Tuesday is a holiday, move to previous trading day
+  if (!isTradingDay(lastDay)) {
+    console.log(`Last Tuesday ${lastDay.toDateString()} is a holiday, moving to previous trading day`);
+    lastDay = getPreviousTradingDay(lastDay);
+  }
+  
+  // If expiry has passed, move to next month
+  if (lastDay < today) {
+    month = month + 1;
+    if (month > 11) {
+      month = 0;
+      year = year + 1;
     }
-    return d;
-  };
-
-  // For TradingView format: YYMMDD (e.g., 260224 for Feb 24, 2026)
-  const getLastTuesdayExpiryYYMMDD = (date = new Date()) => {
-    const d = getLastTuesdayExpiry(date);
-    const yy = String(d.getFullYear() % 100).padStart(2, '0');
-    const mm = pad2(d.getMonth() + 1);
-    const dd = pad2(d.getDate());
-    return `${yy}${mm}${dd}`;
-  };
-
-  // Build option symbols for TradingView charts
-  // TradingView format: SYMBOL + YYMMDD + C/P + STRIKE (e.g., MCX260224C4500)
-  const buildOptionSymbols = (symbol, price) => {
-    const expiry = getLastTuesdayExpiryYYMMDD();
     
-    // Parse price - handle 'N/A' and invalid values
-    const numPrice = parseFloat(String(price).replace(/[^0-9.]/g, '')) || 0;
-    
-    // If no valid price, return null symbols
-    if (numPrice <= 0) {
-      return { ce: null, pe: null, ceStrike: 0, peStrike: 0 };
+    // Get last Tuesday of next month
+    lastDay = new Date(year, month + 1, 0);
+    while (lastDay.getDay() !== 2) {
+      lastDay.setDate(lastDay.getDate() - 1);
     }
     
-    // Get strike step from NSE data or fallback to price-based heuristic
-    let step = nseStrikeSteps[symbol];
-    if (!step) {
-      if (numPrice >= 5000) step = 100;
-      else if (numPrice >= 1000) step = 50;
-      else if (numPrice >= 300) step = 20;
-      else step = 10;
+    // Check if it's a holiday
+    if (!isTradingDay(lastDay)) {
+      console.log(`Last Tuesday ${lastDay.toDateString()} is a holiday, moving to previous trading day`);
+      lastDay = getPreviousTradingDay(lastDay);
     }
+  }
+  
+  return lastDay;
+};
 
-    const ceStrike = Math.ceil(numPrice / step) * step;
-    const peStrike = Math.floor(numPrice / step) * step;
+// For TradingView format: YYMMDD (e.g., 260330 for March 30, 2026)
+const getLastTuesdayExpiryYYMMDD = (date = new Date()) => {
+  const d = getLastTuesdayExpiry(date);
+  const yy = String(d.getFullYear() % 100).padStart(2, '0');
+  const mm = pad2(d.getMonth() + 1);
+  const dd = pad2(d.getDate());
+  return `${yy}${mm}${dd}`;
+};
 
-    // TradingView format: SYMBOL + YYMMDD + C + STRIKE
-    // Example: MCX260224C4500 for MCX CE 4500 expiring Feb 24, 2026
-    const ce = `${symbol}${expiry}C${ceStrike}`;
-    const pe = `${symbol}${expiry}P${peStrike}`;
-    return { ce, pe, ceStrike, peStrike };
-  };
+// Build option symbols for TradingView charts
+const buildOptionSymbols = (symbol, price) => {
+  const expiry = getLastTuesdayExpiryYYMMDD();
+  
+  // Parse price - handle 'N/A' and invalid values
+  const numPrice = parseFloat(String(price).replace(/[^0-9.]/g, '')) || 0;
+  
+  // If no valid price, return null symbols
+  if (numPrice <= 0) {
+    return { ce: null, pe: null, ceStrike: 0, peStrike: 0 };
+  }
+  
+  // Get strike step from NSE data or fallback to price-based heuristic
+  let step = nseStrikeSteps[symbol];
+  if (!step) {
+    if (numPrice >= 5000) step = 100;
+    else if (numPrice >= 1000) step = 50;
+    else if (numPrice >= 300) step = 20;
+    else step = 10;
+  }
+
+  const ceStrike = Math.ceil(numPrice / step) * step;
+  const peStrike = Math.floor(numPrice / step) * step;
+
+  // TradingView format: SYMBOL + YYMMDD + C/P + STRIKE
+  const ce = `${symbol}${expiry}C${ceStrike}`;
+  const pe = `${symbol}${expiry}P${peStrike}`;
+  return { ce, pe, ceStrike, peStrike };
+};
+
+
 
   const openOptionChart = (symbol, type, strike, price) => {
     // type: 'CE' or 'PE' -> convert to 'C' or 'P' for TradingView

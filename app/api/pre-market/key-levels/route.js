@@ -44,8 +44,19 @@ export async function GET(request) {
       return NextResponse.json({ error: 'No historical data available' }, { status: 404 });
     }
 
-    // Get yesterday's candle (last complete day)
-    const yesterday = data.data.candles[data.data.candles.length - 1];
+    // Get last complete daily candle (skip today's incomplete candle if present)
+    let lastIdx = data.data.candles.length - 1;
+    const now = new Date();
+    const lastCandleDate = new Date(data.data.candles[lastIdx][0]);
+    // If last candle is today, use previous one
+    if (
+      lastCandleDate.getDate() === now.getDate() &&
+      lastCandleDate.getMonth() === now.getMonth() &&
+      lastCandleDate.getFullYear() === now.getFullYear()
+    ) {
+      lastIdx -= 1;
+    }
+    const yesterday = data.data.candles[lastIdx];
     const [timestamp, open, high, low, close, volume] = yesterday;
 
     // Calculate pivot points (Standard method)
