@@ -1,7 +1,55 @@
 "use client";
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
+
+const DARK = {
+  bg: '#02020a',
+  text: '#f0f4ff',
+  textSub: 'rgba(168,184,216,0.75)',
+  textMuted: 'rgba(168,184,216,0.4)',
+  textMuted2: 'rgba(168,184,216,0.6)',
+  navBg: 'rgba(2,2,10,0.9)',
+  navLink: '#a8b8d8',
+  cardBg: (color) => `linear-gradient(135deg,${color}08 0%,rgba(13,13,43,0.9) 100%)`,
+  border: 'rgba(255,255,255,0.04)',
+  borderSub: 'rgba(255,255,255,0.05)',
+  glowOrb1: 'rgba(62,207,142,0.06)',
+  glowOrb2: 'rgba(74,158,255,0.05)',
+  sectionTitle: 'linear-gradient(135deg,#f0f4ff,#a8b8d8)',
+  footerBorder: 'rgba(255,255,255,0.04)',
+  footerText: 'rgba(200,169,110,0.5)',
+  footerSub: 'rgba(168,184,216,0.3)',
+  tagBorder: 'rgba(168,184,216,0.2)',
+  tagColor: '#a8b8d8',
+  comingSoonText: 'rgba(168,184,216,0.6)',
+  cursorBlend: 'screen',
+  toggleBorder: 'rgba(200,169,110,0.35)',
+};
+
+const LIGHT = {
+  bg: '#faf8f3',
+  text: '#1a1a2e',
+  textSub: 'rgba(26,26,46,0.65)',
+  textMuted: 'rgba(26,26,46,0.35)',
+  textMuted2: 'rgba(26,26,46,0.5)',
+  navBg: 'rgba(250,248,243,0.92)',
+  navLink: '#3d3d6b',
+  cardBg: (color) => `linear-gradient(135deg,${color}0d 0%,rgba(255,255,255,0.92) 100%)`,
+  border: 'rgba(0,0,0,0.08)',
+  borderSub: 'rgba(0,0,0,0.06)',
+  glowOrb1: 'rgba(62,207,142,0.04)',
+  glowOrb2: 'rgba(74,158,255,0.04)',
+  sectionTitle: 'linear-gradient(135deg,#1a1a2e,#3d3d6b)',
+  footerBorder: 'rgba(0,0,0,0.07)',
+  footerText: 'rgba(200,169,110,0.6)',
+  footerSub: 'rgba(26,26,46,0.3)',
+  tagBorder: 'rgba(26,26,46,0.15)',
+  tagColor: '#3d3d6b',
+  comingSoonText: 'rgba(26,26,46,0.5)',
+  cursorBlend: 'normal',
+  toggleBorder: 'rgba(26,26,46,0.2)',
+};
 
 const games = [
   {
@@ -27,13 +75,33 @@ const games = [
 ];
 
 export default function AIGames() {
-  const canvasRef       = useRef(null);
-  const cursorRef       = useRef(null);
-  const cursorRingRef   = useRef(null);
-  const mouseRef        = useRef({ x: 0, y: 0 });
-  const ringPosRef      = useRef({ x: 0, y: 0 });
-  const rafRef          = useRef(null);
-  const starRafRef      = useRef(null);
+  const canvasRef      = useRef(null);
+  const cursorRef      = useRef(null);
+  const cursorRingRef  = useRef(null);
+  const mouseRef       = useRef({ x: 0, y: 0 });
+  const ringPosRef     = useRef({ x: 0, y: 0 });
+  const rafRef         = useRef(null);
+  const starRafRef     = useRef(null);
+  const themeRef       = useRef('dark');
+
+  const [theme, setTheme] = useState('dark');
+  const T = theme === 'dark' ? DARK : LIGHT;
+
+  // Load saved theme
+  useEffect(() => {
+    const saved = localStorage.getItem('bv-theme');
+    if (saved === 'light' || saved === 'dark') {
+      setTheme(saved);
+      themeRef.current = saved;
+    }
+  }, []);
+
+  const toggleTheme = () => {
+    const next = theme === 'dark' ? 'light' : 'dark';
+    setTheme(next);
+    themeRef.current = next;
+    localStorage.setItem('bv-theme', next);
+  };
 
   // Custom cursor
   useEffect(() => {
@@ -97,6 +165,7 @@ export default function AIGames() {
       stars = [];
       const count = Math.floor((W * H) / 4000);
       for (let i = 0; i < count; i++) {
+        const rand = Math.random();
         stars.push({
           x: Math.random() * W,
           y: Math.random() * H,
@@ -104,20 +173,24 @@ export default function AIGames() {
           opacity: Math.random() * 0.7 + 0.1,
           twinkle: Math.random() * Math.PI * 2,
           twinkleSpeed: Math.random() * 0.02 + 0.005,
-          color: Math.random() > 0.85 ? '#c8a96e' : Math.random() > 0.7 ? '#a8b8d8' : '#ffffff',
+          colorType: rand > 0.85 ? 'gold' : rand > 0.7 ? 'mid' : 'base',
         });
       }
     };
 
     const draw = () => {
       ctx.clearRect(0, 0, W, H);
+      const isDark = themeRef.current === 'dark';
       stars.forEach(s => {
         s.twinkle += s.twinkleSpeed;
         const opacity = s.opacity * (0.6 + 0.4 * Math.sin(s.twinkle));
+        const color = s.colorType === 'gold' ? '#c8a96e'
+          : s.colorType === 'mid'  ? (isDark ? '#a8b8d8' : '#8899bb')
+          : (isDark ? '#ffffff' : '#6666aa');
         ctx.beginPath();
         ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
-        ctx.fillStyle = s.color;
-        ctx.globalAlpha = opacity;
+        ctx.fillStyle = color;
+        ctx.globalAlpha = isDark ? opacity : opacity * 0.5;
         ctx.fill();
       });
       if (Math.random() < 0.003) {
@@ -127,7 +200,7 @@ export default function AIGames() {
         const grad = ctx.createLinearGradient(sx, sy, sx + len, sy + len * 0.4);
         grad.addColorStop(0, 'rgba(200,169,110,0.8)');
         grad.addColorStop(1, 'transparent');
-        ctx.globalAlpha = 0.7;
+        ctx.globalAlpha = isDark ? 0.7 : 0.4;
         ctx.strokeStyle = grad;
         ctx.lineWidth = 1;
         ctx.beginPath();
@@ -170,7 +243,7 @@ export default function AIGames() {
           position: fixed; width: 8px; height: 8px;
           background: #c8a96e; border-radius: 50%;
           pointer-events: none; z-index: 9999;
-          transition: transform 0.1s; mix-blend-mode: screen;
+          transition: transform 0.1s; mix-blend-mode: ${T.cursorBlend};
         }
         .bv-cursor-ring {
           position: fixed; width: 36px; height: 36px;
@@ -225,7 +298,7 @@ export default function AIGames() {
         .nav-link {
           position:relative; font-family:'DM Mono',monospace;
           font-size:0.72rem; letter-spacing:0.15em; text-transform:uppercase;
-          color:#a8b8d8; text-decoration:none; transition:color 0.3s;
+          color:${T.navLink}; text-decoration:none; transition:color 0.3s;
         }
         .nav-link::after {
           content:''; position:absolute; bottom:-4px; left:0; right:100%;
@@ -237,6 +310,24 @@ export default function AIGames() {
         .card-link-arrow:hover { gap:1.2rem !important; }
         .game-card-hover { transition: transform 0.5s ease; }
         .game-card-hover:hover { transform: translateY(-6px); }
+        .theme-toggle {
+          background: none; border: 1px solid ${T.toggleBorder}; border-radius: 4px;
+          padding: 0.3rem 0.75rem; cursor: pointer; color: ${T.navLink};
+          font-family: 'DM Mono', monospace; font-size: 0.65rem; letter-spacing: 0.12em;
+          text-transform: uppercase; transition: all 0.3s;
+        }
+        .theme-toggle:hover { border-color: #3ecf8e; color: #3ecf8e; }
+        .grad-hero-primary {
+          display: block;
+          background: ${T.sectionTitle};
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+        }
+        .grad-section-title {
+          background: ${T.sectionTitle};
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+        }
         @media(max-width:900px){
           .orbit-container{width:260px;height:260px;}
           .orbit-1{width:120px;height:120px;}
@@ -246,7 +337,7 @@ export default function AIGames() {
         }
       `}</style>
 
-      <div className="bv-root" style={{ background: '#02020a', color: '#f0f4ff', minHeight: '100vh', overflowX: 'hidden' }}>
+      <div className="bv-root" style={{ background: T.bg, color: T.text, minHeight: '100vh', overflowX: 'hidden', transition: 'background 0.4s ease, color 0.4s ease' }}>
 
         {/* Custom cursor */}
         <div className="bv-cursor" ref={cursorRef} />
@@ -256,15 +347,15 @@ export default function AIGames() {
         <canvas ref={canvasRef} style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', zIndex: 0, pointerEvents: 'none' }} />
 
         {/* Glow orbs */}
-        <div style={{ position: 'fixed', width: 600, height: 600, background: 'rgba(62,207,142,0.06)', borderRadius: '50%', filter: 'blur(120px)', top: '-10%', right: '-10%', zIndex: 0, pointerEvents: 'none' }} />
-        <div style={{ position: 'fixed', width: 500, height: 500, background: 'rgba(74,158,255,0.05)', borderRadius: '50%', filter: 'blur(120px)', bottom: '20%', left: '-10%', zIndex: 0, pointerEvents: 'none' }} />
+        <div style={{ position: 'fixed', width: 600, height: 600, background: T.glowOrb1, borderRadius: '50%', filter: 'blur(120px)', top: '-10%', right: '-10%', zIndex: 0, pointerEvents: 'none' }} />
+        <div style={{ position: 'fixed', width: 500, height: 500, background: T.glowOrb2, borderRadius: '50%', filter: 'blur(120px)', bottom: '20%', left: '-10%', zIndex: 0, pointerEvents: 'none' }} />
 
         {/* NAV */}
         <nav style={{
           position: 'fixed', top: 0, left: 0, right: 0, zIndex: 100,
           padding: '1.5rem 3rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           backdropFilter: 'blur(20px)',
-          background: 'linear-gradient(to bottom, rgba(2,2,10,0.9) 0%, transparent 100%)',
+          background: `linear-gradient(to bottom, ${T.navBg} 0%, transparent 100%)`,
           borderBottom: '1px solid rgba(200,169,110,0.08)',
         }}>
           <Link href="/" style={{ fontFamily: "'Syne', sans-serif", fontWeight: 800, fontSize: '1.1rem', letterSpacing: '0.2em', textTransform: 'uppercase', color: '#c8a96e', textDecoration: 'none' }}>
@@ -276,6 +367,11 @@ export default function AIGames() {
             <li><Link href="/trades" className="nav-link">Trades</Link></li>
             <li><Link href="/aigames" className="nav-link" style={{ color: '#3ecf8e' }}>AI Games</Link></li>
             <li><Link href="/#contact" className="nav-link">Contact</Link></li>
+            <li>
+              <button className="theme-toggle" onClick={toggleTheme}>
+                {theme === 'dark' ? '☀ Light' : '☾ Dark'}
+              </button>
+            </li>
           </ul>
         </nav>
 
@@ -292,15 +388,15 @@ export default function AIGames() {
           </p>
 
           <h1 style={{ fontFamily: "'Syne',sans-serif", fontSize: 'clamp(4rem,12vw,9rem)', fontWeight: 800, lineHeight: 0.9, letterSpacing: '-0.03em', marginBottom: '0.5rem' }}>
-            <span style={{ display: 'block', background: 'linear-gradient(135deg,#f0f4ff 0%,#a8b8d8 50%,#f0f4ff 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>AI</span>
-            <span style={{ display: 'block', background: 'linear-gradient(135deg,#3ecf8e 0%,#7ef7c2 50%,#3ecf8e 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text', fontStyle: 'italic', fontWeight: 400, fontFamily: "'Cormorant Garamond',serif", fontSize: '0.65em' }}>Games</span>
+            <span className="grad-hero-primary">AI</span>
+            <span style={{ display: 'block', background: 'linear-gradient(135deg,#3ecf8e 0%,#7ef7c2 50%,#3ecf8e 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', fontStyle: 'italic', fontWeight: 400, fontFamily: "'Cormorant Garamond',serif", fontSize: '0.65em' }}>Games</span>
           </h1>
 
-          <p style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: '1.3rem', fontWeight: 300, color: '#a8b8d8', maxWidth: 520, lineHeight: 1.7, margin: '2.5rem auto', fontStyle: 'italic' }}>
+          <p style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: '1.3rem', fontWeight: 300, color: T.textSub, maxWidth: 520, lineHeight: 1.7, margin: '2.5rem auto', fontStyle: 'italic' }}>
             Where artificial intelligence meets play. Step into games that think, adapt, and challenge you to grow.
           </p>
 
-          <p style={{ fontFamily: "'DM Mono',monospace", fontSize: '0.72rem', color: 'rgba(168,184,216,0.6)', letterSpacing: '0.2em', marginBottom: '3rem' }}>
+          <p style={{ fontFamily: "'DM Mono',monospace", fontSize: '0.72rem', color: T.textMuted2, letterSpacing: '0.2em', marginBottom: '3rem' }}>
             {games.length} games available &nbsp;·&nbsp; More coming soon
           </p>
 
@@ -313,7 +409,7 @@ export default function AIGames() {
           </a>
 
           <div style={{ position: 'absolute', bottom: '2.5rem', left: '50%', transform: 'translateX(-50%)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem' }}>
-            <span style={{ fontFamily: "'DM Mono',monospace", fontSize: '0.6rem', letterSpacing: '0.3em', color: 'rgba(168,184,216,0.4)', textTransform: 'uppercase' }}>Scroll</span>
+            <span style={{ fontFamily: "'DM Mono',monospace", fontSize: '0.6rem', letterSpacing: '0.3em', color: T.textMuted, textTransform: 'uppercase' }}>Scroll</span>
             <div className="scroll-line" />
           </div>
         </section>
@@ -323,7 +419,7 @@ export default function AIGames() {
 
           <div className="reveal" style={{ display: 'flex', alignItems: 'baseline', gap: '1.5rem', marginBottom: '5rem' }}>
             <span style={{ fontFamily: "'DM Mono',monospace", fontSize: '0.65rem', letterSpacing: '0.3em', color: '#3ecf8e', textTransform: 'uppercase', opacity: 0.7 }}>/ 01</span>
-            <h2 style={{ fontFamily: "'Syne',sans-serif", fontSize: 'clamp(2.5rem,5vw,4rem)', fontWeight: 800, background: 'linear-gradient(135deg,#f0f4ff,#a8b8d8)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text', margin: 0 }}>Choose Your Game</h2>
+            <h2 className="grad-section-title" style={{ fontFamily: "'Syne',sans-serif", fontSize: 'clamp(2.5rem,5vw,4rem)', fontWeight: 800, margin: 0 }}>Choose Your Game</h2>
           </div>
 
           <div className="games-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5px' }}>
@@ -333,8 +429,8 @@ export default function AIGames() {
                   className={`card-hover game-card-hover card-bottom-line ${game.accent} reveal`}
                   style={{
                     position: 'relative', padding: '4rem', height: '100%',
-                    background: `linear-gradient(135deg,${game.color}08 0%,rgba(13,13,43,0.9) 100%)`,
-                    border: '1px solid rgba(255,255,255,0.04)',
+                    background: T.cardBg(game.color),
+                    border: `1px solid ${T.border}`,
                     overflow: 'hidden', cursor: 'none',
                     transitionDelay: `${i * 0.15}s`,
                   }}
@@ -353,11 +449,11 @@ export default function AIGames() {
                     {game.num}
                   </div>
 
-                  <div style={{ fontFamily: "'Syne',sans-serif", fontSize: '2.4rem', fontWeight: 700, color: '#f0f4ff', margin: '1.5rem 0 1rem' }}>
+                  <div style={{ fontFamily: "'Syne',sans-serif", fontSize: '2.4rem', fontWeight: 700, color: T.text, margin: '1.5rem 0 1rem' }}>
                     {game.title}
                   </div>
 
-                  <p style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: '1.1rem', lineHeight: 1.8, color: 'rgba(168,184,216,0.7)', fontWeight: 300, marginBottom: '2.5rem', maxWidth: 420 }}>
+                  <p style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: '1.1rem', lineHeight: 1.8, color: T.textSub, fontWeight: 300, marginBottom: '2.5rem', maxWidth: 420 }}>
                     {game.description}
                   </p>
 
@@ -366,11 +462,11 @@ export default function AIGames() {
                   </div>
 
                   {/* Stats row */}
-                  <div style={{ display: 'flex', gap: '3rem', paddingTop: '2.5rem', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+                  <div style={{ display: 'flex', gap: '3rem', paddingTop: '2.5rem', borderTop: `1px solid ${T.borderSub}` }}>
                     {game.stats.map(([val, label]) => (
                       <div key={label}>
                         <span style={{ fontFamily: "'Syne',sans-serif", fontSize: '1.8rem', fontWeight: 800, color: game.color, display: 'block', lineHeight: 1, marginBottom: '0.3rem' }}>{val}</span>
-                        <span style={{ fontFamily: "'DM Mono',monospace", fontSize: '0.6rem', letterSpacing: '0.2em', textTransform: 'uppercase', color: 'rgba(168,184,216,0.4)' }}>{label}</span>
+                        <span style={{ fontFamily: "'DM Mono',monospace", fontSize: '0.6rem', letterSpacing: '0.2em', textTransform: 'uppercase', color: T.textMuted }}>{label}</span>
                       </div>
                     ))}
                   </div>
@@ -387,29 +483,29 @@ export default function AIGames() {
         <section style={{ padding: '8rem 3rem', maxWidth: 900, margin: '0 auto', textAlign: 'center', position: 'relative', zIndex: 1 }}>
           <div className="reveal">
             <p style={{ fontFamily: "'DM Mono',monospace", fontSize: '0.65rem', letterSpacing: '0.35em', color: '#3ecf8e', textTransform: 'uppercase', marginBottom: '1.5rem' }}>/ The Universe Expands</p>
-            <h2 style={{ fontFamily: "'Syne',sans-serif", fontSize: 'clamp(2.5rem,6vw,5rem)', fontWeight: 800, lineHeight: 1, marginBottom: '1.5rem' }}>
+            <h2 style={{ fontFamily: "'Syne',sans-serif", fontSize: 'clamp(2.5rem,6vw,5rem)', fontWeight: 800, lineHeight: 1, marginBottom: '1.5rem', color: T.text }}>
               More Games
-              <span style={{ display: 'block', fontFamily: "'Cormorant Garamond',serif", fontStyle: 'italic', fontWeight: 300, background: 'linear-gradient(135deg,#3ecf8e,#7ef7c2)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>
+              <span style={{ display: 'block', fontFamily: "'Cormorant Garamond',serif", fontStyle: 'italic', fontWeight: 300, background: 'linear-gradient(135deg,#3ecf8e,#7ef7c2)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
                 Incoming
               </span>
             </h2>
-            <p style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: '1.2rem', color: 'rgba(168,184,216,0.6)', fontWeight: 300, lineHeight: 1.8, maxWidth: 600, margin: '0 auto 3rem' }}>
+            <p style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: '1.2rem', color: T.comingSoonText, fontWeight: 300, lineHeight: 1.8, maxWidth: 600, margin: '0 auto 3rem' }}>
               New interactive experiences are being crafted — AI chess, word games, strategy puzzles, and more. The universe of play is only getting bigger.
             </p>
             <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', justifyContent: 'center' }}>
               {['AI Chess', 'Word Games', 'Strategy', 'Puzzles', 'Coming Soon'].map(t => (
-                <span key={t} style={{ fontFamily: "'DM Mono',monospace", fontSize: '0.65rem', letterSpacing: '0.15em', textTransform: 'uppercase', color: '#a8b8d8', border: '1px solid rgba(168,184,216,0.2)', padding: '0.4rem 1rem' }}>{t}</span>
+                <span key={t} style={{ fontFamily: "'DM Mono',monospace", fontSize: '0.65rem', letterSpacing: '0.15em', textTransform: 'uppercase', color: T.tagColor, border: `1px solid ${T.tagBorder}`, padding: '0.4rem 1rem' }}>{t}</span>
               ))}
             </div>
           </div>
         </section>
 
         {/* FOOTER */}
-        <footer style={{ position: 'relative', zIndex: 1, padding: '2rem 3rem', borderTop: '1px solid rgba(255,255,255,0.04)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
-          <Link href="/" style={{ fontFamily: "'Syne',sans-serif", fontWeight: 800, fontSize: '0.85rem', letterSpacing: '0.2em', textTransform: 'uppercase', color: 'rgba(200,169,110,0.5)', textDecoration: 'none' }}>
+        <footer style={{ position: 'relative', zIndex: 1, padding: '2rem 3rem', borderTop: `1px solid ${T.footerBorder}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+          <Link href="/" style={{ fontFamily: "'Syne',sans-serif", fontWeight: 800, fontSize: '0.85rem', letterSpacing: '0.2em', textTransform: 'uppercase', color: T.footerText, textDecoration: 'none' }}>
             ← Bhatiaverse
           </Link>
-          <div style={{ fontFamily: "'DM Mono',monospace", fontSize: '0.6rem', letterSpacing: '0.15em', color: 'rgba(168,184,216,0.3)' }}>© 2025 Bhatiaverse. Built with passion and curiosity.</div>
+          <div style={{ fontFamily: "'DM Mono',monospace", fontSize: '0.6rem', letterSpacing: '0.15em', color: T.footerSub }}>© 2025 Bhatiaverse. Built with passion and curiosity.</div>
         </footer>
 
       </div>
