@@ -121,6 +121,27 @@ const QUOTES = [
   { text: 'Be — don\'t try to become.', source: 'Osho' },
 ];
 
+const S_DARK = {
+  bg: '#02020a', card: 'rgba(13,13,43,0.75)',
+  text: '#f0f4ff', muted: 'rgba(168,184,216,0.7)', faint: 'rgba(168,184,216,0.35)',
+  border: 'rgba(255,255,255,0.05)', borderFaint: 'rgba(255,255,255,0.04)',
+  navBg: 'rgba(2,2,10,0.92)', navBorder: 'rgba(200,169,110,0.08)',
+  navLink: '#a8b8d8', toggleBorder: 'rgba(168,184,216,0.2)', toggleColor: '#a8b8d8',
+  quoteBg: 'rgba(123,94,167,0.05)', quoteBorder: 'rgba(123,94,167,0.2)',
+  blockquoteBorder: '55', divider: 'rgba(123,94,167,0.3)',
+  marquee: 'rgba(168,184,216,0.15)', boxShadow: 'none',
+};
+const S_LIGHT = {
+  bg: '#fdf6ee', card: 'rgba(255,253,245,0.95)',
+  text: '#2a1a0a', muted: 'rgba(42,26,10,0.65)', faint: 'rgba(42,26,10,0.35)',
+  border: 'rgba(42,26,10,0.08)', borderFaint: 'rgba(42,26,10,0.06)',
+  navBg: 'rgba(253,246,238,0.96)', navBorder: 'rgba(42,26,10,0.08)',
+  navLink: '#5a3a1a', toggleBorder: 'rgba(42,26,10,0.2)', toggleColor: '#5a3a1a',
+  quoteBg: 'rgba(123,94,167,0.04)', quoteBorder: 'rgba(123,94,167,0.15)',
+  blockquoteBorder: '44', divider: 'rgba(123,94,167,0.2)',
+  marquee: 'rgba(42,26,10,0.1)', boxShadow: '0 1px 3px rgba(0,0,0,0.05), 0 4px 16px rgba(0,0,0,0.03)',
+};
+
 export default function SpiritualityPage() {
   const canvasRef     = useRef(null);
   const cursorRef     = useRef(null);
@@ -130,7 +151,20 @@ export default function SpiritualityPage() {
   const rafRef        = useRef(null);
   const starRafRef    = useRef(null);
   const [quoteIdx, setQuoteIdx] = useState(0);
-  const [activeSection] = useState('All');
+  const [isDark, setIsDark] = useState(false);
+
+  useEffect(() => {
+    const saved = localStorage.getItem('bv-spirit-theme');
+    setIsDark(saved === 'dark');
+  }, []);
+
+  const toggleTheme = () => {
+    const next = !isDark;
+    setIsDark(next);
+    localStorage.setItem('bv-spirit-theme', next ? 'dark' : 'light');
+  };
+
+  const T = isDark ? S_DARK : S_LIGHT;
 
   // Rotate quotes every 5s
   useEffect(() => {
@@ -164,10 +198,10 @@ export default function SpiritualityPage() {
     return () => { document.removeEventListener('mousemove', onMove); cancelAnimationFrame(rafRef.current); };
   }, []);
 
-  // Star canvas
+  // Star canvas — dark mode only
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    if (!canvas || !isDark) { cancelAnimationFrame(starRafRef.current); return; }
     const ctx = canvas.getContext('2d');
     let stars = [], W, H;
     const resize = () => { W = canvas.width = window.innerWidth; H = canvas.height = window.innerHeight; };
@@ -180,19 +214,15 @@ export default function SpiritualityPage() {
     };
     const draw = () => {
       ctx.clearRect(0,0,W,H);
-      stars.forEach(s => {
-        s.twinkle += s.twinkleSpeed;
-        const op = s.opacity*(0.6+0.4*Math.sin(s.twinkle));
-        ctx.beginPath(); ctx.arc(s.x,s.y,s.r,0,Math.PI*2);
-        ctx.fillStyle=s.color; ctx.globalAlpha=op; ctx.fill();
-      });
+      stars.forEach(s => { s.twinkle+=s.twinkleSpeed; const op=s.opacity*(0.6+0.4*Math.sin(s.twinkle)); ctx.beginPath(); ctx.arc(s.x,s.y,s.r,0,Math.PI*2); ctx.fillStyle=s.color; ctx.globalAlpha=op; ctx.fill(); });
       ctx.globalAlpha=1;
       starRafRef.current = requestAnimationFrame(draw);
     };
     resize(); createStars(); draw();
-    window.addEventListener('resize', ()=>{ resize(); createStars(); });
-    return () => cancelAnimationFrame(starRafRef.current);
-  }, []);
+    const onResize = () => { resize(); createStars(); };
+    window.addEventListener('resize', onResize);
+    return () => { cancelAnimationFrame(starRafRef.current); window.removeEventListener('resize', onResize); };
+  }, [isDark]);
 
   // Scroll reveal
   useEffect(() => {
@@ -200,7 +230,9 @@ export default function SpiritualityPage() {
     const obs = new IntersectionObserver(entries => entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('revealed'); }), { threshold: 0.08 });
     els.forEach(el => obs.observe(el));
     return () => obs.disconnect();
-  }, [activeSection]);
+  }, [isDark]);
+
+  const gap = isDark ? '1.5px' : '1rem';
 
   return (
     <>
@@ -209,25 +241,16 @@ export default function SpiritualityPage() {
 
       <style>{`
         .bv-root { cursor: none; }
-        .bv-cursor { position:fixed; width:8px; height:8px; background:#c8a96e; border-radius:50%; pointer-events:none; z-index:9999; transition:transform 0.1s; mix-blend-mode:screen; }
+        .bv-cursor { position:fixed; width:8px; height:8px; background:#c8a96e; border-radius:50%; pointer-events:none; z-index:9999; transition:transform 0.1s; mix-blend-mode:${isDark?'screen':'multiply'}; }
         .bv-cursor-ring { position:fixed; width:36px; height:36px; border:1px solid rgba(200,169,110,0.4); border-radius:50%; pointer-events:none; z-index:9998; transition:transform 0.15s ease, border-color 0.15s ease; }
         .reveal { opacity:0; transform:translateY(30px); transition:opacity 0.7s ease, transform 0.7s ease; }
         .reveal.revealed { opacity:1; transform:translateY(0); }
-        .nav-link { position:relative; font-family:'DM Mono',monospace; font-size:0.72rem; letter-spacing:0.15em; text-transform:uppercase; color:#a8b8d8; text-decoration:none; transition:color 0.3s; }
-        .nav-link::after { content:''; position:absolute; bottom:-4px; left:0; right:100%; height:1px; background:#c8a96e; transition:right 0.3s ease; }
-        .nav-link:hover { color:#c8a96e; }
-        .nav-link:hover::after { right:0; }
-        .spirit-card { position:relative; background:rgba(13,13,43,0.75); border:1px solid rgba(255,255,255,0.05); overflow:hidden; transition:transform 0.4s ease; cursor:none; }
+        .spirit-card { position:relative; overflow:hidden; transition:transform 0.4s ease, box-shadow 0.3s ease; cursor:none; }
         .spirit-card:hover { transform:translateY(-5px); }
         .spirit-card::after { content:''; position:absolute; bottom:0; left:0; right:100%; height:1px; background:#7b5ea7; transition:right 0.5s ease; }
         .spirit-card:hover::after { right:0; }
         .quote-fade { animation: quoteFade 0.6s ease; }
-        @keyframes quoteFade { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
-        .pill { font-family:'DM Mono',monospace; font-size:0.65rem; letter-spacing:0.2em; text-transform:uppercase; border:1px solid rgba(168,184,216,0.15); padding:0.5rem 1.2rem; background:transparent; color:#a8b8d8; cursor:none; transition:all 0.25s ease; white-space:nowrap; }
-        .pill:hover { border-color:rgba(123,94,167,0.4); color:#7b5ea7; }
-        .pill.active { background:rgba(123,94,167,0.12); border-color:#7b5ea7; color:#7b5ea7; }
-        .card-link-arrow { transition:gap 0.3s; }
-        .card-link-arrow:hover { gap:1.2rem !important; }
+        @keyframes quoteFade { from{opacity:0;transform:translateY(8px);} to{opacity:1;transform:translateY(0);} }
         .marquee-track { animation: marquee 28s linear infinite; }
         @keyframes marquee { from{transform:translateX(0);} to{transform:translateX(-50%);} }
         .glyph-ring-a { animation:orbitSpin 18s linear infinite; }
@@ -238,79 +261,73 @@ export default function SpiritualityPage() {
         @media(max-width:900px){ .leaders-grid{grid-template-columns:1fr !important;} .perspectives-grid{grid-template-columns:1fr !important;} .books-grid{grid-template-columns:1fr !important;} }
       `}</style>
 
-      <div className="bv-root" style={{ background: '#02020a', color: '#f0f4ff', minHeight: '100vh', overflowX: 'hidden' }}>
+      <div className="bv-root" style={{ background: T.bg, color: T.text, minHeight:'100vh', overflowX:'hidden', transition:'background 0.4s ease, color 0.4s ease' }}>
 
         <div className="bv-cursor" ref={cursorRef} />
         <div className="bv-cursor-ring" ref={cursorRingRef} />
-        <canvas ref={canvasRef} style={{ position:'fixed', top:0, left:0, width:'100%', height:'100%', zIndex:0, pointerEvents:'none' }} />
+        <canvas ref={canvasRef} style={{ position:'fixed', top:0, left:0, width:'100%', height:'100%', zIndex:0, pointerEvents:'none', opacity: isDark?1:0, transition:'opacity 0.4s' }} />
 
-        {/* Glow orbs */}
-        <div style={{ position:'fixed', width:600, height:600, background:'rgba(123,94,167,0.08)', borderRadius:'50%', filter:'blur(120px)', top:'-10%', right:'-10%', zIndex:0, pointerEvents:'none' }} />
-        <div style={{ position:'fixed', width:500, height:500, background:'rgba(200,169,110,0.04)', borderRadius:'50%', filter:'blur(120px)', bottom:'10%', left:'-10%', zIndex:0, pointerEvents:'none' }} />
+        {/* Glow orbs — dark only */}
+        {isDark && <>
+          <div style={{ position:'fixed', width:600, height:600, background:'rgba(123,94,167,0.08)', borderRadius:'50%', filter:'blur(120px)', top:'-10%', right:'-10%', zIndex:0, pointerEvents:'none' }} />
+          <div style={{ position:'fixed', width:500, height:500, background:'rgba(200,169,110,0.04)', borderRadius:'50%', filter:'blur(120px)', bottom:'10%', left:'-10%', zIndex:0, pointerEvents:'none' }} />
+        </>}
 
         {/* NAV */}
-        <nav style={{ position:'fixed', top:0, left:0, right:0, zIndex:100, padding:'1.5rem 3rem', display:'flex', alignItems:'center', justifyContent:'space-between', backdropFilter:'blur(20px)', background:'linear-gradient(to bottom, rgba(2,2,10,0.9) 0%, transparent 100%)', borderBottom:'1px solid rgba(200,169,110,0.08)' }}>
-          <Link href="/" style={{ fontFamily:"'Syne',sans-serif", fontWeight:800, fontSize:'1.1rem', letterSpacing:'0.2em', textTransform:'uppercase', color:'#c8a96e', textDecoration:'none' }}>
-            Bhatiaverse
-          </Link>
-          <ul style={{ display:'flex', gap:'2.5rem', listStyle:'none', margin:0, padding:0, flexWrap:'wrap', alignItems:'center' }}>
-            <li><Link href="/articles" className="nav-link">Articles</Link></li>
-            <li><Link href="/spirituality" className="nav-link" style={{ color:'#7b5ea7' }}>Spirituality</Link></li>
-            <li><Link href="/trades" className="nav-link">Trades</Link></li>
-            <li><Link href="/aigames" className="nav-link">AI Games</Link></li>
-            <li><Link href="/#contact" className="nav-link">Contact</Link></li>
+        <nav style={{ position:'fixed', top:0, left:0, right:0, zIndex:100, padding:'1.2rem 3rem', display:'flex', alignItems:'center', justifyContent:'space-between', backdropFilter:'blur(20px)', background: T.navBg, borderBottom:`1px solid ${T.navBorder}`, transition:'background 0.4s ease' }}>
+          <Link href="/" style={{ fontFamily:"'Syne',sans-serif", fontWeight:800, fontSize:'1.1rem', letterSpacing:'0.2em', textTransform:'uppercase', color:'#c8a96e', textDecoration:'none' }}>Bhatiaverse</Link>
+          <ul style={{ display:'flex', gap:'2rem', listStyle:'none', margin:0, padding:0, flexWrap:'wrap', alignItems:'center' }}>
+            {[['Articles','/articles'],['Spirituality','/spirituality'],['Trades','/trades'],['AI Games','/aigames'],['Contact','/#contact']].map(([label, href]) => (
+              <li key={label}><Link href={href} style={{ fontFamily:"'DM Mono',monospace", fontSize:'0.72rem', letterSpacing:'0.15em', textTransform:'uppercase', color: label==='Spirituality'?'#7b5ea7': T.navLink, textDecoration:'none' }}>{label}</Link></li>
+            ))}
+            <li>
+              <button className="card-hover" onClick={toggleTheme} style={{ fontFamily:"'DM Mono',monospace", fontSize:'0.62rem', letterSpacing:'0.12em', textTransform:'uppercase', color: T.toggleColor, border:`1px solid ${T.toggleBorder}`, background:'transparent', padding:'0.35rem 0.85rem', cursor:'none', transition:'all 0.25s' }}>
+                {isDark ? '☀ Light' : '◑ Dark'}
+              </button>
+            </li>
           </ul>
         </nav>
 
         {/* HERO */}
         <section style={{ position:'relative', minHeight:'80vh', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', textAlign:'center', padding:'10rem 2rem 6rem', zIndex:1, overflow:'hidden' }}>
-
-          {/* Glyph decoration */}
           <div style={{ position:'absolute', width:500, height:500, top:'50%', left:'50%', pointerEvents:'none' }}>
             {[['100%','rgba(123,94,167,0.06)','glyph-ring-b'],['65%','rgba(200,169,110,0.08)','glyph-ring-a']].map(([size,color,cls])=>(
               <div key={cls} className={cls} style={{ position:'absolute', borderRadius:'50%', border:`1px solid ${color}`, width:size, height:size, top:'50%', left:'50%', transform:'translate(-50%,-50%)' }} />
             ))}
-            <div className="glyph-pulse" style={{ position:'absolute', top:'50%', left:'50%', width:60, height:60, background:'radial-gradient(circle,#7b5ea7 0%,rgba(123,94,167,0.2) 60%,transparent 100%)', borderRadius:'50%', boxShadow:'0 0 60px rgba(123,94,167,0.25)' }} />
+            <div className="glyph-pulse" style={{ position:'absolute', top:'50%', left:'50%', width:60, height:60, background:'radial-gradient(circle,#7b5ea7 0%,rgba(123,94,167,0.2) 60%,transparent 100%)', borderRadius:'50%', boxShadow:'0 0 60px rgba(123,94,167,0.2)' }} />
           </div>
 
-          <p style={{ fontFamily:"'DM Mono',monospace", fontSize:'0.7rem', letterSpacing:'0.4em', textTransform:'uppercase', color:'#7b5ea7', opacity:0.85, marginBottom:'2rem' }}>
-            ✦ Inner Cosmos
-          </p>
+          <p style={{ fontFamily:"'DM Mono',monospace", fontSize:'0.7rem', letterSpacing:'0.4em', textTransform:'uppercase', color:'#7b5ea7', opacity:0.85, marginBottom:'2rem' }}>✦ Inner Cosmos</p>
 
           <h1 style={{ fontFamily:"'Syne',sans-serif", fontSize:'clamp(3.5rem,10vw,8rem)', fontWeight:800, lineHeight:0.9, letterSpacing:'-0.03em', marginBottom:'0.5rem' }}>
-            <span style={{ display:'block', background:'linear-gradient(135deg,#f0f4ff 0%,#a8b8d8 50%,#f0f4ff 100%)', WebkitBackgroundClip:'text', WebkitTextFillColor:'transparent', backgroundClip:'text' }}>Spirit</span>
+            <span style={{ display:'block', color: T.text }}>Spirit</span>
             <span style={{ display:'block', fontFamily:"'Cormorant Garamond',serif", fontStyle:'italic', fontWeight:300, fontSize:'0.5em', background:'linear-gradient(135deg,#7b5ea7 0%,#b48fd8 100%)', WebkitBackgroundClip:'text', WebkitTextFillColor:'transparent', backgroundClip:'text', marginTop:'0.2em' }}>
-              & Philosophy
+              &amp; Philosophy
             </span>
           </h1>
 
-          <p style={{ fontFamily:"'Cormorant Garamond',serif", fontSize:'1.3rem', fontWeight:300, color:'#a8b8d8', maxWidth:560, lineHeight:1.8, margin:'2.5rem auto 0', fontStyle:'italic' }}>
+          <p style={{ fontFamily:"'Cormorant Garamond',serif", fontSize:'1.3rem', fontWeight:300, color: T.muted, maxWidth:560, lineHeight:1.8, margin:'2.5rem auto 0', fontStyle:'italic' }}>
             Reflections on consciousness, contemplative traditions, and the quiet art of being alive. The universe within mirrors the universe without.
           </p>
 
-          {/* Rotating quote */}
-          <div className="quote-fade" key={quoteIdx} style={{ marginTop:'3.5rem', maxWidth:600, padding:'2rem', border:'1px solid rgba(123,94,167,0.2)', background:'rgba(123,94,167,0.05)' }}>
-            <p style={{ fontFamily:"'Cormorant Garamond',serif", fontSize:'1.15rem', fontStyle:'italic', color:'rgba(240,244,255,0.8)', lineHeight:1.8, marginBottom:'0.75rem' }}>
+          <div className="quote-fade" key={quoteIdx} style={{ marginTop:'3.5rem', maxWidth:600, padding:'2rem', border:`1px solid ${T.quoteBorder}`, background: T.quoteBg }}>
+            <p style={{ fontFamily:"'Cormorant Garamond',serif", fontSize:'1.15rem', fontStyle:'italic', color: T.muted, lineHeight:1.8, marginBottom:'0.75rem' }}>
               &ldquo;{QUOTES[quoteIdx].text}&rdquo;
             </p>
-            <span style={{ fontFamily:"'DM Mono',monospace", fontSize:'0.6rem', letterSpacing:'0.25em', textTransform:'uppercase', color:'rgba(123,94,167,0.6)' }}>
-              — {QUOTES[quoteIdx].source}
-            </span>
+            <span style={{ fontFamily:"'DM Mono',monospace", fontSize:'0.6rem', letterSpacing:'0.25em', textTransform:'uppercase', color:'rgba(123,94,167,0.6)' }}>— {QUOTES[quoteIdx].source}</span>
           </div>
-
-          {/* Quote dots */}
           <div style={{ display:'flex', gap:'0.5rem', marginTop:'1.25rem' }}>
             {QUOTES.map((_, i) => (
-              <button key={i} className="card-hover" onClick={() => setQuoteIdx(i)} style={{ width:6, height:6, borderRadius:'50%', border:'none', background: i===quoteIdx ? '#7b5ea7' : 'rgba(123,94,167,0.25)', cursor:'none', transition:'background 0.3s', padding:0 }} />
+              <button key={i} className="card-hover" onClick={() => setQuoteIdx(i)} style={{ width:6, height:6, borderRadius:'50%', border:'none', background: i===quoteIdx?'#7b5ea7':'rgba(123,94,167,0.25)', cursor:'none', transition:'background 0.3s', padding:0 }} />
             ))}
           </div>
         </section>
 
         {/* MARQUEE */}
-        <div style={{ overflow:'hidden', padding:'1.2rem 0', borderTop:'1px solid rgba(255,255,255,0.04)', borderBottom:'1px solid rgba(255,255,255,0.04)', position:'relative', zIndex:1 }}>
+        <div style={{ overflow:'hidden', padding:'1.2rem 0', borderTop:`1px solid ${T.borderFaint}`, borderBottom:`1px solid ${T.borderFaint}`, position:'relative', zIndex:1 }}>
           <div className="marquee-track" style={{ display:'flex', gap:'3rem', width:'max-content' }}>
             {[1,2].map(k => (
-              <div key={k} style={{ display:'flex', alignItems:'center', gap:'3rem', whiteSpace:'nowrap', fontFamily:"'Syne',sans-serif", fontSize:'0.7rem', fontWeight:700, letterSpacing:'0.3em', textTransform:'uppercase', color:'rgba(168,184,216,0.15)' }}>
+              <div key={k} style={{ display:'flex', alignItems:'center', gap:'3rem', whiteSpace:'nowrap', fontFamily:"'Syne',sans-serif", fontSize:'0.7rem', fontWeight:700, letterSpacing:'0.3em', textTransform:'uppercase', color: T.marquee }}>
                 Vedanta <span style={{ color:'rgba(123,94,167,0.3)' }}>✦</span> Meditation <span style={{ color:'rgba(123,94,167,0.3)' }}>✦</span> Consciousness <span style={{ color:'rgba(123,94,167,0.3)' }}>✦</span> Bhagavad Gita <span style={{ color:'rgba(123,94,167,0.3)' }}>✦</span> Yoga <span style={{ color:'rgba(123,94,167,0.3)' }}>✦</span> Non-Duality <span style={{ color:'rgba(123,94,167,0.3)' }}>✦</span> Inner Peace <span style={{ color:'rgba(123,94,167,0.3)' }}>✦</span> Awareness <span style={{ color:'rgba(123,94,167,0.3)' }}>✦</span> Silence <span style={{ color:'rgba(123,94,167,0.3)' }}>✦</span>
               </div>
             ))}
@@ -324,76 +341,65 @@ export default function SpiritualityPage() {
           <div style={{ marginBottom:'7rem' }}>
             <div className="reveal" style={{ display:'flex', alignItems:'baseline', gap:'1.5rem', marginBottom:'3rem' }}>
               <span style={{ fontFamily:"'DM Mono',monospace", fontSize:'0.65rem', letterSpacing:'0.3em', color:'rgba(123,94,167,0.6)', textTransform:'uppercase' }}>/ 01</span>
-              <h2 style={{ fontFamily:"'Syne',sans-serif", fontSize:'clamp(2rem,4vw,3.5rem)', fontWeight:800, background:'linear-gradient(135deg,#f0f4ff,#a8b8d8)', WebkitBackgroundClip:'text', WebkitTextFillColor:'transparent', backgroundClip:'text', margin:0 }}>Spiritual Teachers</h2>
+              <h2 style={{ fontFamily:"'Syne',sans-serif", fontSize:'clamp(2rem,4vw,3.5rem)', fontWeight:800, color: T.text, margin:0 }}>Spiritual Teachers</h2>
             </div>
-
-            <div className="leaders-grid reveal" style={{ display:'grid', gridTemplateColumns:'repeat(3, 1fr)', gap:'1.5px' }}>
+            <div className="leaders-grid reveal" style={{ display:'grid', gridTemplateColumns:'repeat(3, 1fr)', gap }}>
               {LEADERS.map((leader, i) => (
-                <div key={leader.name} className="spirit-card card-hover" style={{ padding:'2.5rem', transitionDelay:`${i*0.1}s`, ...(leader.href ? {} : {}) }}>
+                <div key={leader.name} className="spirit-card card-hover" style={{ padding:'2.5rem', background: T.card, border:`1px solid ${T.border}`, boxShadow: T.boxShadow, transitionDelay:`${i*0.1}s` }}>
                   <div style={{ display:'flex', alignItems:'center', gap:'0.75rem', marginBottom:'1.25rem' }}>
-                    <div style={{ width:8, height:8, borderRadius:'50%', background:leader.color, boxShadow:`0 0 10px ${leader.color}` }} />
+                    <div style={{ width:8, height:8, borderRadius:'50%', background:leader.color, boxShadow: isDark?`0 0 10px ${leader.color}`:'none' }} />
                     <span style={{ fontFamily:"'DM Mono',monospace", fontSize:'0.55rem', letterSpacing:'0.2em', textTransform:'uppercase', color:`${leader.color}99` }}>{leader.role}</span>
                   </div>
-                  <h3 style={{ fontFamily:"'Syne',sans-serif", fontSize:'1.3rem', fontWeight:700, color:'#f0f4ff', marginBottom:'0.35rem', lineHeight:1.2 }}>
-                    {leader.href ? (
-                      <Link href={leader.href} className="card-hover" style={{ color:'#f0f4ff', textDecoration:'none', borderBottom:`1px solid ${leader.color}44`, paddingBottom:'1px' }}>{leader.name}</Link>
-                    ) : leader.name}
+                  <h3 style={{ fontFamily:"'Syne',sans-serif", fontSize:'1.3rem', fontWeight:700, color: T.text, marginBottom:'0.35rem', lineHeight:1.2 }}>
+                    {leader.href ? <Link href={leader.href} className="card-hover" style={{ color: T.text, textDecoration:'none', borderBottom:`1px solid ${leader.color}44`, paddingBottom:'1px' }}>{leader.name}</Link> : leader.name}
                   </h3>
-                  <span style={{ fontFamily:"'DM Mono',monospace", fontSize:'0.55rem', color:'rgba(168,184,216,0.35)', letterSpacing:'0.1em' }}>{leader.dates}</span>
-                  <p style={{ fontFamily:"'Cormorant Garamond',serif", fontSize:'1rem', lineHeight:1.8, color:'rgba(168,184,216,0.65)', fontWeight:300, margin:'1rem 0 1.5rem' }}>
-                    {leader.bio}
-                  </p>
-                  <blockquote style={{ borderLeft:`2px solid ${leader.color}55`, paddingLeft:'1rem', margin:0 }}>
-                    <p style={{ fontFamily:"'Cormorant Garamond',serif", fontStyle:'italic', fontSize:'1rem', color:`${leader.color}cc`, lineHeight:1.7, margin:0 }}>
-                      &ldquo;{leader.quote}&rdquo;
-                    </p>
+                  <span style={{ fontFamily:"'DM Mono',monospace", fontSize:'0.55rem', color: T.faint, letterSpacing:'0.1em' }}>{leader.dates}</span>
+                  <p style={{ fontFamily:"'Cormorant Garamond',serif", fontSize:'1rem', lineHeight:1.8, color: T.muted, fontWeight:300, margin:'1rem 0 1.5rem' }}>{leader.bio}</p>
+                  <blockquote style={{ borderLeft:`2px solid ${leader.color}${T.blockquoteBorder}`, paddingLeft:'1rem', margin:0 }}>
+                    <p style={{ fontFamily:"'Cormorant Garamond',serif", fontStyle:'italic', fontSize:'1rem', color:`${leader.color}cc`, lineHeight:1.7, margin:0 }}>&ldquo;{leader.quote}&rdquo;</p>
                   </blockquote>
                 </div>
               ))}
             </div>
           </div>
 
-          {/* COSMIC DIVIDER */}
-          <div style={{ height:1, background:'linear-gradient(to right, transparent, rgba(123,94,167,0.3), transparent)', marginBottom:'7rem' }} />
+          <div style={{ height:1, background:`linear-gradient(to right, transparent, ${T.divider}, transparent)`, marginBottom:'7rem' }} />
 
           {/* MY PERSPECTIVES */}
           <div style={{ marginBottom:'7rem' }}>
             <div className="reveal" style={{ display:'flex', alignItems:'baseline', gap:'1.5rem', marginBottom:'3rem' }}>
               <span style={{ fontFamily:"'DM Mono',monospace", fontSize:'0.65rem', letterSpacing:'0.3em', color:'rgba(123,94,167,0.6)', textTransform:'uppercase' }}>/ 02</span>
-              <h2 style={{ fontFamily:"'Syne',sans-serif", fontSize:'clamp(2rem,4vw,3.5rem)', fontWeight:800, background:'linear-gradient(135deg,#f0f4ff,#a8b8d8)', WebkitBackgroundClip:'text', WebkitTextFillColor:'transparent', backgroundClip:'text', margin:0 }}>My Perspectives</h2>
+              <h2 style={{ fontFamily:"'Syne',sans-serif", fontSize:'clamp(2rem,4vw,3.5rem)', fontWeight:800, color: T.text, margin:0 }}>My Perspectives</h2>
             </div>
-
-            <div className="perspectives-grid" style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'1.5px' }}>
+            <div className="perspectives-grid" style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap }}>
               {PERSPECTIVES.map((p, i) => (
-                <div key={p.num} className="spirit-card card-hover reveal" style={{ padding:'3rem', transitionDelay:`${i*0.12}s` }}>
+                <div key={p.num} className="spirit-card card-hover reveal" style={{ padding:'3rem', background: T.card, border:`1px solid ${T.border}`, boxShadow: T.boxShadow, transitionDelay:`${i*0.12}s` }}>
                   <div style={{ display:'flex', alignItems:'baseline', gap:'1rem', marginBottom:'1.5rem' }}>
                     <span style={{ fontFamily:"'DM Mono',monospace", fontSize:'0.6rem', letterSpacing:'0.2em', color:`${p.color}66` }}>{p.num}</span>
                     <div style={{ height:1, flex:1, background:`linear-gradient(to right, ${p.color}33, transparent)` }} />
                   </div>
-                  <h3 style={{ fontFamily:"'Syne',sans-serif", fontSize:'1.5rem', fontWeight:700, color:'#f0f4ff', marginBottom:'1.25rem', lineHeight:1.2 }}>{p.title}</h3>
-                  <p style={{ fontFamily:"'Cormorant Garamond',serif", fontSize:'1.08rem', lineHeight:1.9, color:'rgba(168,184,216,0.7)', fontWeight:300 }}>{p.body}</p>
+                  <h3 style={{ fontFamily:"'Syne',sans-serif", fontSize:'1.5rem', fontWeight:700, color: T.text, marginBottom:'1.25rem', lineHeight:1.2 }}>{p.title}</h3>
+                  <p style={{ fontFamily:"'Cormorant Garamond',serif", fontSize:'1.08rem', lineHeight:1.9, color: T.muted, fontWeight:300 }}>{p.body}</p>
                 </div>
               ))}
             </div>
           </div>
 
-          {/* COSMIC DIVIDER */}
-          <div style={{ height:1, background:'linear-gradient(to right, transparent, rgba(200,169,110,0.25), transparent)', marginBottom:'7rem' }} />
+          <div style={{ height:1, background:`linear-gradient(to right, transparent, rgba(200,169,110,0.2), transparent)`, marginBottom:'7rem' }} />
 
           {/* BOOKS */}
           <div>
             <div className="reveal" style={{ display:'flex', alignItems:'baseline', gap:'1.5rem', marginBottom:'3rem' }}>
               <span style={{ fontFamily:"'DM Mono',monospace", fontSize:'0.65rem', letterSpacing:'0.3em', color:'rgba(123,94,167,0.6)', textTransform:'uppercase' }}>/ 03</span>
-              <h2 style={{ fontFamily:"'Syne',sans-serif", fontSize:'clamp(2rem,4vw,3.5rem)', fontWeight:800, background:'linear-gradient(135deg,#f0f4ff,#a8b8d8)', WebkitBackgroundClip:'text', WebkitTextFillColor:'transparent', backgroundClip:'text', margin:0 }}>Books That Moved Me</h2>
+              <h2 style={{ fontFamily:"'Syne',sans-serif", fontSize:'clamp(2rem,4vw,3.5rem)', fontWeight:800, color: T.text, margin:0 }}>Books That Moved Me</h2>
             </div>
-
-            <div className="books-grid reveal" style={{ display:'grid', gridTemplateColumns:'repeat(4, 1fr)', gap:'1.5px' }}>
+            <div className="books-grid reveal" style={{ display:'grid', gridTemplateColumns:'repeat(4, 1fr)', gap }}>
               {BOOKS.map((book, i) => (
-                <div key={book.title} className="spirit-card card-hover" style={{ padding:'2.5rem', transitionDelay:`${i*0.1}s` }}>
+                <div key={book.title} className="spirit-card card-hover" style={{ padding:'2.5rem', background: T.card, border:`1px solid ${T.border}`, boxShadow: T.boxShadow, transitionDelay:`${i*0.1}s` }}>
                   <span style={{ fontFamily:"'DM Mono',monospace", fontSize:'0.55rem', letterSpacing:'0.2em', textTransform:'uppercase', color:`${book.color}88`, border:`1px solid ${book.color}33`, padding:'0.25rem 0.7rem', display:'inline-block', marginBottom:'1.25rem' }}>{book.category}</span>
-                  <h3 style={{ fontFamily:"'Syne',sans-serif", fontSize:'1.2rem', fontWeight:700, color:'#f0f4ff', marginBottom:'0.35rem', lineHeight:1.2 }}>{book.title}</h3>
-                  <p style={{ fontFamily:"'DM Mono',monospace", fontSize:'0.6rem', color:'rgba(168,184,216,0.4)', letterSpacing:'0.1em', marginBottom:'1.25rem' }}>by {book.author}</p>
-                  <p style={{ fontFamily:"'Cormorant Garamond',serif", fontSize:'1rem', lineHeight:1.8, color:'rgba(168,184,216,0.65)', fontWeight:300, marginBottom:'1.5rem' }}>{book.description}</p>
+                  <h3 style={{ fontFamily:"'Syne',sans-serif", fontSize:'1.2rem', fontWeight:700, color: T.text, marginBottom:'0.35rem', lineHeight:1.2 }}>{book.title}</h3>
+                  <p style={{ fontFamily:"'DM Mono',monospace", fontSize:'0.6rem', color: T.faint, letterSpacing:'0.1em', marginBottom:'1.25rem' }}>by {book.author}</p>
+                  <p style={{ fontFamily:"'Cormorant Garamond',serif", fontSize:'1rem', lineHeight:1.8, color: T.muted, fontWeight:300, marginBottom:'1.5rem' }}>{book.description}</p>
                   <div style={{ borderLeft:`2px solid ${book.color}44`, paddingLeft:'0.875rem' }}>
                     <p style={{ fontFamily:"'Cormorant Garamond',serif", fontStyle:'italic', fontSize:'0.95rem', color:`${book.color}bb`, lineHeight:1.7, margin:0 }}>{book.insight}</p>
                   </div>
@@ -404,11 +410,9 @@ export default function SpiritualityPage() {
         </main>
 
         {/* FOOTER */}
-        <footer style={{ position:'relative', zIndex:1, padding:'2rem 3rem', borderTop:'1px solid rgba(255,255,255,0.04)', display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:'1rem' }}>
-          <Link href="/" style={{ fontFamily:"'Syne',sans-serif", fontWeight:800, fontSize:'0.85rem', letterSpacing:'0.2em', textTransform:'uppercase', color:'rgba(200,169,110,0.5)', textDecoration:'none' }}>
-            ← Bhatiaverse
-          </Link>
-          <div style={{ fontFamily:"'DM Mono',monospace", fontSize:'0.6rem', letterSpacing:'0.15em', color:'rgba(168,184,216,0.3)' }}>© 2025 Bhatiaverse. Built with passion and curiosity.</div>
+        <footer style={{ position:'relative', zIndex:1, padding:'2rem 3rem', borderTop:`1px solid ${T.borderFaint}`, display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:'1rem' }}>
+          <Link href="/" style={{ fontFamily:"'Syne',sans-serif", fontWeight:800, fontSize:'0.85rem', letterSpacing:'0.2em', textTransform:'uppercase', color:'rgba(200,169,110,0.5)', textDecoration:'none' }}>← Bhatiaverse</Link>
+          <div style={{ fontFamily:"'DM Mono',monospace", fontSize:'0.6rem', letterSpacing:'0.15em', color: T.faint }}>© 2025 Bhatiaverse. Built with passion and curiosity.</div>
         </footer>
 
       </div>

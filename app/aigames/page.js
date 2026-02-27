@@ -272,7 +272,7 @@ export default function AIGames() {
           </Link>
           <ul style={{ display: 'flex', gap: '2.5rem', listStyle: 'none', margin: 0, padding: 0, flexWrap: 'wrap', alignItems: 'center' }}>
             <li><Link href="/articles" className="nav-link">Articles</Link></li>
-            <li><Link href="/#spirituality" className="nav-link">Spirituality</Link></li>
+            <li><Link href="/spirituality" className="nav-link">Spirituality</Link></li>
             <li><Link href="/trades" className="nav-link">Trades</Link></li>
             <li><Link href="/aigames" className="nav-link" style={{ color: '#3ecf8e' }}>AI Games</Link></li>
             <li><Link href="/#contact" className="nav-link">Contact</Link></li>
