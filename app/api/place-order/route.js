@@ -57,7 +57,25 @@ export async function POST(request) {
       orderParams.price = parseFloat(price);
     }
     if (['SL', 'SL-M'].includes(order_type) && trigger_price) {
-      orderParams.trigger_price = parseFloat(trigger_price);
+      const triggerNum = Number(trigger_price);
+      orderParams.trigger_price = triggerNum;
+      let priceNum = null;
+      if (price !== null && price !== undefined) {
+        priceNum = Number(price);
+        orderParams.price = priceNum;
+        if (transaction_type === 'BUY' && priceNum < triggerNum) {
+          return NextResponse.json({ error: 'For SL/SL-M BUY orders, price must be equal to or higher than trigger price.' }, { status: 400 });
+        }
+        if (transaction_type === 'SELL' && priceNum > triggerNum) {
+          return NextResponse.json({ error: 'For SL/SL-M SELL orders, price must be equal to or lower than trigger price.' }, { status: 400 });
+        }
+      }
+      // Debug log
+      console.log('DEBUG SL/SL-M:', {
+        price, trigger_price, priceNum, triggerNum,
+        priceType: typeof price, triggerType: typeof trigger_price,
+        orderParams
+      });
     }
     if (disclosed_quantity > 0) {
       orderParams.disclosed_quantity = parseInt(disclosed_quantity);
