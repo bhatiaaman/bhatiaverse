@@ -60,6 +60,7 @@ export default function OrdersPage() {
   const [insightBadge, setInsightBadge] = useState({ count: 0, verdict: 'clear' });
   const [avgDownAlert, setAvgDownAlert] = useState(null); // { position } — blocks placement
   const [avgDownBypass, setAvgDownBypass] = useState(false); // user confirmed, skip guard once
+  const [trendConflictBypass, setTrendConflictBypass] = useState(false); // user confirmed, skip trend guard once
   const [trendConflictAlert, setTrendConflictAlert] = useState(null); // { sentiment } — warns against trend
   // Context data for behavioral agent (fetched once on mount)
   const [sentimentCtx, setSentimentCtx] = useState(null);
@@ -159,8 +160,18 @@ export default function OrdersPage() {
 
   // When user confirms "Place Anyway" — bypass flag is set, re-trigger placeOrder
   useEffect(() => {
-    if (avgDownBypass) placeOrder();
+    if (avgDownBypass) {
+      placeOrder();
+      setAvgDownBypass(false);
+    }
   }, [avgDownBypass]);
+
+  useEffect(() => {
+    if (trendConflictBypass) {
+      placeOrder();
+      setTrendConflictBypass(false);
+    }
+  }, [trendConflictBypass]);
 
   // Load context data for behavioral agent once on mount
   useEffect(() => {
@@ -285,6 +296,7 @@ export default function OrdersPage() {
     if (!symbol) return;
 
     // ── Averaging-down guard ─────────────────────────────────────────────
+    let avgDownBlocked = false;
     if (!avgDownBypass) {
       const openPos = positions.filter(p => p.quantity !== 0);
       const matchingPos = openPos.find(p =>
@@ -294,59 +306,51 @@ export default function OrdersPage() {
       if (matchingPos) {
         const isAddingLong  = matchingPos.quantity > 0 && transactionType === 'BUY';
         const isAddingShort = matchingPos.quantity < 0 && transactionType === 'SELL';
-        
-        // Calculate UNREALIZED P&L for current open position (not cumulative)
         const avgPrice = matchingPos.average_price || 0;
         const ltp = matchingPos.last_price || 0;
         const qty = Math.abs(matchingPos.quantity);
         const isLong = matchingPos.quantity > 0;
-        
-        // Unrealized P&L = (Current Price - Entry Price) × Quantity
         const unrealizedPnl = isLong 
-          ? (ltp - avgPrice) * qty  // Long: profit if LTP > entry
-          : (avgPrice - ltp) * qty; // Short: profit if entry > LTP
-        
-        // Threshold based on instrument type
+          ? (ltp - avgPrice) * qty
+          : (avgPrice - ltp) * qty;
         const lossThreshold = matchingPos.exchange === 'NFO' ? -500 : -200;
         const isLosingTrade = unrealizedPnl < lossThreshold;
         if ((isAddingLong || isAddingShort) && isLosingTrade) {
           setAvgDownAlert({ position: matchingPos, unrealizedPnl, avgPrice, ltp });
-          return;
+          avgDownBlocked = true;
         }
       }
     }
-    setAvgDownBypass(false); // reset bypass after use
-    
+    if (avgDownBlocked) return;
+    setAvgDownBypass(false);
+
     // ── Trend conflict guard ──────────────────────────────────────────────
-    // Check if trading against BOTH daily and intraday sentiment
-    if (sentimentCtx?.overall?.score != null) {
+    let trendBlocked = false;
+    if (!trendConflictBypass && sentimentCtx?.overall?.score != null) {
       const dailyScore    = sentimentCtx.overall.score;
       const intradayScore = sentimentCtx.timeframes?.intraday?.score;
       const isBuyingCall = transactionType === 'BUY' && instrumentType === 'CE';
       const isBuyingPut  = transactionType === 'BUY' && instrumentType === 'PE';
       const isBuyingEQ   = transactionType === 'BUY' && instrumentType === 'EQ';
       const isSellingEQ  = transactionType === 'SELL' && instrumentType === 'EQ';
-      
       const bearish = dailyScore < 45;
       const bullish = dailyScore > 55;
       const intradayBearish = intradayScore != null && intradayScore < 45;
       const intradayBullish = intradayScore != null && intradayScore > 55;
-      
-      // Block if against BOTH timeframes
       const againstBoth = 
         ((isBuyingCall || isBuyingEQ) && bearish && intradayBearish) ||
         ((isBuyingPut || isSellingEQ) && bullish && intradayBullish);
-      
       if (againstBoth) {
         setTrendConflictAlert({
           dailyScore,
           intradayScore,
           direction: bearish ? 'bearish' : 'bullish',
         });
-        return;
+        trendBlocked = true;
       }
     }
-    // ────────────────────────────────────────────────────────────────────
+    if (trendBlocked) return;
+    setTrendConflictBypass(false);
 
     let ts, ex;
     if (instrumentType === 'EQ') {
@@ -1121,7 +1125,7 @@ export default function OrdersPage() {
               <button
                 onClick={() => {
                   setTrendConflictAlert(null);
-                  setAvgDownBypass(true); // reuse bypass flag for all guards
+                  setTrendConflictBypass(true);
                 }}
                 className="flex-1 py-2.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 text-sm font-medium transition-colors border border-amber-500/30"
               >
