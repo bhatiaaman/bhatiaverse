@@ -59,7 +59,8 @@
     const [kiteAuth, setKiteAuth] = useState({ isLoggedIn: false, checking: true });
     const isMarketHours = () => {
       const ist = new Date(Date.now() + 5.5 * 60 * 60 * 1000);
-      return (ist.getUTCHours() * 60 + ist.getUTCMinutes()) >= 555;
+      const mins = ist.getUTCHours() * 60 + ist.getUTCMinutes();
+      return mins >= 540 && mins <= 960; // 9:00 AM – 4:00 PM IST
     };
     const isVisible = usePageVisibility();
     const [commentary, setCommentary] = useState(null);
@@ -1136,9 +1137,22 @@
             {/* Options Analysis */}
             <div className="bg-[#112240] backdrop-blur border border-blue-800/40 rounded-xl p-5">
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-semibold text-blue-300 flex items-center gap-2">
-                  <span className="w-1 h-5 bg-blue-500 rounded"></span>
+                <h2 className="text-lg font-semibold text-blue-300 flex items-center gap-2 flex-wrap">
+                  <span className="w-1 h-5 bg-blue-500 rounded flex-shrink-0"></span>
                   Options Analysis
+                  {optionChainData?.marketActivity?.activity && optionChainData.marketActivity.activity !== 'Unknown' && (
+                    <span className={`text-xs font-medium px-2 py-0.5 rounded-full flex items-center gap-1 ${
+                      ['Long Buildup', 'Short Covering'].includes(optionChainData.marketActivity.activity)
+                        ? 'bg-green-500/15 text-green-400 border border-green-500/30'
+                        : ['Short Buildup', 'Long Unwinding'].includes(optionChainData.marketActivity.activity)
+                        ? 'bg-red-500/15 text-red-400 border border-red-500/30'
+                        : optionChainData.marketActivity.activity === 'Consolidation'
+                        ? 'bg-slate-700/50 text-slate-400 border border-slate-600/30'
+                        : 'bg-yellow-500/15 text-yellow-400 border border-yellow-500/30'
+                    }`}>
+                      {optionChainData.marketActivity.emoji} {optionChainData.marketActivity.activity}
+                    </span>
+                  )}
                 </h2>
                 <div className="flex gap-2">
                   <div className="flex bg-[#0a1628] rounded-lg p-0.5">
@@ -1248,45 +1262,46 @@
                     </div>
                   </div>
 
-                  <div className="bg-[#0a1628] rounded-lg p-3">
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="text-[10px] text-slate-500 uppercase tracking-wider">Options Analysis</div>
-                      {optionChainData?.marketActivity?.strength > 0 && (
-                        <div className="flex items-center gap-1">
-                          {[...Array(Math.ceil(optionChainData.marketActivity.strength / 2))].map((_, i) => (
-                            <div key={i} className="w-1 h-3 bg-blue-500 rounded-full"></div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                    
-                    <div className="text-sm text-white mb-2">
-                      {optionChainData?.marketActivity?.description || 'Analyzing market activity...'}
-                    </div>
-                    
-                    {optionChainData?.marketActivity?.actionable && (
-                      <div className="text-xs text-blue-400 bg-blue-500/10 rounded px-2 py-1.5 border border-blue-500/20 mb-2">
-                        💡 {optionChainData.marketActivity.actionable}
+                  <div className="bg-[#0a1628] rounded-lg p-3 space-y-2.5">
+                    {/* Activity + description narrative */}
+                    {optionChainData?.marketActivity?.activity ? (
+                      <p className="text-sm leading-relaxed">
+                        <span className="mr-1">{optionChainData.marketActivity.emoji}</span>
+                        <span className={`font-semibold ${
+                          ['Long Buildup', 'Short Covering'].includes(optionChainData.marketActivity.activity) ? 'text-green-400'
+                          : ['Short Buildup', 'Long Unwinding'].includes(optionChainData.marketActivity.activity) ? 'text-red-400'
+                          : 'text-slate-300'
+                        }`}>{optionChainData.marketActivity.activity}</span>
+                        {optionChainData.marketActivity.description ? (
+                          <span className="text-slate-400"> — {optionChainData.marketActivity.description}.</span>
+                        ) : null}
+                        {optionChainData.marketActivity.actionable ? (
+                          <span className="text-blue-400"> {optionChainData.marketActivity.actionable}.</span>
+                        ) : null}
+                        {optionChainData?.marketActivity?.strength > 0 && (
+                          <span className="ml-2 inline-flex items-center gap-0.5 align-middle">
+                            {[...Array(Math.min(5, Math.ceil(optionChainData.marketActivity.strength / 2)))].map((_, i) => (
+                              <span key={i} className="inline-block w-1 h-2.5 bg-blue-500/70 rounded-full"></span>
+                            ))}
+                          </span>
+                        )}
+                      </p>
+                    ) : (
+                      <p className="text-sm text-slate-500">Analyzing market activity...</p>
+                    )}
+
+                    {/* Insights as flowing lines */}
+                    {optionChainData?.actionableInsights?.length > 0 && (
+                      <div className="space-y-1.5 pt-2 border-t border-blue-800/20">
+                        {optionChainData.actionableInsights.slice(0, 3).map((insight, idx) => (
+                          <p key={idx} className="text-xs leading-relaxed text-slate-300">
+                            <span className="mr-1">{insight.emoji}</span>
+                            <span className="text-slate-200 font-medium">{insight.message}</span>
+                            <span className="text-slate-400"> — {insight.action}</span>
+                          </p>
+                        ))}
                       </div>
                     )}
-                    
-                    <div className="space-y-2 max-h-32 overflow-y-auto">
-                      {optionChainData?.actionableInsights?.slice(0, 3).map((insight, idx) => (
-                        <div key={idx} className="text-xs text-slate-300 flex items-start gap-2 bg-slate-800/30 rounded p-2">
-                          <span className="text-base">{insight.emoji}</span>
-                          <div className="flex-1">
-                            <div className="font-medium text-slate-200">{insight.message}</div>
-                            <div className="text-slate-400 text-[10px] mt-0.5">{insight.action}</div>
-                          </div>
-                        </div>
-                      ))}
-                      
-                      {(!optionChainData?.actionableInsights || optionChainData.actionableInsights.length === 0) && (
-                        <div className="text-slate-500 text-xs py-2 text-center">
-                          Analyzing options data... Insights will appear shortly.
-                        </div>
-                      )}
-                    </div>
                   </div>
 
                   <div className="flex justify-between text-xs text-slate-400 pt-2 border-t border-blue-800/40">

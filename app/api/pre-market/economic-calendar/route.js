@@ -1,165 +1,203 @@
 // app/api/pre-market/economic-calendar/route.js
+// Fetches economic events from ForexFactory's free public JSON feed.
+// No API key required.
+
 import { NextResponse } from 'next/server';
 
-// Static calendar - can be updated daily or fetched from external source
-const CALENDAR_DATA = [
-  // Sample events - replace with real data source
-  {
-    time: '10:00',
-    event: 'IIP (Industrial Production)',
-    impact: 'HIGH',
-    country: 'India',
-    previous: '3.5%',
-    forecast: '4.1%',
-    actual: null,
-  },
-  {
-    time: '11:30',
-    event: 'RBI Governor Speech',
-    impact: 'HIGH',
-    country: 'India',
-    previous: null,
-    forecast: null,
-    actual: null,
-  },
-  {
-    time: '14:00',
-    event: 'FII/DII Data Release',
-    impact: 'MEDIUM',
-    country: 'India',
-    previous: null,
-    forecast: null,
-    actual: null,
-  },
-  {
-    time: '18:00',
-    event: 'ECB Interest Rate Decision',
-    impact: 'HIGH',
-    country: 'Europe',
-    previous: '4.50%',
-    forecast: '4.50%',
-    actual: null,
-  },
-  {
-    time: '20:30',
-    event: 'US CPI (Inflation)',
-    impact: 'HIGH',
-    country: 'US',
-    previous: '3.1%',
-    forecast: '2.9%',
-    actual: null,
-  },
-  {
-    time: '22:00',
-    event: 'Fed Minutes Release',
-    impact: 'MEDIUM',
-    country: 'US',
-    previous: null,
-    forecast: null,
-    actual: null,
-  },
-];
+const REDIS_URL   = process.env.UPSTASH_REDIS_REST_URL;
+const REDIS_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
+const NS          = process.env.REDIS_NAMESPACE || 'default';
+const CACHE_KEY   = `${NS}:economic-calendar`;
+const CACHE_TTL   = 30 * 60; // 30 minutes
+
+async function redisGet(key) {
+  try {
+    const res  = await fetch(`${REDIS_URL}/get/${key}`, {
+      headers: { Authorization: `Bearer ${REDIS_TOKEN}` },
+    });
+    const data = await res.json();
+    return data.result ? JSON.parse(data.result) : null;
+  } catch { return null; }
+}
+
+async function redisSet(key, value, exSeconds) {
+  try {
+    const encoded = encodeURIComponent(JSON.stringify(value));
+    const url = exSeconds
+      ? `${REDIS_URL}/set/${key}/${encoded}?ex=${exSeconds}`
+      : `${REDIS_URL}/set/${key}/${encoded}`;
+    await fetch(url, { headers: { Authorization: `Bearer ${REDIS_TOKEN}` } });
+  } catch (e) { console.error('Redis set error:', e); }
+}
+
+// Currency → country display name
+const CURRENCY_COUNTRY = {
+  USD: 'US', EUR: 'Europe', GBP: 'UK', JPY: 'Japan',
+  CNY: 'China', INR: 'India', AUD: 'Australia', CAD: 'Canada',
+  NZD: 'New Zealand', CHF: 'Switzerland',
+};
+
+// ForexFactory impact → our labels
+const IMPACT_MAP = {
+  'High':   'HIGH',
+  'Medium': 'MEDIUM',
+  'Low':    'LOW',
+  'Non-Economic': 'LOW',
+};
+
+// Currencies we care about (focus on market-relevant ones)
+const RELEVANT_CURRENCIES = new Set(['USD', 'EUR', 'GBP', 'JPY', 'CNY', 'INR']);
+
+async function fetchForexFactory() {
+  const res = await fetch('https://nfs.faireconomy.media/ff_calendar_thisweek.json', {
+    headers: { 'User-Agent': 'Mozilla/5.0' },
+    signal: AbortSignal.timeout(8000),
+  });
+
+  if (!res.ok) throw new Error(`ForexFactory HTTP ${res.status}`);
+
+  const events = await res.json();
+  if (!Array.isArray(events)) throw new Error('Unexpected response format');
+  return events;
+}
+
+function parseAndFilter(rawEvents, todayStr) {
+  // Filter to today's events for relevant currencies, High/Medium impact only
+  const today = new Date(todayStr + 'T00:00:00Z');
+  const tomorrow = new Date(today.getTime() + 24 * 60 * 60 * 1000);
+
+  return rawEvents
+    .filter(ev => {
+      if (!ev.date) return false;
+      const evDate = new Date(ev.date);
+      // Keep only today's events
+      if (evDate < today || evDate >= tomorrow) return false;
+      // Keep relevant currencies
+      if (!RELEVANT_CURRENCIES.has(ev.country)) return false;
+      // Keep High and Medium impact only
+      const impact = IMPACT_MAP[ev.impact] || 'LOW';
+      if (impact === 'LOW') return false;
+      return true;
+    })
+    .map(ev => {
+      const dateObj = new Date(ev.date);
+      // Convert to IST for display
+      const istDate = new Date(dateObj.getTime() + 5.5 * 60 * 60 * 1000);
+      const hh      = istDate.getUTCHours().toString().padStart(2, '0');
+      const mm      = istDate.getUTCMinutes().toString().padStart(2, '0');
+      const timeIST = `${hh}:${mm}`;
+
+      const impact  = IMPACT_MAP[ev.impact] || 'LOW';
+      const country = CURRENCY_COUNTRY[ev.country] || ev.country;
+
+      return {
+        time:     timeIST,
+        event:    ev.title || 'Economic Event',
+        impact,
+        country,
+        currency: ev.country,
+        previous: ev.previous || null,
+        forecast: ev.forecast || null,
+        actual:   ev.actual   || null,
+        _ts:      dateObj.getTime(),
+      };
+    })
+    .sort((a, b) => a._ts - b._ts);
+}
+
+function enrichWithStatus(events) {
+  const now    = new Date();
+  const istNow = new Date(now.getTime() + 5.5 * 60 * 60 * 1000);
+  const currentMinutes = istNow.getUTCHours() * 60 + istNow.getUTCMinutes();
+
+  return events.map(ev => {
+    const [hh, mm]     = ev.time.split(':').map(Number);
+    const eventMinutes = hh * 60 + mm;
+    const minutesUntil = eventMinutes - currentMinutes;
+
+    let status = 'UPCOMING';
+    if (minutesUntil < 0)  status = 'COMPLETED';
+    else if (minutesUntil < 30) status = 'SOON';
+
+    return {
+      ...ev,
+      minutesUntil: minutesUntil > 0 ? minutesUntil : null,
+      status,
+    };
+  });
+}
 
 export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url);
-    const date = searchParams.get('date') || new Date().toISOString().split('T')[0];
-    const country = searchParams.get('country'); // Filter by country
-    const impact = searchParams.get('impact'); // Filter by impact
+    const country = searchParams.get('country');
+    const impact  = searchParams.get('impact');
 
-    // Get today's date
-    const today = new Date();
-    const todayStr = today.toISOString().split('T')[0];
+    // Today's date in IST
+    const now    = new Date();
+    const istNow = new Date(now.getTime() + 5.5 * 60 * 60 * 1000);
+    const todayStr = istNow.toISOString().split('T')[0]; // YYYY-MM-DD
 
-    // Filter events
-    let events = [...CALENDAR_DATA];
+    // Cache keyed by today's date so it auto-invalidates tomorrow
+    const dateKey = `${CACHE_KEY}:${todayStr}`;
+    const cached  = await redisGet(dateKey);
+    let events = cached;
 
-    if (country) {
-      events = events.filter(e => e.country === country);
-    }
-
-    if (impact) {
-      events = events.filter(e => e.impact === impact);
-    }
-
-    // Add timing information
-    const now = new Date();
-    const currentTime = now.getHours() * 60 + now.getMinutes();
-
-    events = events.map(event => {
-      const [hours, minutes] = event.time.split(':').map(Number);
-      const eventTimeMinutes = hours * 60 + minutes;
-      const minutesUntil = eventTimeMinutes - currentTime;
-      
-      let status = 'UPCOMING';
-      if (minutesUntil < 0) {
-        status = 'COMPLETED';
-      } else if (minutesUntil < 30) {
-        status = 'SOON';
+    if (!events) {
+      try {
+        const raw = await fetchForexFactory();
+        events = parseAndFilter(raw, todayStr);
+        await redisSet(dateKey, events, CACHE_TTL);
+      } catch (err) {
+        console.error('[calendar] ForexFactory fetch failed:', err.message);
+        events = [];
       }
+    }
 
-      return {
-        ...event,
-        minutesUntil: minutesUntil > 0 ? minutesUntil : null,
-        status,
-        isToday: date === todayStr,
-      };
-    });
+    // Apply live status (COMPLETED / SOON / UPCOMING)
+    let enriched = enrichWithStatus(events);
 
-    // Sort by time
-    events.sort((a, b) => {
-      const [aH, aM] = a.time.split(':').map(Number);
-      const [bH, bM] = b.time.split(':').map(Number);
-      return (aH * 60 + aM) - (bH * 60 + bM);
-    });
+    // Apply filters
+    if (country) enriched = enriched.filter(e => e.country === country);
+    if (impact)  enriched = enriched.filter(e => e.impact  === impact);
 
-    // Summary statistics
     const summary = {
-      total: events.length,
-      high: events.filter(e => e.impact === 'HIGH').length,
-      medium: events.filter(e => e.impact === 'MEDIUM').length,
-      low: events.filter(e => e.impact === 'LOW').length,
-      upcoming: events.filter(e => e.status === 'UPCOMING').length,
-      completed: events.filter(e => e.status === 'COMPLETED').length,
+      total:     enriched.length,
+      high:      enriched.filter(e => e.impact === 'HIGH').length,
+      medium:    enriched.filter(e => e.impact === 'MEDIUM').length,
+      low:       enriched.filter(e => e.impact === 'LOW').length,
+      upcoming:  enriched.filter(e => e.status === 'UPCOMING' || e.status === 'SOON').length,
+      completed: enriched.filter(e => e.status === 'COMPLETED').length,
     };
 
-    // Next important event
-    const nextHighImpact = events.find(e => e.impact === 'HIGH' && e.status !== 'COMPLETED');
+    const nextHighImpact = enriched.find(e => e.impact === 'HIGH' && e.status !== 'COMPLETED');
 
     return NextResponse.json({
       success: true,
-      date,
-      events,
+      date:    todayStr,
+      events:  enriched,
       summary,
       nextHighImpact,
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
     console.error('Economic calendar error:', error);
-    return NextResponse.json({ 
-      success: false, 
-      error: error.message 
+    return NextResponse.json({
+      success:   false,
+      events:    [],
+      summary:   { total: 0, high: 0, medium: 0, low: 0, upcoming: 0, completed: 0 },
+      error:     error.message,
+      timestamp: new Date().toISOString(),
     }, { status: 500 });
   }
 }
 
-// POST endpoint to update calendar (for manual updates)
+// POST: manual event override (kept for future use)
 export async function POST(request) {
   try {
     const { event } = await request.json();
-    
-    // In production, save to database
-    // For now, just return success
-    
-    return NextResponse.json({
-      success: true,
-      message: 'Event added to calendar',
-      event,
-    });
+    return NextResponse.json({ success: true, message: 'Event received', event });
   } catch (error) {
-    return NextResponse.json({ 
-      success: false, 
-      error: error.message 
-    }, { status: 500 });
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }

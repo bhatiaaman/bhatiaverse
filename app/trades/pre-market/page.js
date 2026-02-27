@@ -4,9 +4,21 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, RefreshCw, Clock, TrendingUp, TrendingDown, ChevronDown, ChevronUp, AlertCircle } from 'lucide-react';
 
+// Returns true if current IST time is between 08:00 and 09:15 (pre-market AI window)
+function isPreMarketAIWindow() {
+  const istNow = new Date(new Date().getTime() + 5.5 * 60 * 60 * 1000);
+  const h = istNow.getUTCHours();
+  const m = istNow.getUTCMinutes();
+  const mins = h * 60 + m;
+  return mins >= 8 * 60 && mins < 9 * 60 + 15; // 480 – 555
+}
+
 export default function PreMarketPage() {
   const [tradingPlan, setTradingPlan] = useState('');
+  const [planMode, setPlanMode] = useState('template'); // 'template' | 'ai'
+  const [planMethod, setPlanMethod] = useState(null);   // 'template' | 'ai' | 'template-fallback'
   const [generatingPlan, setGeneratingPlan] = useState(false);
+  const [aiWindowOpen, setAiWindowOpen] = useState(isPreMarketAIWindow);
   const [preMarketMovers, setPreMarketMovers] = useState(null);
   const [moversLoading, setMoversLoading] = useState(true);
   const [marketCommentary, setMarketCommentary] = useState(null);
@@ -20,8 +32,24 @@ export default function PreMarketPage() {
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const savedPlan = localStorage.getItem('tradingPlan') || '';
-      setTradingPlan(savedPlan);
+      try {
+        const raw = localStorage.getItem('tradingPlan');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          // Only load if the plan was saved today (IST date)
+          const istToday = new Date(new Date().getTime() + 5.5 * 60 * 60 * 1000)
+            .toISOString().split('T')[0];
+          if (parsed.date === istToday && parsed.plan) {
+            setTradingPlan(parsed.plan);
+          } else {
+            // Stale plan from a previous day — clear it
+            localStorage.removeItem('tradingPlan');
+          }
+        }
+      } catch {
+        // Legacy plain-text plan (no date) — clear it
+        localStorage.removeItem('tradingPlan');
+      }
     }
   }, []);
 
@@ -69,6 +97,24 @@ export default function PreMarketPage() {
     const interval = setInterval(fetchAllData, 30000);
     return () => clearInterval(interval);
   }, []);
+
+  // Re-check AI window every 30s; auto-fallback to template when window closes
+  useEffect(() => {
+    const check = () => {
+      const open = isPreMarketAIWindow();
+      setAiWindowOpen(open);
+      if (!open) setPlanMode(prev => prev === 'ai' ? 'template' : prev);
+    };
+    const interval = setInterval(check, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Auto-regenerate when mode changes — only if a plan has already been generated
+  useEffect(() => {
+    if (planMethod !== null) {
+      generateAIPlan();
+    }
+  }, [planMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Fetch market commentary
   useEffect(() => {
@@ -186,17 +232,20 @@ export default function PreMarketPage() {
           calendar,
           optionsData: null,
           symbol: selectedIndex,
+          mode: planMode,
         }),
       });
-      
+
       if (!res.ok) throw new Error('Failed to generate plan');
-      
+
       const data = await res.json();
       const plan = data.plan || data.fallbackPlan || 'Failed to generate plan';
       setTradingPlan(plan);
+      setPlanMethod(data.method || null);
       
       if (typeof window !== 'undefined') {
-        localStorage.setItem('tradingPlan', plan);
+        const istToday = new Date(new Date().getTime() + 5.5 * 60 * 60 * 1000).toISOString().split('T')[0];
+        localStorage.setItem('tradingPlan', JSON.stringify({ plan, date: istToday }));
       }
     } catch (error) {
       console.error('Plan generation error:', error);
@@ -449,12 +498,63 @@ export default function PreMarketPage() {
             
             {/* Trading Plan - PRIORITY #1 */}
             <div className="bg-[#112240] border border-blue-800/40 rounded-xl p-4">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-3">
+                  <h2 className="text-lg font-semibold text-blue-300">📝 Today's Trading Plan</h2>
+                  {planMethod && (
+                    <span className={`text-[10px] px-2 py-0.5 rounded font-medium border ${
+                      planMethod === 'ai' ? 'bg-purple-900/40 text-purple-300 border-purple-700/50' :
+                      planMethod === 'template-fallback' ? 'bg-yellow-900/40 text-yellow-300 border-yellow-700/50' :
+                      'bg-slate-700/50 text-slate-400 border-slate-600/50'
+                    }`}>
+                      {planMethod === 'ai' ? '✨ AI' : planMethod === 'template-fallback' ? '📋 Template (fallback)' : '📋 Template'}
+                    </span>
+                  )}
+                </div>
+              </div>
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-semibold text-blue-300">📝 Today's Trading Plan</h2>
+                {/* Mode selector */}
+                <div className="flex flex-col gap-1">
+                  <div className="flex bg-slate-800/50 p-1 rounded-lg gap-1">
+                    <button
+                      onClick={() => setPlanMode('template')}
+                      className={`px-3 py-1.5 rounded text-xs font-medium transition-colors ${
+                        planMode === 'template'
+                          ? 'bg-blue-600 text-white'
+                          : 'text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      📋 Template
+                    </button>
+                    <button
+                      onClick={() => aiWindowOpen && setPlanMode('ai')}
+                      disabled={!aiWindowOpen}
+                      title={!aiWindowOpen ? 'AI Summary available 8:00–9:15 AM IST only' : undefined}
+                      className={`px-3 py-1.5 rounded text-xs font-medium transition-colors ${
+                        !aiWindowOpen
+                          ? 'text-slate-600 cursor-not-allowed'
+                          : planMode === 'ai'
+                            ? 'bg-purple-600 text-white'
+                            : 'text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      ✨ AI Summary
+                    </button>
+                  </div>
+                  {!aiWindowOpen && (
+                    <p className="text-[10px] text-slate-500 pl-1">
+                      AI available 8:00–9:15 AM IST · Use Template outside market hours
+                    </p>
+                  )}
+                </div>
                 <button
                   onClick={generateAIPlan}
                   disabled={generatingPlan}
-                  className="px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
+                  className={`px-4 py-2 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${
+                    planMode === 'ai'
+                      ? 'bg-purple-600 hover:bg-purple-700'
+                      : 'bg-blue-600 hover:bg-blue-700'
+                  }`}
                 >
                   {generatingPlan ? (
                     <>
@@ -462,7 +562,7 @@ export default function PreMarketPage() {
                       Generating...
                     </>
                   ) : (
-                    <>✨ Generate Plan</>
+                    <>Generate</>
                   )}
                 </button>
               </div>
@@ -474,7 +574,8 @@ export default function PreMarketPage() {
                 onChange={(e) => {
                   setTradingPlan(e.target.value);
                   if (typeof window !== 'undefined') {
-                    localStorage.setItem('tradingPlan', e.target.value);
+                    const istToday = new Date(new Date().getTime() + 5.5 * 60 * 60 * 1000).toISOString().split('T')[0];
+                    localStorage.setItem('tradingPlan', JSON.stringify({ plan: e.target.value, date: istToday }));
                   }
                 }}
               />
@@ -483,7 +584,8 @@ export default function PreMarketPage() {
                 <button 
                   onClick={() => {
                     if (typeof window !== 'undefined') {
-                      localStorage.setItem('tradingPlan', tradingPlan);
+                      const istToday = new Date(new Date().getTime() + 5.5 * 60 * 60 * 1000).toISOString().split('T')[0];
+                      localStorage.setItem('tradingPlan', JSON.stringify({ plan: tradingPlan, date: istToday }));
                       alert('Plan saved successfully!');
                     }
                   }}

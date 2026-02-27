@@ -8,10 +8,11 @@
  * @param {Object} previous - Previous data { totalCallOI, totalPutOI, spot }
  * @returns {Object} - { activity, strength, description, actionable }
  */
-export function detectMarketActivity(current, previous) {
+export function detectMarketActivity(current, previous, sinceOpen = false) {
   if (!previous || !current) {
     return { activity: 'Unknown', strength: 0, description: 'Insufficient data', actionable: '', emoji: '⏳' };
   }
+  const ctx = sinceOpen ? 'since open' : 'recent';
 
   // Calculate changes
   const callOIChange = current.totalCallOI - previous.totalCallOI;
@@ -40,7 +41,7 @@ export function detectMarketActivity(current, previous) {
     return {
       activity: 'Consolidation',
       strength: 2,
-      description: 'Low OI & price movement - sideways range',
+      description: sinceOpen ? 'Market ranging since open — no significant OI or price movement' : 'Low OI & price movement — sideways range',
       actionable: 'Wait for breakout confirmation',
       emoji: '😴',
     };
@@ -51,15 +52,15 @@ export function detectMarketActivity(current, previous) {
     activity = 'Long Buildup';
     strength = Math.min(10, Math.round((priceChangePct + totalOIChangePct) * 1.5));
     emoji = '🚀';
-    
+
     if (callOIChangePct > putOIChangePct) {
-      description = `Fresh long positions - Call OI +${callOIChangePct.toFixed(1)}%, Price +${priceChangePct.toFixed(2)}%`;
-      actionable = strength > 6 
-        ? 'Strong bullish setup - consider longs on dips'
-        : 'Moderate buying - watch for continuation';
+      description = `Fresh longs ${ctx} — Call OI +${callOIChangePct.toFixed(1)}%, price +${priceChangePct.toFixed(2)}%`;
+      actionable = strength > 6
+        ? 'Strong bullish setup — consider longs on dips'
+        : 'Moderate buying — watch for continuation';
     } else {
-      description = `Put writing dominates - Put OI +${putOIChangePct.toFixed(1)}%, Price +${priceChangePct.toFixed(2)}%`;
-      actionable = 'Bulls defending levels - supports formed';
+      description = `Put writing ${ctx} — Put OI +${putOIChangePct.toFixed(1)}%, price +${priceChangePct.toFixed(2)}%`;
+      actionable = 'Bulls defending levels — supports forming';
     }
   }
 
@@ -68,15 +69,15 @@ export function detectMarketActivity(current, previous) {
     activity = 'Short Buildup';
     strength = Math.min(10, Math.round((Math.abs(priceChangePct) + totalOIChangePct) * 1.5));
     emoji = '📉';
-    
+
     if (putOIChangePct > callOIChangePct) {
-      description = `Fresh short positions - Put OI +${putOIChangePct.toFixed(1)}%, Price ${priceChangePct.toFixed(2)}%`;
+      description = `Fresh shorts ${ctx} — Put OI +${putOIChangePct.toFixed(1)}%, price ${priceChangePct.toFixed(2)}%`;
       actionable = strength > 6
-        ? 'Strong bearish setup - consider shorts on rallies'
-        : 'Moderate selling - watch for breakdown';
+        ? 'Strong bearish setup — consider shorts on rallies'
+        : 'Moderate selling — watch for breakdown';
     } else {
-      description = `Call writing dominates - Call OI +${callOIChangePct.toFixed(1)}%, Price ${priceChangePct.toFixed(2)}%`;
-      actionable = 'Bears capping rallies - resistance formed';
+      description = `Call writing ${ctx} — Call OI +${callOIChangePct.toFixed(1)}%, price ${priceChangePct.toFixed(2)}%`;
+      actionable = 'Bears capping rallies — resistance forming';
     }
   }
 
@@ -85,15 +86,15 @@ export function detectMarketActivity(current, previous) {
     activity = 'Long Unwinding';
     strength = Math.min(10, Math.round((Math.abs(priceChangePct) + Math.abs(totalOIChangePct)) * 1.5));
     emoji = '😰';
-    
+
     if (Math.abs(callOIChangePct) > Math.abs(putOIChangePct)) {
-      description = `Long exit pressure - Call OI ${callOIChangePct.toFixed(1)}%, Price ${priceChangePct.toFixed(2)}%`;
+      description = `Longs exiting ${ctx} — Call OI ${callOIChangePct.toFixed(1)}%, price ${priceChangePct.toFixed(2)}%`;
       actionable = strength > 6
-        ? 'Heavy unwinding - avoid longs, wait for stabilization'
-        : 'Profit booking - supports may hold';
+        ? 'Heavy unwinding — avoid longs, wait for stabilisation'
+        : 'Profit booking — supports may hold';
     } else {
-      description = `Put unwinding + price fall - Put OI ${putOIChangePct.toFixed(1)}%, Price ${priceChangePct.toFixed(2)}%`;
-      actionable = 'Bears losing conviction but price weak - cautious';
+      description = `Put unwinding ${ctx} — Put OI ${putOIChangePct.toFixed(1)}%, price ${priceChangePct.toFixed(2)}%`;
+      actionable = 'Bears losing conviction but price weak — stay cautious';
     }
   }
 
@@ -102,15 +103,15 @@ export function detectMarketActivity(current, previous) {
     activity = 'Short Covering';
     strength = Math.min(10, Math.round((priceChangePct + Math.abs(totalOIChangePct)) * 1.5));
     emoji = '🎯';
-    
+
     if (Math.abs(putOIChangePct) > Math.abs(callOIChangePct)) {
-      description = `Short squeeze - Put OI ${putOIChangePct.toFixed(1)}%, Price +${priceChangePct.toFixed(2)}%`;
+      description = `Shorts covering ${ctx} — Put OI ${putOIChangePct.toFixed(1)}%, price +${priceChangePct.toFixed(2)}%`;
       actionable = strength > 6
-        ? 'Strong covering rally - momentum trade, tight stops'
-        : 'Bears retreating - longs have edge';
+        ? 'Strong covering rally — momentum trade, tight stops'
+        : 'Bears retreating — longs have edge';
     } else {
-      description = `Call unwinding + price rise - Call OI ${callOIChangePct.toFixed(1)}%, Price +${priceChangePct.toFixed(2)}%`;
-      actionable = 'Profit booking in calls but price rising - mixed signals';
+      description = `Call unwinding ${ctx} — Call OI ${callOIChangePct.toFixed(1)}%, price +${priceChangePct.toFixed(2)}%`;
+      actionable = 'Profit booking in calls but price rising — mixed signals';
     }
   }
 
@@ -118,8 +119,8 @@ export function detectMarketActivity(current, previous) {
   else {
     activity = 'Mixed Signals';
     strength = 3;
-    description = `Conflicting moves - OI ${totalOIChangePct > 0 ? '+' : ''}${totalOIChangePct.toFixed(1)}%, Price ${priceChangePct > 0 ? '+' : ''}${priceChangePct.toFixed(2)}%`;
-    actionable = 'No clear direction - wait for clarity';
+    description = `Conflicting moves ${ctx} — OI ${totalOIChangePct > 0 ? '+' : ''}${totalOIChangePct.toFixed(1)}%, price ${priceChangePct > 0 ? '+' : ''}${priceChangePct.toFixed(2)}%`;
+    actionable = 'No clear direction — wait for clarity';
     emoji = '❓';
   }
 

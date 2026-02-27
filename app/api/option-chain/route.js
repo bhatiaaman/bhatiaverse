@@ -197,8 +197,9 @@ export async function GET(request) {
   const config = UNDERLYING_CONFIG[underlying];
   if (!config) return NextResponse.json({ error: 'Invalid underlying' });
 
-  const cacheKey    = `${NS}:option-chain-${underlying}-${expiryType}`;
-  const historyKey  = `${NS}:option-history-${underlying}-${expiryType}`;
+  const cacheKey      = `${NS}:option-chain-${underlying}-${expiryType}`;
+  const historyKey    = `${NS}:option-history-${underlying}-${expiryType}`;
+  const sessionKey    = `${NS}:session-open-${underlying}-${expiryType}`;
 
   try {
     const cached = await redisGet(cacheKey);
@@ -281,7 +282,7 @@ export async function GET(request) {
       resistanceOI: resistance.oi,
       totalCallOI,
       totalPutOI,
-      spot: spotPrice,  // ← ADD AFTER totalPutOI
+      spot: spotPrice,
       timestamp: new Date().toISOString(),
     };
 
@@ -291,15 +292,45 @@ export async function GET(request) {
 
     await redisSet(historyKey, { current: currentMetrics, alerts: alertHistory }, HISTORY_TTL);
 
+    // ── Session-open baseline for meaningful activity detection ──
+    // Compare current OI vs session-open (9:15 AM) instead of 60s-ago snapshot.
+    const istNow = new Date(Date.now() + 5.5 * 60 * 60 * 1000);
+    const istH = istNow.getUTCHours(), istM = istNow.getUTCMinutes();
+    const istMins = istH * 60 + istM;
+    const isMarketSession = istMins >= 555 && istMins <= 930; // 9:15 – 15:30 IST
+
     // ── Market Activity Detection ──
     let marketActivity;
-    if (previousData && previousData.totalCallOI !== undefined && previousData.totalPutOI !== undefined && previousData.spot !== undefined) {
-      marketActivity = detectMarketActivity(
-        { totalCallOI, totalPutOI, spot },
-        { totalCallOI: previousData.totalCallOI, totalPutOI: previousData.totalPutOI, spot: previousData.spot }
-      );
+
+    if (!isMarketSession) {
+      // Outside market hours — no live OI movement to measure
+      const isPreMarket = istMins < 555;
+      marketActivity = {
+        activity: isPreMarket ? 'Pre-Market' : 'Market Closed',
+        strength: 0,
+        description: isPreMarket
+          ? 'Market opens at 9:15 AM — showing last session OI data'
+          : 'Session ended — OI data reflects closing positions',
+        actionable: isPreMarket ? 'Watch GIFT Nifty for gap direction' : 'Review today\'s activity before tomorrow',
+        emoji: isPreMarket ? '🌅' : '🔔',
+      };
     } else {
-      marketActivity = { activity: 'Initializing', strength: 0, description: 'First fetch', actionable: '', emoji: '⏳' };
+      let sessionOpen = await redisGet(sessionKey);
+      if (!sessionOpen) {
+        // First fetch of this session — capture as open baseline (expires after 8h)
+        sessionOpen = { totalCallOI, totalPutOI, spot: spotPrice };
+        await redisSet(sessionKey, sessionOpen, 8 * 3600);
+      }
+
+      if (sessionOpen.totalCallOI !== undefined && sessionOpen.totalPutOI !== undefined && sessionOpen.spot !== undefined) {
+        marketActivity = detectMarketActivity(
+          { totalCallOI, totalPutOI, spot: spotPrice },
+          { totalCallOI: sessionOpen.totalCallOI, totalPutOI: sessionOpen.totalPutOI, spot: sessionOpen.spot },
+          true // sinceOpen = always true during session
+        );
+      } else {
+        marketActivity = { activity: 'Initializing', strength: 0, description: 'Building session baseline…', actionable: '', emoji: '⏳' };
+      }
     }
 
     // ── Actionable Insights ──
