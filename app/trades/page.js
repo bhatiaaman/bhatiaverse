@@ -20,25 +20,36 @@
     const [optionUnderlying, setOptionUnderlying] = useState('NIFTY');
     const [optionExpiry, setOptionExpiry] = useState('weekly');
 
-    // Helper: check if today is in last week of month
-    function isLastWeekOfMonth(date = new Date()) {
-      const d = new Date(date);
-      const lastDay = new Date(d.getFullYear(), d.getMonth() + 1, 0);
-      const lastTuesday = new Date(lastDay);
-      // Find last Tuesday of the month
-      lastTuesday.setDate(lastDay.getDate() - ((lastDay.getDay() + 5) % 7));
-      // If today is after or equal to last Tuesday, it's last week
-      return d >= lastTuesday;
+    // Helper: check if today is in last week of expiry (after 2nd last Tuesday to last Thursday)
+    function isLastWeekOfExpiry(date = new Date()) {
+      const d = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+      const year = d.getFullYear();
+      const month = d.getMonth();
+      // Find all Tuesdays in the month
+      let tuesdays = [];
+      for (let i = 1; i <= 31; i++) {
+        const dt = new Date(year, month, i);
+        if (dt.getMonth() !== month) break;
+        if (dt.getDay() === 2) tuesdays.push(dt);
+      }
+      // Find all Thursdays in the month
+      let thursdays = [];
+      for (let i = 1; i <= 31; i++) {
+        const dt = new Date(year, month, i);
+        if (dt.getMonth() !== month) break;
+        if (dt.getDay() === 4) thursdays.push(dt);
+      }
+      if (tuesdays.length < 2 || thursdays.length === 0) return false;
+      const secondLastTuesday = tuesdays[tuesdays.length - 2];
+      const lastThursday = thursdays[thursdays.length - 1];
+      // If today is after second last Tuesday and on or before last Thursday
+      return d > secondLastTuesday && d <= lastThursday;
     }
 
     // Auto-select expiry type for NIFTY
     useEffect(() => {
       if (optionUnderlying === 'NIFTY') {
-        if (isLastWeekOfMonth()) {
-          setOptionExpiry('monthly');
-        } else {
-          setOptionExpiry('weekly');
-        }
+        setOptionExpiry(isLastWeekOfExpiry() ? 'monthly' : 'weekly');
       } else if (optionUnderlying === 'BANKNIFTY') {
         setOptionExpiry('monthly'); // Always monthly for BankNifty
       }
