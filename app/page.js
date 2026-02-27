@@ -1,344 +1,504 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from 'react';
-import { Sparkles, BookOpen, Lightbulb, Gamepad2, TrendingUp, Github, Linkedin, Mail, ArrowRight, Sun, Moon } from 'lucide-react';
+import React, { useEffect, useRef } from 'react';
 import Link from 'next/link';
-import { useTheme } from '../lib/theme-context';
-import dynamic from 'next/dynamic';
-
-// Dynamically import GSAP to avoid SSR issues
-const gsap = dynamic(() => import('gsap').then(mod => mod.default), { ssr: false });
 
 export default function Home() {
-  const { isDark, toggleTheme } = useTheme();
-  const [scrollY, setScrollY] = useState(0);
-  const cardRefs = useRef([]);
-  const exploreButtonRef = useRef(null);
+  const canvasRef = useRef(null);
+  const cursorRef = useRef(null);
+  const cursorRingRef = useRef(null);
+  const mouseRef = useRef({ x: 0, y: 0 });
+  const ringPosRef = useRef({ x: 0, y: 0 });
+  const rafRef = useRef(null);
 
+  // Custom cursor
   useEffect(() => {
-    const handleScroll = () => setScrollY(window.scrollY);
-    window.addEventListener('scroll', handleScroll);
-    return () => window.removeEventListener('scroll', handleScroll);
+    const cursor = cursorRef.current;
+    const ring = cursorRingRef.current;
+    if (!cursor || !ring) return;
+
+    const onMove = (e) => {
+      mouseRef.current = { x: e.clientX, y: e.clientY };
+      cursor.style.left = (e.clientX - 4) + 'px';
+      cursor.style.top  = (e.clientY - 4) + 'px';
+    };
+
+    const animateRing = () => {
+      ringPosRef.current.x += (mouseRef.current.x - ringPosRef.current.x - 18) * 0.12;
+      ringPosRef.current.y += (mouseRef.current.y - ringPosRef.current.y - 18) * 0.12;
+      ring.style.left = ringPosRef.current.x + 'px';
+      ring.style.top  = ringPosRef.current.y + 'px';
+      rafRef.current = requestAnimationFrame(animateRing);
+    };
+
+    document.addEventListener('mousemove', onMove);
+    rafRef.current = requestAnimationFrame(animateRing);
+
+    const interactives = document.querySelectorAll('a, button, .card-hover');
+    const onEnter = () => {
+      cursor.style.transform = 'scale(2.5)';
+      ring.style.transform = 'scale(1.5)';
+      ring.style.borderColor = 'rgba(200,169,110,0.7)';
+    };
+    const onLeave = () => {
+      cursor.style.transform = 'scale(1)';
+      ring.style.transform = 'scale(1)';
+      ring.style.borderColor = 'rgba(200,169,110,0.4)';
+    };
+    interactives.forEach(el => { el.addEventListener('mouseenter', onEnter); el.addEventListener('mouseleave', onLeave); });
+
+    return () => {
+      document.removeEventListener('mousemove', onMove);
+      cancelAnimationFrame(rafRef.current);
+    };
   }, []);
 
+  // Star canvas
   useEffect(() => {
-    // Import GSAP dynamically to avoid SSR issues
-    import('gsap').then(({ default: gsapLib }) => {
-      import('gsap/ScrollTrigger').then(({ default: ScrollTrigger }) => {
-        gsapLib.registerPlugin(ScrollTrigger);
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    let stars = [];
+    let W, H, animFrame;
 
-        // Animate cards with stagger effect on scroll
-        cardRefs.current.forEach((card, index) => {
-          gsapLib.fromTo(
-            card,
-            { opacity: 0, y: 100 },
-            {
-              opacity: 1,
-              y: 0,
-              duration: 0.8,
-              delay: index * 0.1,
-              scrollTrigger: {
-                trigger: card,
-                start: 'top 80%',
-                toggleActions: 'play none none reverse',
-              },
-            }
-          );
+    const resize = () => {
+      W = canvas.width = window.innerWidth;
+      H = canvas.height = window.innerHeight;
+    };
+
+    const createStars = () => {
+      stars = [];
+      const count = Math.floor((W * H) / 4000);
+      for (let i = 0; i < count; i++) {
+        stars.push({
+          x: Math.random() * W,
+          y: Math.random() * H,
+          r: Math.random() * 1.5 + 0.2,
+          opacity: Math.random() * 0.7 + 0.1,
+          twinkle: Math.random() * Math.PI * 2,
+          twinkleSpeed: Math.random() * 0.02 + 0.005,
+          color: Math.random() > 0.85 ? '#c8a96e' : Math.random() > 0.7 ? '#a8b8d8' : '#ffffff',
         });
+      }
+    };
 
-        // Animate explore button with bounce
-        if (exploreButtonRef.current) {
-          gsapLib.fromTo(
-            exploreButtonRef.current,
-            { opacity: 0, y: 50, scale: 0.8 },
-            {
-              opacity: 1,
-              y: 0,
-              scale: 1,
-              duration: 0.8,
-              scrollTrigger: {
-                trigger: exploreButtonRef.current,
-                start: 'top 85%',
-                toggleActions: 'play none none reverse',
-              },
-            }
-          );
-        }
+    const draw = () => {
+      ctx.clearRect(0, 0, W, H);
+      stars.forEach(s => {
+        s.twinkle += s.twinkleSpeed;
+        const opacity = s.opacity * (0.6 + 0.4 * Math.sin(s.twinkle));
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+        ctx.fillStyle = s.color;
+        ctx.globalAlpha = opacity;
+        ctx.fill();
       });
-    });
+      if (Math.random() < 0.003) {
+        const sx = Math.random() * W, sy = Math.random() * H * 0.5;
+        const len = Math.random() * 80 + 40;
+        const grad = ctx.createLinearGradient(sx, sy, sx + len, sy + len * 0.4);
+        grad.addColorStop(0, 'rgba(200,169,110,0.8)');
+        grad.addColorStop(1, 'transparent');
+        ctx.globalAlpha = 0.7;
+        ctx.strokeStyle = grad;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(sx, sy);
+        ctx.lineTo(sx + len, sy + len * 0.4);
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+      animFrame = requestAnimationFrame(draw);
+    };
+
+    resize();
+    createStars();
+    draw();
+    window.addEventListener('resize', () => { resize(); createStars(); });
+
+    return () => { cancelAnimationFrame(animFrame); };
+  }, []);
+
+  // Scroll reveal
+  useEffect(() => {
+    const els = document.querySelectorAll('.reveal');
+    const obs = new IntersectionObserver((entries) => {
+      entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('revealed'); });
+    }, { threshold: 0.1 });
+    els.forEach(el => obs.observe(el));
+    return () => obs.disconnect();
+  }, []);
+
+  // Parallax hero on scroll
+  useEffect(() => {
+    const onScroll = () => {
+      const y = window.scrollY;
+      const title = document.querySelector('.hero-title-el');
+      const sub = document.querySelector('.hero-sub-el');
+      const orbit = document.querySelector('.orbit-container');
+      if (title) title.style.transform = `translateY(${y * 0.15}px)`;
+      if (sub) sub.style.transform = `translateY(${y * 0.08}px)`;
+      if (orbit) orbit.style.transform = `translate(-50%, calc(-50% + ${y * 0.2}px))`;
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
   }, []);
 
   return (
-    <div className={`min-h-screen transition-colors overflow-hidden font-sans ${isDark ? 'bg-slate-950 text-white' : 'bg-gray-50 text-slate-900'}`}>
-      {/* Animated background stars */}
-      <div className={`fixed inset-0 overflow-hidden pointer-events-none ${isDark ? 'opacity-100' : 'opacity-30'}`}>
-        {[...Array(50)].map((_, i) => (
-          <div
-            key={i}
-            className={`absolute rounded-full animate-pulse ${isDark ? 'bg-white' : 'bg-slate-400'}`}
-            style={{
-              width: Math.random() * 3 + 1 + 'px',
-              height: Math.random() * 3 + 1 + 'px',
-              top: Math.random() * 100 + '%',
-              left: Math.random() * 100 + '%',
-              animationDelay: Math.random() * 3 + 's',
-              animationDuration: Math.random() * 3 + 2 + 's',
-            }}
-          />
-        ))}
-      </div>
+    <>
+      {/* Fonts */}
+      <link rel="preconnect" href="https://fonts.googleapis.com" />
+      <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400&family=DM+Mono:wght@300;400&family=Syne:wght@400;700;800&display=swap" rel="stylesheet" />
 
-      {/* Navigation */}
-      <nav className={`relative z-10 container mx-auto px-6 py-6 flex justify-between items-center border-b transition-colors ${isDark ? 'border-slate-800' : 'border-gray-200'}`}>
-        <div className="flex items-center space-x-2">
-          <Sparkles className={isDark ? 'w-8 h-8 text-blue-500' : 'w-8 h-8 text-blue-600'} />
-          <span className={`text-2xl font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>
+      <style>{`
+        .bv-root { cursor: none; }
+        .bv-cursor {
+          position: fixed; width: 8px; height: 8px;
+          background: #c8a96e; border-radius: 50%;
+          pointer-events: none; z-index: 9999;
+          transition: transform 0.1s; mix-blend-mode: screen;
+        }
+        .bv-cursor-ring {
+          position: fixed; width: 36px; height: 36px;
+          border: 1px solid rgba(200,169,110,0.4); border-radius: 50%;
+          pointer-events: none; z-index: 9998;
+          transition: transform 0.15s ease, border-color 0.15s ease;
+        }
+        .orbit-container {
+          position: absolute; width: 600px; height: 600px;
+          top: 50%; left: 50%;
+          transform: translate(-50%, -50%);
+          pointer-events: none;
+        }
+        .orbit {
+          position: absolute; border-radius: 50%; border: 1px solid;
+          top: 50%; left: 50%;
+          transform: translate(-50%, -50%);
+          animation: orbitSpin linear infinite;
+        }
+        .orbit-1 { width:300px;height:300px; border-color:rgba(200,169,110,0.08); animation-duration:20s; }
+        .orbit-2 { width:450px;height:450px; border-color:rgba(123,94,167,0.08); animation-duration:35s; animation-direction:reverse; }
+        .orbit-3 { width:600px;height:600px; border-color:rgba(74,158,255,0.05); animation-duration:55s; }
+        .orbit-dot {
+          position: absolute; width: 6px; height: 6px; border-radius: 50%;
+          background: #c8a96e; top: -3px; left: 50%;
+          transform: translateX(-50%); box-shadow: 0 0 10px #c8a96e;
+        }
+        .orbit-2 .orbit-dot { background:#7b5ea7; box-shadow:0 0 10px #7b5ea7; }
+        .orbit-3 .orbit-dot { background:#4a9eff; box-shadow:0 0 10px #4a9eff; }
+        @keyframes orbitSpin {
+          from { transform: translate(-50%,-50%) rotate(0deg); }
+          to   { transform: translate(-50%,-50%) rotate(360deg); }
+        }
+        .scroll-line {
+          width: 1px; height: 50px;
+          background: linear-gradient(to bottom, #c8a96e, transparent);
+          animation: scrollDrop 2s ease infinite;
+        }
+        @keyframes scrollDrop {
+          0%,100% { opacity:0; transform:scaleY(0); transform-origin:top; }
+          50%      { opacity:1; transform:scaleY(1); }
+        }
+        .reveal { opacity:0; transform:translateY(40px); transition:opacity 0.8s ease, transform 0.8s ease; }
+        .reveal.revealed { opacity:1; transform:translateY(0); }
+        .marquee-track { animation: marquee 22s linear infinite; }
+        @keyframes marquee {
+          from { transform:translateX(0); }
+          to   { transform:translateX(-50%); }
+        }
+        .card-bottom-line::after {
+          content:''; position:absolute; bottom:0; left:0; right:100%; height:1px;
+          background:#c8a96e; transition:right 0.5s ease;
+        }
+        .card-bottom-line:hover::after { right:0; }
+        .card-trades::after { background:#c8a96e; }
+        .card-spirit::after { background:#7b5ea7; }
+        .card-games::after  { background:#3ecf8e; }
+        .card-articles::after { background:#4a9eff; }
+        .glyph-ring-a { animation:orbitSpin 15s linear infinite; }
+        .glyph-ring-b { animation:orbitSpin 25s linear infinite reverse; }
+        .glyph-ring-c { animation:orbitSpin 40s linear infinite; }
+        .glyph-pulse { animation:glyphPulse 3s ease infinite; }
+        @keyframes glyphPulse {
+          0%,100% { transform:translate(-50%,-50%) scale(1); opacity:0.8; }
+          50%      { transform:translate(-50%,-50%) scale(1.1); opacity:1; }
+        }
+        .nav-link {
+          position:relative; font-family:'DM Mono',monospace;
+          font-size:0.72rem; letter-spacing:0.15em; text-transform:uppercase;
+          color:#a8b8d8; text-decoration:none; transition:color 0.3s;
+        }
+        .nav-link::after {
+          content:''; position:absolute; bottom:-4px; left:0; right:100%;
+          height:1px; background:#c8a96e; transition:right 0.3s ease;
+        }
+        .nav-link:hover { color:#c8a96e; }
+        .nav-link:hover::after { right:0; }
+        .card-link-arrow { transition:gap 0.3s; }
+        .card-link-arrow:hover { gap:1.2rem !important; }
+        @media(max-width:900px){
+          .orbit-container{width:300px;height:300px;}
+          .orbit-1{width:150px;height:150px;}
+          .orbit-2{width:225px;height:225px;}
+          .orbit-3{width:300px;height:300px;}
+        }
+      `}</style>
+
+      <div className="bv-root" style={{ background: '#02020a', color: '#f0f4ff', minHeight: '100vh', overflowX: 'hidden' }}>
+
+        {/* Custom cursor */}
+        <div className="bv-cursor" ref={cursorRef} />
+        <div className="bv-cursor-ring" ref={cursorRingRef} />
+
+        {/* Star canvas */}
+        <canvas ref={canvasRef} style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', zIndex: 0, pointerEvents: 'none' }} />
+
+        {/* Glow orbs */}
+        <div style={{ position: 'fixed', width: 600, height: 600, background: 'rgba(123,94,167,0.08)', borderRadius: '50%', filter: 'blur(120px)', top: '-10%', right: '-10%', zIndex: 0, pointerEvents: 'none' }} />
+        <div style={{ position: 'fixed', width: 500, height: 500, background: 'rgba(200,169,110,0.05)', borderRadius: '50%', filter: 'blur(120px)', bottom: '20%', left: '-10%', zIndex: 0, pointerEvents: 'none' }} />
+
+        {/* NAV */}
+        <nav style={{
+          position: 'fixed', top: 0, left: 0, right: 0, zIndex: 100,
+          padding: '1.5rem 3rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          backdropFilter: 'blur(20px)',
+          background: 'linear-gradient(to bottom, rgba(2,2,10,0.9) 0%, transparent 100%)',
+          borderBottom: '1px solid rgba(200,169,110,0.08)',
+        }}>
+          <Link href="/" style={{ fontFamily: "'Syne', sans-serif", fontWeight: 800, fontSize: '1.1rem', letterSpacing: '0.2em', textTransform: 'uppercase', color: '#c8a96e', textDecoration: 'none' }}>
             Bhatiaverse
-          </span>
-        </div>
-        <div className="hidden md:flex space-x-8 items-center">
-          <a href="/articles" className={`transition hover:text-blue-500 ${isDark ? 'text-gray-300' : 'text-slate-700'}`}>Articles</a>
-          <a href="/spirituality" className={`transition hover:text-blue-500 ${isDark ? 'text-gray-300' : 'text-slate-700'}`}>Spirituality</a>
-          <a href="/trades" className={`transition hover:text-blue-500 ${isDark ? 'text-gray-300' : 'text-slate-700'}`}>Trades</a>
-          <a href="/aigames" className={`transition hover:text-blue-500 ${isDark ? 'text-gray-300' : 'text-slate-700'}`}>AI Games</a>
-          <a href="#contact" className={`transition hover:text-blue-500 ${isDark ? 'text-gray-300' : 'text-slate-700'}`}>Contact</a>
-          <button
-            onClick={toggleTheme}
-            className={`p-2 rounded-lg transition-colors ${
-              isDark
-                ? 'bg-slate-800 hover:bg-slate-700 text-amber-400'
-                : 'bg-gray-200 hover:bg-gray-300 text-slate-600'
-            }`}
-            title="Toggle theme"
-          >
-            {isDark ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
-          </button>
-        </div>
-      </nav>
+          </Link>
+          <ul style={{ display: 'flex', gap: '2.5rem', listStyle: 'none', margin: 0, padding: 0, flexWrap: 'wrap' }}>
+            <li><Link href="/articles" className="nav-link">Articles</Link></li>
+            <li><Link href="/spirituality" className="nav-link">Spirituality</Link></li>
+            <li><Link href="/trades" className="nav-link">Trades</Link></li>
+            <li><Link href="/aigames" className="nav-link">AI Games</Link></li>
+            <li><a href="#contact" className="nav-link">Contact</a></li>
+          </ul>
+        </nav>
 
-      {/* Hero Section */}
-      <section className="relative z-10 container mx-auto px-6 py-20 md:py-32">
-        <div className="max-w-4xl mx-auto text-center">
-          <div className="mb-6 inline-block">
-            <span className={`px-4 py-2 rounded-full text-sm border transition-colors ${
-              isDark
-                ? 'bg-blue-500/20 text-blue-300 border-blue-500/30'
-                : 'bg-blue-100 text-blue-700 border-blue-300'
-            }`}>
-              Welcome to the Universe
-            </span>
+        {/* HERO */}
+        <section style={{ position: 'relative', minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: '8rem 2rem 4rem', zIndex: 1 }}>
+          <div className="orbit-container">
+            <div className="orbit orbit-1"><div className="orbit-dot" /></div>
+            <div className="orbit orbit-2"><div className="orbit-dot" /></div>
+            <div className="orbit orbit-3"><div className="orbit-dot" /></div>
           </div>
-          <h1 className={`text-5xl md:text-7xl font-bold mb-6 ${isDark ? 'text-white' : 'text-slate-900'} animate-pulse`}>
-            The Bhatiaverse
+
+          <p style={{ fontFamily: "'DM Mono',monospace", fontSize: '0.7rem', letterSpacing: '0.4em', textTransform: 'uppercase', color: '#c8a96e', opacity: 0.8, marginBottom: '2rem' }}>
+            ✦ Welcome to the Universe
+          </p>
+
+          <h1 className="hero-title-el" style={{ fontFamily: "'Syne',sans-serif", fontSize: 'clamp(4rem,12vw,9rem)', fontWeight: 800, lineHeight: 0.9, letterSpacing: '-0.03em', marginBottom: '0.5rem' }}>
+            <span style={{ display: 'block', background: 'linear-gradient(135deg,#f0f4ff 0%,#a8b8d8 50%,#f0f4ff 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>The</span>
+            <span style={{ display: 'block', background: 'linear-gradient(135deg,#c8a96e 0%,#e8c98e 50%,#c8a96e 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text', fontStyle: 'italic', fontWeight: 400, fontFamily: "'Cormorant Garamond',serif", fontSize: '0.65em' }}>Bhatiaverse</span>
           </h1>
-          <p className={`text-xl md:text-2xl mb-8 leading-relaxed ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
-            A cosmic space where <span className="text-blue-500 font-semibold">ideas</span>,{' '}
-            <span className="text-blue-600 font-semibold">thoughts</span>, and{' '}
-            <span className="text-blue-500 font-semibold">interactive experiences</span> collide.
+
+          <p className="hero-sub-el" style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: '1.3rem', fontWeight: 300, color: '#a8b8d8', maxWidth: 520, lineHeight: 1.7, margin: '2.5rem auto', fontStyle: 'italic' }}>
+            A cosmic space where ideas, thoughts, and interactive experiences collide.
           </p>
-          <p className={`text-lg mb-12 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
-            Created by <span className={isDark ? 'text-white' : 'text-slate-900'}>Amandeep Bhatia</span> - 
-            Developer, Writer, and AI Enthusiast
+
+          <p style={{ fontFamily: "'DM Mono',monospace", fontSize: '0.72rem', color: 'rgba(168,184,216,0.6)', letterSpacing: '0.2em', marginBottom: '3rem' }}>
+            — Amandeep Bhatia &nbsp;·&nbsp; Developer, Writer &amp; AI Enthusiast
           </p>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <a
-              ref={exploreButtonRef}
-              href="/articles"
-              className="px-8 py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold hover:scale-105 transition transform flex items-center justify-center gap-2"
-            >
-              Explore Content <ArrowRight className="w-5 h-5" />
+
+          <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap', justifyContent: 'center' }}>
+            <a href="#content" style={{
+              fontFamily: "'DM Mono',monospace", fontSize: '0.72rem', letterSpacing: '0.15em', textTransform: 'uppercase',
+              color: '#02020a', background: '#c8a96e', padding: '1rem 2.5rem', textDecoration: 'none',
+              position: 'relative', overflow: 'hidden', transition: 'opacity 0.3s',
+            }}>
+              <span style={{ position: 'relative', zIndex: 1 }}>Explore Content</span>
             </a>
-            <a
-              href="#contact"
-              className={`px-8 py-4 rounded-lg font-semibold transition border flex items-center justify-center gap-2 ${
-                isDark
-                  ? 'bg-slate-800 border-slate-700 hover:bg-slate-700 text-white'
-                  : 'bg-gray-100 border-gray-300 hover:bg-gray-200 text-slate-900'
-              }`}
-            >
+            <a href="#contact" style={{
+              fontFamily: "'DM Mono',monospace", fontSize: '0.72rem', letterSpacing: '0.15em', textTransform: 'uppercase',
+              color: '#c8a96e', background: 'transparent', padding: '1rem 2.5rem', textDecoration: 'none',
+              border: '1px solid rgba(200,169,110,0.4)', transition: 'all 0.3s',
+            }}>
               Get in Touch
             </a>
           </div>
-        </div>
-      </section>
 
-      {/* Features Grid */}
-      <section className="relative z-10 container mx-auto px-6 py-20">
-        <div className="grid md:grid-cols-4 gap-8 max-w-6xl mx-auto">
-          {/* Articles Card */}
-          <div
-            ref={(el) => (cardRefs.current[0] = el)}
-            id="articles"
-            className={`group p-8 rounded-2xl border transition transform hover:scale-105 ${
-              isDark
-                ? 'bg-slate-800 border-slate-700 hover:border-blue-600 hover:bg-slate-700/80'
-                : 'bg-white border-gray-200 hover:border-blue-300 hover:bg-blue-50'
-            }`}
-          >
-            <div className="w-16 h-16 bg-blue-600 rounded-xl flex items-center justify-center mb-6 group-hover:rotate-12 transition text-white">
-              <BookOpen className="w-8 h-8" />
-            </div>
-            <h3 className={`text-2xl font-bold mb-4 font-serif ${isDark ? 'text-white' : 'text-slate-900'}`}>Articles</h3>
-            <p className={`mb-6 ${isDark ? 'text-gray-400' : 'text-gray-700'}`}>
-              Deep dives into technology, AI, development, and everything in between. 
-              Thoughtful analysis and practical insights.
-            </p>
-            <Link href="/articles" className={`flex items-center gap-2 font-semibold transition hover:gap-3 ${isDark ? 'text-blue-400 hover:text-blue-300' : 'text-blue-600 hover:text-blue-700'}`}>
-              Read Articles <ArrowRight className="w-4 h-4" />
-            </Link>
+          <div style={{ position: 'absolute', bottom: '2.5rem', left: '50%', transform: 'translateX(-50%)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem' }}>
+            <span style={{ fontFamily: "'DM Mono',monospace", fontSize: '0.6rem', letterSpacing: '0.3em', color: 'rgba(168,184,216,0.4)', textTransform: 'uppercase' }}>Scroll</span>
+            <div className="scroll-line" />
           </div>
+        </section>
 
-          {/* Spirituality Card */}
-          <div
-            ref={(el) => (cardRefs.current[1] = el)}
-            id="spirituality"
-            className={`group p-8 rounded-2xl border transition transform hover:scale-105 ${
-              isDark
-                ? 'bg-slate-800 border-slate-700 hover:border-emerald-600 hover:bg-slate-700/80'
-                : 'bg-white border-gray-200 hover:border-emerald-300 hover:bg-emerald-50'
-            }`}
-          >
-            <div className="w-16 h-16 bg-emerald-600 rounded-xl flex items-center justify-center mb-6 group-hover:rotate-12 transition text-white">
-              <Lightbulb className="w-8 h-8" />
-            </div>
-            <h3 className={`text-2xl font-bold mb-4 font-serif ${isDark ? 'text-white' : 'text-slate-900'}`}>Spirituality</h3>
-            <p className={`mb-6 ${isDark ? 'text-gray-400' : 'text-gray-700'}`}>
-              Reflections on life, consciousness, and inner growth.
-            </p>
-            <Link href="/spirituality" className={`flex items-center gap-2 font-semibold transition hover:gap-3 ${isDark ? 'text-emerald-400 hover:text-emerald-300' : 'text-emerald-600 hover:text-emerald-700'}`}>
-              Explore Spirituality <ArrowRight className="w-4 h-4" />
-            </Link>
-          </div>
-
-          {/* Trades Card */}
-          <div
-            ref={(el) => (cardRefs.current[2] = el)}
-            id="trades"
-            className={`group p-8 rounded-2xl border transition transform hover:scale-105 ${
-              isDark
-                ? 'bg-slate-800 border-slate-700 hover:border-amber-600 hover:bg-slate-700/80'
-                : 'bg-white border-gray-200 hover:border-amber-300 hover:bg-amber-50'
-            }`}
-          >
-            <div className="w-16 h-16 bg-amber-600 rounded-xl flex items-center justify-center mb-6 group-hover:rotate-12 transition text-white">
-              <TrendingUp className="w-8 h-8" />
-            </div>
-            <h3 className={`text-2xl font-bold mb-4 font-serif ${isDark ? 'text-white' : 'text-slate-900'}`}>Trades</h3>
-            <p className={`mb-6 ${isDark ? 'text-gray-400' : 'text-gray-700'}`}>
-              Trading insights, market analysis, and financial perspectives. 
-              Strategies, tips, and lessons from the markets.
-            </p>
-            <Link href="/trades" className={`flex items-center gap-2 font-semibold transition hover:gap-3 ${isDark ? 'text-amber-400 hover:text-amber-300' : 'text-amber-600 hover:text-amber-700'}`}>
-              View Trades <ArrowRight className="w-4 h-4" />
-            </Link>
-          </div>
-
-          {/* AI Games Card */}
-          <div
-            ref={(el) => (cardRefs.current[3] = el)}
-            id="games"
-            className={`group p-8 rounded-2xl border transition transform hover:scale-105 ${
-              isDark
-                ? 'bg-slate-800 border-slate-700 hover:border-violet-600 hover:bg-slate-700/80'
-                : 'bg-white border-gray-200 hover:border-violet-300 hover:bg-violet-50'
-            }`}
-          >
-            <div className="w-16 h-16 bg-violet-600 rounded-xl flex items-center justify-center mb-6 group-hover:rotate-12 transition text-white">
-              <Gamepad2 className="w-8 h-8" />
-            </div>
-            <h3 className={`text-2xl font-bold mb-4 font-serif ${isDark ? 'text-white' : 'text-slate-900'}`}>AI Games</h3>
-            <p className={`mb-6 ${isDark ? 'text-gray-400' : 'text-gray-700'}`}>
-              Interactive experiences powered by artificial intelligence. 
-              Play, learn, and explore the possibilities of AI.
-            </p>
-            <Link href="/aigames" className={`flex items-center gap-2 font-semibold transition hover:gap-3 ${isDark ? 'text-violet-400 hover:text-violet-300' : 'text-violet-600 hover:text-violet-700'}`}>
-              Start Playing <ArrowRight className="w-4 h-4" />
-            </Link>
+        {/* MARQUEE */}
+        <div style={{ overflow: 'hidden', padding: '1.5rem 0', borderTop: '1px solid rgba(255,255,255,0.04)', borderBottom: '1px solid rgba(255,255,255,0.04)', position: 'relative', zIndex: 1 }}>
+          <div className="marquee-track" style={{ display: 'flex', gap: '3rem', width: 'max-content' }}>
+            {[1, 2].map(k => (
+              <div key={k} style={{ display: 'flex', alignItems: 'center', gap: '3rem', whiteSpace: 'nowrap', fontFamily: "'Syne',sans-serif", fontSize: '0.75rem', fontWeight: 700, letterSpacing: '0.3em', textTransform: 'uppercase', color: 'rgba(168,184,216,0.2)' }}>
+                Articles <span style={{ color: 'rgba(200,169,110,0.3)' }}>✦</span> Spirituality <span style={{ color: 'rgba(200,169,110,0.3)' }}>✦</span> Trades <span style={{ color: 'rgba(200,169,110,0.3)' }}>✦</span> AI Games <span style={{ color: 'rgba(200,169,110,0.3)' }}>✦</span> Technology <span style={{ color: 'rgba(200,169,110,0.3)' }}>✦</span> Consciousness <span style={{ color: 'rgba(200,169,110,0.3)' }}>✦</span> Markets <span style={{ color: 'rgba(200,169,110,0.3)' }}>✦</span> Ideas <span style={{ color: 'rgba(200,169,110,0.3)' }}>✦</span> Innovation <span style={{ color: 'rgba(200,169,110,0.3)' }}>✦</span>
+              </div>
+            ))}
           </div>
         </div>
-      </section>
 
-      {/* About Section */}
-      <section className={`relative z-10 container mx-auto px-6 py-20 rounded-2xl my-8 border transition-colors ${
-        isDark
-          ? 'bg-slate-800/50 border-slate-700'
-          : 'bg-gray-100 border-gray-200'
-      }`}>
-        <div className="max-w-3xl mx-auto text-center">
-          <h2 className={`text-4xl font-bold mb-6 ${isDark ? 'text-white' : 'text-slate-900'}`}>About This Universe</h2>
-          <p className={`text-lg leading-relaxed mb-8 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
-            The Bhatiaverse is my personal corner of the internet where I share my journey through 
-            technology, artificial intelligence, and creative thinking. Whether you're here for 
-            technical insights, spiritual reflections, or just to play with some cool AI-powered 
-            experiences, there's something for everyone.
-          </p>
-          <p className={`text-lg leading-relaxed ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
-            This space is constantly evolving, just like the universe itself. New content, 
-            experiments, and ideas are always on the horizon.
-          </p>
-        </div>
-      </section>
+        {/* CARDS SECTION */}
+        <section id="content" style={{ padding: '8rem 3rem', maxWidth: 1400, margin: '0 auto', position: 'relative', zIndex: 1 }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: '1.5rem', marginBottom: '4rem' }}>
+            <span style={{ fontFamily: "'DM Mono',monospace", fontSize: '0.65rem', letterSpacing: '0.3em', color: '#c8a96e', textTransform: 'uppercase', opacity: 0.7 }}>/ 01</span>
+            <h2 style={{ fontFamily: "'Syne',sans-serif", fontSize: 'clamp(2.5rem,5vw,4rem)', fontWeight: 800, background: 'linear-gradient(135deg,#f0f4ff,#a8b8d8)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text', margin: 0 }}>Explore the Universe</h2>
+          </div>
 
-      {/* Contact Section */}
-      <section id="contact" className={`relative z-10 container mx-auto px-6 py-20 rounded-2xl border transition-colors ${
-        isDark
-          ? 'bg-slate-800/50 border-slate-700'
-          : 'bg-blue-50 border-blue-200'
-      }`}>
-        <div className="max-w-2xl mx-auto text-center">
-          <h2 className={`text-4xl font-bold mb-6 ${isDark ? 'text-white' : 'text-slate-900'}`}>Let's Connect</h2>
-          <p className={`mb-12 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
-            Have a question, idea, or just want to say hi? I'd love to hear from you.
-          </p>
-          <div className="flex justify-center gap-6">
-            <a
-              href="https://github.com/yourusername"
-              target="_blank"
-              rel="noopener noreferrer"
-              className={`w-14 h-14 rounded-full flex items-center justify-center transition border ${
-                isDark
-                  ? 'bg-slate-700 border-slate-600 hover:bg-slate-600 text-white'
-                  : 'bg-gray-200 border-gray-300 hover:bg-gray-300 text-slate-700'
-              }`}
+          {/* Row 1: Articles (featured) + Spirituality */}
+          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '1.5px', marginBottom: '1.5px' }}>
+
+            {/* Articles — featured */}
+            <div id="articles" className="card-hover card-bottom-line card-articles reveal" style={{ position: 'relative', padding: '4rem', background: 'linear-gradient(135deg,rgba(26,26,78,0.8) 0%,rgba(13,13,43,0.8) 100%)', border: '1px solid rgba(255,255,255,0.04)', overflow: 'hidden', transition: 'transform 0.5s ease', cursor: 'none' }}
+              onMouseEnter={e => e.currentTarget.style.transform = 'translateY(-4px)'}
+              onMouseLeave={e => e.currentTarget.style.transform = 'translateY(0)'}
             >
-              <Github className="w-6 h-6" />
-            </a>
-            <a
-              href="https://linkedin.com/in/yourusername"
-              target="_blank"
-              rel="noopener noreferrer"
-              className={`w-14 h-14 rounded-full flex items-center justify-center transition border ${
-                isDark
-                  ? 'bg-slate-700 border-slate-600 hover:bg-slate-600 text-white'
-                  : 'bg-gray-200 border-gray-300 hover:bg-gray-300 text-slate-700'
-              }`}
-            >
-              <Linkedin className="w-6 h-6" />
-            </a>
-            <a
-              href="mailto:your.email@example.com"
-              className={`w-14 h-14 rounded-full flex items-center justify-center transition border ${
-                isDark
-                  ? 'bg-slate-700 border-slate-600 hover:bg-slate-600 text-white'
-                  : 'bg-gray-200 border-gray-300 hover:bg-gray-300 text-slate-700'
-              }`}
-            >
-              <Mail className="w-6 h-6" />
-            </a>
-          </div>
-        </div>
-      </section>
+              <span style={{ fontFamily: "'DM Mono',monospace", fontSize: '0.6rem', letterSpacing: '0.3em', color: 'rgba(200,169,110,0.4)' }}>01 — Articles</span>
+              <div style={{ fontFamily: "'Syne',sans-serif", fontSize: '2.2rem', fontWeight: 700, color: '#f0f4ff', margin: '1rem 0' }}>Deep Dives into Technology &amp; AI</div>
+              <p style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: '1.1rem', lineHeight: 1.8, color: 'rgba(168,184,216,0.7)', fontWeight: 300, marginBottom: '2rem' }}>
+                Thoughtful analysis and practical insights at the intersection of technology, artificial intelligence, and development. Where complexity meets clarity.
+              </p>
+              <Link href="/articles" className="card-link-arrow" style={{ fontFamily: "'DM Mono',monospace", fontSize: '0.68rem', letterSpacing: '0.2em', textTransform: 'uppercase', color: '#4a9eff', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '0.7rem' }}>
+                Read Articles →
+              </Link>
+              <div style={{ display: 'flex', gap: '4rem', marginTop: '3rem', paddingTop: '3rem', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+                {[['∞','Ideas Explored'],['↗','Always Growing'],['✦','Original Thought']].map(([num,label]) => (
+                  <div key={label}>
+                    <span style={{ fontFamily: "'Syne',sans-serif", fontSize: '2.5rem', fontWeight: 800, color: '#c8a96e', display: 'block', lineHeight: 1, marginBottom: '0.3rem' }}>{num}</span>
+                    <span style={{ fontFamily: "'DM Mono',monospace", fontSize: '0.6rem', letterSpacing: '0.2em', textTransform: 'uppercase', color: 'rgba(168,184,216,0.4)' }}>{label}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
 
-      {/* Footer */}
-      <footer className={`relative z-10 border-t transition-colors mt-20 ${
-        isDark
-          ? 'border-slate-800 bg-slate-900'
-          : 'border-gray-200 bg-gray-100'
-      }`}>
-        <div className={`container mx-auto px-6 py-8 text-center ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
-          <p>© 2025 Bhatiaverse. Built with passion and curiosity.</p>
-        </div>
-      </footer>
-    </div>
+            {/* Spirituality */}
+            <div id="spirituality" className="card-hover card-bottom-line card-spirit reveal" style={{ position: 'relative', padding: '3rem', background: 'linear-gradient(135deg,rgba(123,94,167,0.08) 0%,rgba(13,13,43,0.8) 100%)', border: '1px solid rgba(255,255,255,0.04)', overflow: 'hidden', transition: 'transform 0.5s ease', cursor: 'none', transitionDelay: '0.15s' }}
+              onMouseEnter={e => e.currentTarget.style.transform = 'translateY(-4px)'}
+              onMouseLeave={e => e.currentTarget.style.transform = 'translateY(0)'}
+            >
+              <span style={{ fontFamily: "'DM Mono',monospace", fontSize: '0.6rem', letterSpacing: '0.3em', color: 'rgba(200,169,110,0.4)' }}>02 — Spirituality</span>
+              <div style={{ fontFamily: "'Syne',sans-serif", fontSize: '1.6rem', fontWeight: 700, color: '#f0f4ff', margin: '1rem 0' }}>Inner Cosmos</div>
+              <p style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: '1.05rem', lineHeight: 1.8, color: 'rgba(168,184,216,0.7)', fontWeight: 300, marginBottom: '2rem' }}>
+                Reflections on life, consciousness, and inner growth. The universe within mirrors the universe without.
+              </p>
+              <Link href="/spirituality" className="card-link-arrow" style={{ fontFamily: "'DM Mono',monospace", fontSize: '0.68rem', letterSpacing: '0.2em', textTransform: 'uppercase', color: '#7b5ea7', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '0.7rem' }}>
+                Explore →
+              </Link>
+            </div>
+          </div>
+
+          {/* Row 2: Trades (featured) + AI Games */}
+          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '1.5px' }}>
+
+            {/* Trades — featured */}
+            <div className="card-hover card-bottom-line card-trades reveal" style={{ position: 'relative', padding: '4rem', background: 'linear-gradient(135deg,rgba(200,169,110,0.06) 0%,rgba(13,13,43,0.8) 100%)', border: '1px solid rgba(255,255,255,0.04)', overflow: 'hidden', transition: 'transform 0.5s ease', cursor: 'none', transitionDelay: '0.1s' }}
+              onMouseEnter={e => e.currentTarget.style.transform = 'translateY(-4px)'}
+              onMouseLeave={e => e.currentTarget.style.transform = 'translateY(0)'}
+            >
+              <span style={{ fontFamily: "'DM Mono',monospace", fontSize: '0.6rem', letterSpacing: '0.3em', color: 'rgba(200,169,110,0.4)' }}>03 — Trades</span>
+              <div style={{ fontFamily: "'Syne',sans-serif", fontSize: '2.2rem', fontWeight: 700, color: '#f0f4ff', margin: '1rem 0' }}>Markets &amp; Analysis</div>
+              <p style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: '1.1rem', lineHeight: 1.8, color: 'rgba(168,184,216,0.7)', fontWeight: 300, marginBottom: '2rem' }}>
+                Live option chain analysis, pre-market intelligence, sector performance, and market commentary. Real-time data for informed decisions.
+              </p>
+              <Link href="/trades" className="card-link-arrow" style={{ fontFamily: "'DM Mono',monospace", fontSize: '0.68rem', letterSpacing: '0.2em', textTransform: 'uppercase', color: '#c8a96e', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '0.7rem' }}>
+                View Trades →
+              </Link>
+              <div style={{ display: 'flex', gap: '4rem', marginTop: '3rem', paddingTop: '3rem', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+                {[['NSE','Live Markets'],['OI','Option Chain'],['AI','Pre-Market']].map(([num,label]) => (
+                  <div key={label}>
+                    <span style={{ fontFamily: "'Syne',sans-serif", fontSize: '2rem', fontWeight: 800, color: '#c8a96e', display: 'block', lineHeight: 1, marginBottom: '0.3rem' }}>{num}</span>
+                    <span style={{ fontFamily: "'DM Mono',monospace", fontSize: '0.6rem', letterSpacing: '0.2em', textTransform: 'uppercase', color: 'rgba(168,184,216,0.4)' }}>{label}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* AI Games */}
+            <div id="aigames" className="card-hover card-bottom-line card-games reveal" style={{ position: 'relative', padding: '3rem', background: 'linear-gradient(135deg,rgba(62,207,142,0.05) 0%,rgba(13,13,43,0.8) 100%)', border: '1px solid rgba(255,255,255,0.04)', overflow: 'hidden', transition: 'transform 0.5s ease', cursor: 'none', transitionDelay: '0.25s' }}
+              onMouseEnter={e => e.currentTarget.style.transform = 'translateY(-4px)'}
+              onMouseLeave={e => e.currentTarget.style.transform = 'translateY(0)'}
+            >
+              <span style={{ fontFamily: "'DM Mono',monospace", fontSize: '0.6rem', letterSpacing: '0.3em', color: 'rgba(200,169,110,0.4)' }}>04 — AI Games</span>
+              <div style={{ fontFamily: "'Syne',sans-serif", fontSize: '1.6rem', fontWeight: 700, color: '#f0f4ff', margin: '1rem 0' }}>Play the Future</div>
+              <p style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: '1.05rem', lineHeight: 1.8, color: 'rgba(168,184,216,0.7)', fontWeight: 300, marginBottom: '2rem' }}>
+                Interactive experiences powered by artificial intelligence. Play, learn, and explore the possibilities of AI.
+              </p>
+              <Link href="/aigames" className="card-link-arrow" style={{ fontFamily: "'DM Mono',monospace", fontSize: '0.68rem', letterSpacing: '0.2em', textTransform: 'uppercase', color: '#3ecf8e', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '0.7rem' }}>
+                Start Playing →
+              </Link>
+            </div>
+          </div>
+        </section>
+
+        {/* COSMIC DIVIDER */}
+        <div style={{ height: 1, background: 'linear-gradient(to right, transparent, rgba(200,169,110,0.3), transparent)', margin: '0 3rem', position: 'relative', zIndex: 1 }} />
+
+        {/* ABOUT SECTION */}
+        <section style={{ padding: '8rem 3rem', maxWidth: 1400, margin: '0 auto', position: 'relative', zIndex: 1 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.5fr', gap: '6rem', alignItems: 'center' }}>
+
+            {/* Animated glyph */}
+            <div className="reveal" style={{ position: 'relative' }}>
+              <div style={{ width: '100%', aspectRatio: 1, maxWidth: 400, position: 'relative', margin: '0 auto' }}>
+                {[['100%','rgba(74,158,255,0.15)','glyph-ring-c'],['80%','rgba(123,94,167,0.2)','glyph-ring-b'],['60%','rgba(200,169,110,0.3)','glyph-ring-a']].map(([size,color,cls]) => (
+                  <div key={cls} className={cls} style={{ position: 'absolute', borderRadius: '50%', border: `1px solid ${color}`, width: size, height: size, top: '50%', left: '50%', transform: 'translate(-50%,-50%)' }} />
+                ))}
+                <div className="glyph-pulse" style={{ position: 'absolute', top: '50%', left: '50%', width: 80, height: 80, background: 'radial-gradient(circle, #c8a96e 0%, rgba(200,169,110,0.3) 60%, transparent 100%)', borderRadius: '50%', boxShadow: '0 0 60px rgba(200,169,110,0.3)' }} />
+              </div>
+            </div>
+
+            {/* Text */}
+            <div className="reveal" style={{ transitionDelay: '0.2s' }}>
+              <p style={{ fontFamily: "'DM Mono',monospace", fontSize: '0.65rem', letterSpacing: '0.35em', color: '#c8a96e', textTransform: 'uppercase', marginBottom: '1.5rem' }}>/ About this universe</p>
+              <h2 style={{ fontFamily: "'Syne',sans-serif", fontSize: 'clamp(2rem,3.5vw,3rem)', fontWeight: 800, lineHeight: 1.1, marginBottom: '2rem', color: '#f0f4ff' }}>
+                A Corner of the Internet That Thinks
+              </h2>
+              <p style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: '1.15rem', lineHeight: 1.9, color: 'rgba(168,184,216,0.75)', fontWeight: 300, marginBottom: '1.5rem' }}>
+                The Bhatiaverse is my personal space where I share my journey through{' '}
+                <span style={{ color: '#c8a96e' }}>technology</span>,{' '}
+                <span style={{ color: '#c8a96e' }}>artificial intelligence</span>, and creative thinking. Whether you're here for technical insights, spiritual reflections, market analysis, or just to play with cool AI-powered experiences — there's something for you.
+              </p>
+              <p style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: '1.15rem', lineHeight: 1.9, color: 'rgba(168,184,216,0.75)', fontWeight: 300, marginBottom: '2rem' }}>
+                This space is <span style={{ color: '#c8a96e' }}>constantly evolving</span>, just like the universe itself.
+              </p>
+              <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+                {['Developer','Writer','AI Enthusiast','Trader','Explorer'].map(t => (
+                  <span key={t} style={{ fontFamily: "'DM Mono',monospace", fontSize: '0.65rem', letterSpacing: '0.15em', textTransform: 'uppercase', color: '#a8b8d8', border: '1px solid rgba(168,184,216,0.2)', padding: '0.4rem 1rem' }}>{t}</span>
+                ))}
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* COSMIC DIVIDER */}
+        <div style={{ height: 1, background: 'linear-gradient(to right, transparent, rgba(200,169,110,0.3), transparent)', margin: '0 3rem', position: 'relative', zIndex: 1 }} />
+
+        {/* CONTACT SECTION */}
+        <section id="contact" style={{ padding: '8rem 3rem 6rem', maxWidth: 900, margin: '0 auto', textAlign: 'center', position: 'relative', zIndex: 1 }}>
+          <h2 className="reveal" style={{ fontFamily: "'Syne',sans-serif", fontSize: 'clamp(3rem,7vw,6rem)', fontWeight: 800, lineHeight: 0.95, marginBottom: '1.5rem' }}>
+            Let&apos;s
+            <span style={{ display: 'block', fontFamily: "'Cormorant Garamond',serif", fontStyle: 'italic', fontWeight: 300, background: 'linear-gradient(135deg,#c8a96e,#e8c98e)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>
+              Connect
+            </span>
+          </h2>
+          <p className="reveal" style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: '1.2rem', color: 'rgba(168,184,216,0.6)', fontWeight: 300, marginBottom: '3rem', lineHeight: 1.8 }}>
+            Have a question, idea, or just want to say hi? I&apos;d love to hear from you.
+          </p>
+          <div className="reveal" style={{ display: 'flex', flexDirection: 'column', gap: '1px', marginBottom: '3rem' }}>
+            <input type="text" placeholder="Your name..." style={{ background: 'rgba(13,13,43,0.8)', border: 'none', borderLeft: '2px solid rgba(200,169,110,0.2)', padding: '1.3rem 1.8rem', fontFamily: "'Cormorant Garamond',serif", fontSize: '1.1rem', color: '#f0f4ff', outline: 'none', width: '100%' }} onFocus={e => e.target.style.borderLeftColor='#c8a96e'} onBlur={e => e.target.style.borderLeftColor='rgba(200,169,110,0.2)'} />
+            <input type="email" placeholder="Your email..." style={{ background: 'rgba(13,13,43,0.8)', border: 'none', borderLeft: '2px solid rgba(200,169,110,0.2)', padding: '1.3rem 1.8rem', fontFamily: "'Cormorant Garamond',serif", fontSize: '1.1rem', color: '#f0f4ff', outline: 'none', width: '100%' }} onFocus={e => e.target.style.borderLeftColor='#c8a96e'} onBlur={e => e.target.style.borderLeftColor='rgba(200,169,110,0.2)'} />
+            <textarea placeholder="Your message to the universe..." rows={5} style={{ background: 'rgba(13,13,43,0.8)', border: 'none', borderLeft: '2px solid rgba(200,169,110,0.2)', padding: '1.3rem 1.8rem', fontFamily: "'Cormorant Garamond',serif", fontSize: '1.1rem', color: '#f0f4ff', outline: 'none', resize: 'none', width: '100%' }} onFocus={e => e.target.style.borderLeftColor='#c8a96e'} onBlur={e => e.target.style.borderLeftColor='rgba(200,169,110,0.2)'} />
+            <button style={{ fontFamily: "'DM Mono',monospace", fontSize: '0.75rem', letterSpacing: '0.2em', textTransform: 'uppercase', color: '#02020a', background: 'linear-gradient(135deg,#c8a96e,#e8c98e)', padding: '1.2rem 3rem', border: 'none', cursor: 'pointer', width: '100%', fontWeight: 500, transition: 'opacity 0.3s,transform 0.3s' }} onMouseEnter={e => { e.currentTarget.style.opacity='0.9'; e.currentTarget.style.transform='translateY(-2px)'; }} onMouseLeave={e => { e.currentTarget.style.opacity='1'; e.currentTarget.style.transform='translateY(0)'; }}>
+              Transmit Message →
+            </button>
+          </div>
+        </section>
+
+        {/* FOOTER */}
+        <footer style={{ position: 'relative', zIndex: 1, padding: '2rem 3rem', borderTop: '1px solid rgba(255,255,255,0.04)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ fontFamily: "'Syne',sans-serif", fontWeight: 800, fontSize: '0.85rem', letterSpacing: '0.2em', textTransform: 'uppercase', color: 'rgba(200,169,110,0.5)' }}>Bhatiaverse</div>
+          <div style={{ fontFamily: "'DM Mono',monospace", fontSize: '0.6rem', letterSpacing: '0.15em', color: 'rgba(168,184,216,0.3)' }}>© 2025 Bhatiaverse. Built with passion and curiosity.</div>
+        </footer>
+
+      </div>
+    </>
   );
 }
