@@ -668,10 +668,11 @@ function generatePreMarketCommentary(marketData, optionChain) {
   const prevClose  = parseFloat(marketData.indices?.niftyPrevClose || 0);
   const giftNifty  = parseFloat(marketData.indices?.giftNifty      || 0);
 
-  const giftChange        = giftNifty - prevClose;
-  const giftChangePercent = prevClose ? (giftChange / prevClose) * 100 : 0;
-  const expectedOpen      = prevClose + giftChange;
-  const gapPercent        = giftChangePercent;
+  // Use Gift Nifty's own % change (from its own prev close) applied to Nifty's prev close.
+  // Fallback: if giftNiftyChangePercent unavailable, approximate via price diff.
+  const giftNiftyChangePct = parseFloat(marketData.indices?.giftNiftyChangePercent || 0);
+  const gapPercent   = giftNiftyChangePct || (prevClose ? (giftNifty - prevClose) / prevClose * 100 : 0);
+  const expectedOpen = prevClose * (1 + gapPercent / 100);
 
   let state, stateEmoji, tradingBias, biasEmoji, headline, action, keyLevel;
 
