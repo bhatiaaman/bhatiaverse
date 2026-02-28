@@ -4,6 +4,7 @@ import { runBehavioralAgent } from './agents/behavioral.js';
 import { runStructureAgent } from './agents/structure.js';
 import { runPatternAgent } from './agents/pattern.js';
 import { runStationAgent } from './agents/station.js';
+import { runOIAgent } from './agents/oi.js';
 import { resolveToken } from './lib/resolve-token.js';
 import { getKiteCredentials } from '@/app/lib/kite-credentials';
 
@@ -277,16 +278,51 @@ async function collectStationData(symbol, productType) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// collectOIData — fetches option chain data for index symbols only
+// NIFTY and BANKNIFTY supported; returns null for all other symbols
+// ─────────────────────────────────────────────────────────────────────────────
+const OI_INDEX_MAP = { NIFTY: 'NIFTY', BANKNIFTY: 'BANKNIFTY' };
+
+async function collectOIData(symbol, base) {
+  const underlying = OI_INDEX_MAP[symbol?.toUpperCase()];
+  if (!underlying) return null;
+  try {
+    const r = await fetch(`${base}/api/option-chain?underlying=${underlying}&expiry=weekly`);
+    if (!r.ok) return null;
+    const data = await r.json();
+    if (!data.pcr) return null;
+    return {
+      underlying,
+      pcr:           data.pcr,
+      maxPain:       data.maxPain,
+      spotPrice:     parseFloat(data.spotPrice),
+      atmStrike:     data.atmStrike,
+      expiry:        data.expiry,
+      support:       data.support,      supportOI:     data.supportOI,
+      support2:      data.support2,     support2OI:    data.support2OI,
+      resistance:    data.resistance,   resistanceOI:  data.resistanceOI,
+      resistance2:   data.resistance2,  resistance2OI: data.resistance2OI,
+      totalCallOI:   data.totalCallOI,
+      totalPutOI:    data.totalPutOI,
+      marketActivity: data.marketActivity,
+    };
+  } catch (e) {
+    console.error('collectOIData error:', e);
+    return null;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // POST /api/order-intelligence
 // Body: { symbol, exchange, instrumentType, transactionType, spotPrice,
-//         productType?, includeStructure?, includePattern?, includeStation? }
+//         productType?, includeStructure?, includePattern?, includeStation?, includeOI? }
 // ─────────────────────────────────────────────────────────────────────────────
 export async function POST(req) {
   try {
     const body = await req.json();
     const {
       symbol, exchange, instrumentType, transactionType, spotPrice,
-      productType, includeStructure, includePattern, includeStation,
+      productType, includeStructure, includePattern, includeStation, includeOI,
     } = body;
 
     if (!symbol || !transactionType) {
@@ -344,7 +380,18 @@ export async function POST(req) {
       }
     }
 
-    // 7. Return combined result
+    // 7. Optionally run OI agent (index symbols only: NIFTY, BANKNIFTY)
+    let oi = null;
+    if (includeOI) {
+      const oiData = await collectOIData(symbol, base);
+      if (oiData) {
+        oi = runOIAgent({ order: agentData.order, oiData });
+      } else {
+        oi = { behaviors: [], checks: [], verdict: 'clear', riskScore: 0, unavailable: true };
+      }
+    }
+
+    // 8. Return combined result
     return NextResponse.json({
       positions:  collectedData.positions,
       orders:     collectedData.orders,
@@ -355,6 +402,7 @@ export async function POST(req) {
       structure,
       pattern,
       station,
+      oi,
     });
 
   } catch (error) {
