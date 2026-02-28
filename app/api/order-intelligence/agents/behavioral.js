@@ -97,12 +97,93 @@ function checkPositionCount(data) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// BEHAVIOR 4: High VIX (India VIX > 18)
+// Fires when market volatility is elevated — options are expensive, risk is high.
+// ─────────────────────────────────────────────────────────────────────────────
+function checkHighVIX(data) {
+  const vix = data.vix;
+  if (vix == null || isNaN(vix)) return null;
+
+  if (vix > 25) {
+    return {
+      type: 'HIGH_VIX',
+      severity: 'warning',
+      title: `High volatility — VIX ${vix.toFixed(1)}`,
+      detail: `VIX above 25 means options are expensive and wide swings are likely. Use tighter stops and smaller size.`,
+      riskScore: 18,
+    };
+  }
+  if (vix > 18) {
+    return {
+      type: 'ELEVATED_VIX',
+      severity: 'caution',
+      title: `Elevated volatility — VIX ${vix.toFixed(1)}`,
+      detail: `VIX above 18 — premium is above normal. Factor in wider stop-loss.`,
+      riskScore: 8,
+    };
+  }
+  return null;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BEHAVIOR 5: Duplicate open order
+// Fires when an open/pending order already exists for the same symbol.
+// ─────────────────────────────────────────────────────────────────────────────
+function checkDuplicateOrder(data) {
+  const { open } = data.orders ?? {};
+  const symbol = data.order.symbol?.toUpperCase();
+  if (!open?.length || !symbol) return null;
+
+  const dupe = open.find(o =>
+    o.tradingsymbol?.toUpperCase().startsWith(symbol)
+  );
+  if (!dupe) return null;
+
+  return {
+    type: 'DUPLICATE_ORDER',
+    severity: 'caution',
+    title: 'Open order already exists',
+    detail: `${dupe.tradingsymbol} has a ${dupe.status?.toLowerCase()} ${dupe.transaction_type?.toLowerCase()} order pending. Placing another may double your exposure.`,
+    riskScore: 12,
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BEHAVIOR 6: Sector overexposure
+// Fires when 2+ existing positions are already in the same sector as the trade.
+// ─────────────────────────────────────────────────────────────────────────────
+function checkSectorExposure(data) {
+  const sectorName = data.sector?.name;
+  const positions  = data.positions?.all;
+  if (!sectorName || !positions?.length) return null;
+
+  const count = positions.filter(p => {
+    // Strip expiry/strike suffix to get root symbol (e.g. RELIANCE26MAR1400CE → RELIANCE)
+    const root = p.tradingsymbol?.replace(/\d.*$/, '').toUpperCase();
+    return getSector(root) === sectorName;
+  }).length;
+
+  if (count < 2) return null;
+
+  return {
+    type: 'SECTOR_OVEREXPOSURE',
+    severity: count >= 3 ? 'warning' : 'caution',
+    title: 'Sector overexposure',
+    detail: `You already have ${count} open positions in ${sectorName}. Adding more concentrates sector risk.`,
+    riskScore: count >= 3 ? 18 : 10,
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Registry — add new behavior checks here, nothing else needs to change
 // ─────────────────────────────────────────────────────────────────────────────
 const BEHAVIORS = [
   checkAddingToLoser,
   checkAgainstTrend,
   checkPositionCount,
+  checkHighVIX,
+  checkDuplicateOrder,
+  checkSectorExposure,
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -117,9 +198,12 @@ function scoreToVerdict(score) {
 
 // Labels shown when a check passes (keyed by function name)
 const PASS_LABELS = {
-  checkAddingToLoser: 'No loser averaging',
-  checkAgainstTrend:  'Trade aligned with trend',
-  checkPositionCount: 'Position count OK',
+  checkAddingToLoser:   'No loser averaging',
+  checkAgainstTrend:    'Trade aligned with trend',
+  checkPositionCount:   'Position count OK',
+  checkHighVIX:         'VIX within normal range',
+  checkDuplicateOrder:  'No duplicate open order',
+  checkSectorExposure:  'Sector exposure is diversified',
 };
 
 // ─────────────────────────────────────────────────────────────────────────────

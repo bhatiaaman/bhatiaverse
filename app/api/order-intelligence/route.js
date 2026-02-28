@@ -33,11 +33,12 @@ function baseUrl(req) {
 // Fetch all data in parallel — each failure is isolated (never blocks others)
 // ─────────────────────────────────────────────────────────────────────────────
 async function collectData(symbol, exchange, base) {
-  const [positionsRes, ordersRes, sentimentRes, sectorRes] = await Promise.allSettled([
+  const [positionsRes, ordersRes, sentimentRes, sectorRes, marketDataRes] = await Promise.allSettled([
     fetch(`${base}/api/kite-positions`),
     fetch(`${base}/api/kite-orders?limit=50`),
     fetch(`${base}/api/sentiment`),
     fetch(`${base}/api/sector-performance`),
+    fetch(`${base}/api/market-data`),
   ]);
 
   // ── Positions ─────────────────────────────────────────────────────────────
@@ -100,6 +101,16 @@ async function collectData(symbol, exchange, base) {
     }
   } catch {}
 
+  // ── VIX ───────────────────────────────────────────────────────────────────
+  let vix = null;
+  try {
+    if (marketDataRes.status === 'fulfilled' && marketDataRes.value.ok) {
+      const d = await marketDataRes.value.json();
+      const raw = d.indices?.vix;
+      if (raw != null) vix = parseFloat(raw);
+    }
+  } catch {}
+
   return {
     positions: {
       all:        openPositions,
@@ -112,6 +123,7 @@ async function collectData(symbol, exchange, base) {
     },
     sentiment,
     sector,
+    vix,
   };
 }
 
@@ -152,6 +164,7 @@ export async function POST(req) {
       orders:     collectedData.orders,
       sentiment:  collectedData.sentiment,
       sector:     collectedData.sector,
+      vix:        collectedData.vix,
       // Agent results
       behavioral,
     });
