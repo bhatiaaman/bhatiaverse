@@ -5,7 +5,7 @@ import Link from 'next/link';
 import {
   ArrowLeft, Search, ShoppingCart, TrendingUp, TrendingDown, Clock, RefreshCw,
   Wallet, BarChart2, ExternalLink, Brain, AlertTriangle, ShieldCheck, ShieldAlert,
-  ShieldX, CheckCircle, Loader2, ChevronDown, Activity, ScanSearch,
+  ShieldX, CheckCircle, Loader2, ChevronDown, Activity, ScanSearch, Target,
 } from 'lucide-react';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -92,7 +92,10 @@ function BehavioralPanel({ intel, symbol }) {
       >
         <div className="flex items-center gap-2">
           <Brain size={15} className="text-purple-400" />
-          <span className="text-sm font-semibold text-white">Behavioral Check</span>
+          <div>
+            <div className="text-sm font-semibold text-white">Behavioral Check</div>
+            <div className="text-xs text-gray-500 font-normal">Spots trading habits &amp; biases</div>
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <span className="text-xs text-gray-400">Risk</span>
@@ -188,7 +191,10 @@ function StructurePanel({ intel }) {
       >
         <div className="flex items-center gap-2">
           <Activity size={15} className="text-cyan-400" />
-          <span className="text-sm font-semibold text-white">Structure Check</span>
+          <div>
+            <div className="text-sm font-semibold text-white">Structure Check</div>
+            <div className="text-xs text-gray-500 font-normal">Market conditions &amp; signals</div>
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <span className="text-xs text-gray-400">Risk</span>
@@ -283,7 +289,105 @@ function PatternPanel({ intel }) {
       >
         <div className="flex items-center gap-2">
           <ScanSearch size={15} className="text-emerald-400" />
-          <span className="text-sm font-semibold text-white">Pattern Check</span>
+          <div>
+            <div className="text-sm font-semibold text-white">Pattern Check</div>
+            <div className="text-xs text-gray-500 font-normal">Price action &amp; candlestick setups</div>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-gray-400">Risk</span>
+          <span className={`text-base font-bold font-mono leading-none ${vc.color}`}>{riskScore}</span>
+          <div className={`flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs font-semibold border ${vc.border} ${vc.color}`}>
+            <VIcon size={11} />
+            {vc.label}
+          </div>
+          <ChevronDown size={13} className={`text-gray-500 transition-transform duration-150 ${open ? 'rotate-180' : ''}`} />
+        </div>
+      </button>
+
+      {open && checks?.length > 0 && (
+        <div className="px-4 pb-3 pt-1 border-t border-white/5 space-y-2">
+          {checks.map((c, i) => (
+            <div key={i} className="flex items-start gap-2.5">
+              {c.passed ? (
+                <CheckCircle size={13} className="text-green-500 flex-shrink-0 mt-0.5" />
+              ) : (
+                <div className={`w-2 h-2 rounded-full flex-shrink-0 mt-1.5 ${SEVERITY_DOT[c.severity] ?? 'bg-gray-500'}`} />
+              )}
+              <div>
+                <div className={`text-xs font-semibold ${c.passed ? 'text-gray-400' : (SEVERITY_COLOR[c.severity] ?? 'text-gray-300')}`}>
+                  {c.title}
+                </div>
+                {!c.passed && c.detail && (
+                  <div className="text-gray-500 text-xs mt-0.5 leading-relaxed">{c.detail}</div>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function StationPanel({ intel }) {
+  const [open, setOpen] = useState(true);
+
+  const SEVERITY_DOT = {
+    info:    'bg-blue-500',
+    caution: 'bg-amber-500',
+    warning: 'bg-orange-500',
+    danger:  'bg-red-500',
+  };
+
+  if (intel.loading) {
+    return (
+      <div className="rounded-xl border border-white/10 p-4 mt-3">
+        <div className="flex items-center gap-2 mb-3">
+          <Target size={15} className="text-violet-400" />
+          <span className="text-sm font-semibold text-white">Station Check</span>
+          <Loader2 size={13} className="animate-spin text-gray-400 ml-1" />
+        </div>
+        <div className="space-y-2">
+          {[1, 2, 3, 4].map(i => (
+            <div key={i} className="h-4 bg-white/5 rounded animate-pulse" style={{ width: `${50 + i * 10}%` }} />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  const station = intel.result?.station;
+  if (!station) return null;
+
+  if (station.unavailable) {
+    return (
+      <div className="rounded-xl border border-white/10 p-4 mt-3">
+        <div className="flex items-center gap-2">
+          <Target size={15} className="text-violet-400" />
+          <span className="text-sm font-semibold text-white">Station Check</span>
+        </div>
+        <p className="text-gray-500 text-xs mt-2">Station data unavailable — instrument token not found or Kite disconnected.</p>
+      </div>
+    );
+  }
+
+  const { verdict, riskScore, checks } = station;
+  const vc = VERDICT[verdict] ?? VERDICT.clear;
+  const { Icon: VIcon } = vc;
+
+  return (
+    <div className={`rounded-xl border ${vc.border} ${vc.bg} mt-3`}>
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center justify-between px-4 py-3"
+      >
+        <div className="flex items-center gap-2">
+          <Target size={15} className="text-violet-400" />
+          <div>
+            <div className="text-sm font-semibold text-white">Station Check</div>
+            <div className="text-xs text-gray-500 font-normal">S/R zones — right place to trade?</div>
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <span className="text-xs text-gray-400">Risk</span>
@@ -365,10 +469,11 @@ export default function OrdersPage() {
   const [intel, setIntel] = useState({ loading: false, result: null });
   const [structureIntel, setStructureIntel] = useState({ loading: false, result: null });
   const [patternIntel, setPatternIntel] = useState({ loading: false, result: null });
+  const [stationIntel, setStationIntel] = useState({ loading: false, result: null });
   const [acknowledged, setAcknowledged] = useState(false);
   const [dangerModal, setDangerModal] = useState(false);
 
-  const popularStocks = ['NIFTY', 'BANKNIFTY', 'RELIANCE', 'TCS', 'INFY', 'HDFCBANK', 'ICICIBANK', 'SBIN', 'HDFC', 'BHARTIARTL'];
+  const popularStocks = ['NIFTY', 'BANKNIFTY', 'RELIANCE', 'TCS', 'INFY', 'HDFCBANK', 'ICICIBANK', 'SBIN', 'MARUTI', 'BHARTIARTL'];
   const INDICES = ['NIFTY', 'BANKNIFTY', 'FINNIFTY', 'MIDCPNIFTY'];
 
   const checkKiteConnection = async () => {
@@ -464,6 +569,7 @@ export default function OrdersPage() {
     setAcknowledged(false);
     setStructureIntel({ loading: false, result: null });
     setPatternIntel({ loading: false, result: null });
+    setStationIntel({ loading: false, result: null });
     runIntelligence();
   }, [symbol, transactionType, instrumentType]);
 
@@ -607,6 +713,30 @@ export default function OrdersPage() {
       setStructureIntel({ loading: false, result: d });
     } catch {
       setStructureIntel({ loading: false, result: null });
+    }
+  }, [symbol, instrumentType, transactionType, spotPrice, productType]);
+
+  const runStationAnalysis = useCallback(async () => {
+    if (!symbol) return;
+    setStationIntel({ loading: true, result: null });
+    try {
+      const r = await fetch('/api/order-intelligence', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          symbol,
+          exchange: instrumentType === 'EQ' ? 'NSE' : 'NFO',
+          instrumentType,
+          transactionType,
+          spotPrice,
+          productType,
+          includeStation: true,
+        }),
+      });
+      const d = await r.json();
+      setStationIntel({ loading: false, result: d });
+    } catch {
+      setStationIntel({ loading: false, result: null });
     }
   }, [symbol, instrumentType, transactionType, spotPrice, productType]);
 
@@ -1289,6 +1419,18 @@ export default function OrdersPage() {
               )}
 
               <PatternPanel intel={patternIntel} />
+
+              {/* Run Station Analysis button */}
+              {intel.result?.behavioral && !stationIntel.loading && !stationIntel.result && (
+                <button
+                  onClick={runStationAnalysis}
+                  className="mt-3 w-full py-2 rounded-xl bg-violet-500/10 hover:bg-violet-500/20 border border-violet-500/30 text-violet-300 text-xs font-semibold flex items-center justify-center gap-2 transition-colors"
+                >
+                  <Target size={13} /> Run Station Analysis
+                </button>
+              )}
+
+              <StationPanel intel={stationIntel} />
             </div>
           </div>
 

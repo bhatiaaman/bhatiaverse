@@ -313,10 +313,15 @@ function checkRSI(data) {
 // CHECK 5: Volume confirmation — last candle < 50% of 20-bar average
 function checkVolume(data) {
   const { avgVol20, lastVol } = data.indicators;
-  if (avgVol20 == null || lastVol == null || avgVol20 === 0) return null;
+  if (avgVol20 == null || lastVol == null || avgVol20 === 0) {
+    return { passed: true, title: 'Volume — no 15m data yet' };
+  }
 
   const volRatio = lastVol / avgVol20;
-  if (volRatio >= 0.5) return null;
+  if (volRatio >= 0.5) {
+    const dir = getTradeBias(data.order.instrumentType, data.order.transactionType) === 'BULLISH' ? 'upmove' : 'downmove';
+    return { passed: true, title: `Volume confirms ${dir}` };
+  }
 
   return {
     type: 'LOW_VOLUME',

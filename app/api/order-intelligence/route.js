@@ -3,6 +3,7 @@ import { getSector } from './lib/sector-map.js';
 import { runBehavioralAgent } from './agents/behavioral.js';
 import { runStructureAgent } from './agents/structure.js';
 import { runPatternAgent } from './agents/pattern.js';
+import { runStationAgent } from './agents/station.js';
 import { resolveToken } from './lib/resolve-token.js';
 import { getKiteCredentials } from '@/app/lib/kite-credentials';
 
@@ -252,16 +253,40 @@ async function collectPatternData(symbol, productType) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Collect station data — 7 days 15m (enough swing highs/lows), 90 days daily for swing
+// ─────────────────────────────────────────────────────────────────────────────
+async function collectStationData(symbol, productType) {
+  const token = await resolveToken(symbol);
+  if (!token) {
+    console.warn(`station: no token for ${symbol}`);
+    return null;
+  }
+
+  const { apiKey, accessToken } = await getKiteCredentials();
+  if (!apiKey || !accessToken) return null;
+
+  const isSwing = ['NRML', 'CNC'].includes(productType?.toUpperCase());
+  const fetches = [ fetchKiteCandles(token, '15minute', 7, apiKey, accessToken) ];
+  if (isSwing) fetches.push(fetchKiteCandles(token, 'day', 90, apiKey, accessToken));
+
+  const [candles15m, candlesDaily] = await Promise.all(fetches);
+  return {
+    candles15m:   candles15m   ?? [],
+    candlesDaily: candlesDaily ?? [],
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // POST /api/order-intelligence
 // Body: { symbol, exchange, instrumentType, transactionType, spotPrice,
-//         productType?, includeStructure?, includePattern? }
+//         productType?, includeStructure?, includePattern?, includeStation? }
 // ─────────────────────────────────────────────────────────────────────────────
 export async function POST(req) {
   try {
     const body = await req.json();
     const {
       symbol, exchange, instrumentType, transactionType, spotPrice,
-      productType, includeStructure, includePattern,
+      productType, includeStructure, includePattern, includeStation,
     } = body;
 
     if (!symbol || !transactionType) {
@@ -308,7 +333,18 @@ export async function POST(req) {
       }
     }
 
-    // 6. Return combined result
+    // 6. Optionally run station agent
+    let station = null;
+    if (includeStation) {
+      const stationData = await collectStationData(symbol, productType);
+      if (stationData) {
+        station = runStationAgent({ order: agentData.order, stationData });
+      } else {
+        station = { behaviors: [], checks: [], verdict: 'clear', riskScore: 0, unavailable: true };
+      }
+    }
+
+    // 7. Return combined result
     return NextResponse.json({
       positions:  collectedData.positions,
       orders:     collectedData.orders,
@@ -318,6 +354,7 @@ export async function POST(req) {
       behavioral,
       structure,
       pattern,
+      station,
     });
 
   } catch (error) {
