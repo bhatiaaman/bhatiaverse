@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getSector } from './lib/sector-map.js';
 import { runBehavioralAgent } from './agents/behavioral.js';
 import { runStructureAgent } from './agents/structure.js';
+import { runPatternAgent } from './agents/pattern.js';
 import { resolveToken } from './lib/resolve-token.js';
 import { getKiteCredentials } from '@/app/lib/kite-credentials';
 
@@ -142,9 +143,14 @@ async function fetchKiteCandles(token, interval, days, apiKey, accessToken) {
     fromDate.setDate(fromDate.getDate() - days);
 
     const pad2 = n => String(n).padStart(2, '0');
-    const fmt  = d => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())} 00:00:00`;
+    // Kite interprets from/to as IST — convert UTC → IST before formatting
+    const IST = 5.5 * 60 * 60 * 1000;
+    const toIST   = new Date(toDate.getTime()   + IST);
+    const fromIST = new Date(fromDate.getTime() + IST);
+    const fmtDate = d => `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())} 00:00:00`;
+    const fmtNow  = d => `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())} 23:59:59`;
 
-    const url = `https://api.kite.trade/instruments/historical/${token}/${interval}?from=${encodeURIComponent(fmt(fromDate))}&to=${encodeURIComponent(fmt(toDate))}`;
+    const url = `https://api.kite.trade/instruments/historical/${token}/${interval}?from=${encodeURIComponent(fmtDate(fromIST))}&to=${encodeURIComponent(fmtNow(toIST))}`;
     const res = await fetch(url, {
       headers: {
         'Authorization':  `token ${apiKey}:${accessToken}`,
@@ -217,16 +223,45 @@ async function collectStructureData(symbol, exchange, productType, base) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Collect pattern data — lightweight, just 15m (3 days) + daily (30 days swing)
+// ─────────────────────────────────────────────────────────────────────────────
+async function collectPatternData(symbol, productType) {
+  const token = await resolveToken(symbol);
+  if (!token) {
+    console.warn(`pattern: no token for ${symbol}`);
+    return null;
+  }
+
+  const { apiKey, accessToken } = await getKiteCredentials();
+  if (!apiKey || !accessToken) return null;
+
+  const isSwing = ['NRML', 'CNC'].includes(productType?.toUpperCase());
+
+  const fetches = [
+    fetchKiteCandles(token, '15minute', 3, apiKey, accessToken),  // ~78 candles
+  ];
+  if (isSwing) {
+    fetches.push(fetchKiteCandles(token, 'day', 30, apiKey, accessToken));  // ~20 candles
+  }
+
+  const [candles15m, candlesDaily] = await Promise.all(fetches);
+  return {
+    candles15m:   candles15m   ?? [],
+    candlesDaily: candlesDaily ?? [],
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // POST /api/order-intelligence
 // Body: { symbol, exchange, instrumentType, transactionType, spotPrice,
-//         productType?, includeStructure? }
+//         productType?, includeStructure?, includePattern? }
 // ─────────────────────────────────────────────────────────────────────────────
 export async function POST(req) {
   try {
     const body = await req.json();
     const {
       symbol, exchange, instrumentType, transactionType, spotPrice,
-      productType, includeStructure,
+      productType, includeStructure, includePattern,
     } = body;
 
     if (!symbol || !transactionType) {
@@ -262,7 +297,18 @@ export async function POST(req) {
       }
     }
 
-    // 5. Return combined result
+    // 5. Optionally run pattern agent
+    let pattern = null;
+    if (includePattern) {
+      const patternData = await collectPatternData(symbol, productType);
+      if (patternData) {
+        pattern = runPatternAgent({ order: agentData.order, patternData });
+      } else {
+        pattern = { behaviors: [], checks: [], verdict: 'clear', riskScore: 0, unavailable: true };
+      }
+    }
+
+    // 6. Return combined result
     return NextResponse.json({
       positions:  collectedData.positions,
       orders:     collectedData.orders,
@@ -271,6 +317,7 @@ export async function POST(req) {
       vix:        collectedData.vix,
       behavioral,
       structure,
+      pattern,
     });
 
   } catch (error) {

@@ -235,7 +235,7 @@ function checkEMAAlignment(data) {
 // CHECK 2: VWAP alignment
 function checkVWAP(data) {
   const { vwap, spotPrice } = data.indicators;
-  if (vwap == null || spotPrice == null) return null;
+  if (vwap == null || spotPrice == null) return { passed: true, title: 'VWAP — no intraday data yet' };
 
   const tradeBias = getTradeBias(data.order.instrumentType, data.order.transactionType);
 
@@ -244,14 +244,20 @@ function checkVWAP(data) {
     (tradeBias === 'BULLISH' && !priceAboveVWAP) ||
     (tradeBias === 'BEARISH' && priceAboveVWAP);
 
-  if (!conflict) return null;
-
   const side = priceAboveVWAP ? 'above' : 'below';
+
+  if (!conflict) {
+    return {
+      passed: true,
+      title: `Price ${side} VWAP ₹${vwap.toFixed(0)} — aligned with ${tradeBias.toLowerCase()} trade`,
+    };
+  }
+
   return {
     type: 'VWAP_CONFLICT',
     severity: 'caution',
-    title: `Price ${side} VWAP — against trade bias`,
-    detail: `VWAP is ₹${vwap.toFixed(0)}. Price (₹${spotPrice.toFixed(0)}) is ${side} it, which conflicts with your ${tradeBias.toLowerCase()} trade.`,
+    title: `Price ${side} VWAP ₹${vwap.toFixed(0)} — against trade bias`,
+    detail: `VWAP is ₹${vwap.toFixed(0)}. Price (₹${spotPrice.toFixed(0)}) is ${side} it. For a ${tradeBias.toLowerCase()} trade, price should be ${tradeBias === 'BULLISH' ? 'above' : 'below'} VWAP.`,
     riskScore: 10,
   };
 }
@@ -298,7 +304,10 @@ function checkRSI(data) {
       riskScore: 15,
     };
   }
-  return null;
+  return {
+    passed: true,
+    title: `RSI ${rsi_15m.toFixed(0)} on 15m — not overbought/oversold`,
+  };
 }
 
 // CHECK 5: Volume confirmation — last candle < 50% of 20-bar average
@@ -321,16 +330,25 @@ function checkVolume(data) {
 // CHECK 6: Opening range — price still inside first-15min H/L range
 function checkOpeningRange(data) {
   const { orHigh, orLow, spotPrice } = data.indicators;
-  if (orHigh == null || orLow == null || spotPrice == null) return null;
+  if (orHigh == null || orLow == null || spotPrice == null) return { passed: true, title: 'Opening range — no intraday data yet' };
 
   const insideOR = spotPrice <= orHigh && spotPrice >= orLow;
-  if (!insideOR) return null;
+
+  if (!insideOR) {
+    const brokeAbove = spotPrice > orHigh;
+    return {
+      passed: true,
+      title: brokeAbove
+        ? `Opening range breakout above ₹${orHigh.toFixed(0)}`
+        : `Opening range breakdown below ₹${orLow.toFixed(0)}`,
+    };
+  }
 
   return {
     type: 'INSIDE_OPENING_RANGE',
     severity: 'caution',
-    title: 'Price inside opening range',
-    detail: `Price (₹${spotPrice.toFixed(0)}) is within the opening range (₹${orLow.toFixed(0)} – ₹${orHigh.toFixed(0)}). Wait for a confirmed breakout of the range before entering.`,
+    title: 'Price inside opening range — no breakout yet',
+    detail: `Price (₹${spotPrice.toFixed(0)}) is within the opening range (₹${orLow.toFixed(0)} – ₹${orHigh.toFixed(0)}). Wait for a confirmed breakout before entering.`,
     riskScore: 8,
   };
 }
@@ -669,8 +687,9 @@ export function runStructureAgent(data) {
   const checks = registry.map(check => {
     try {
       const result = check(enriched);
-      if (result) return { ...result, passed: false };
-      return { type: check.name, passed: true, title: PASS_LABELS[check.name] ?? check.name };
+      if (!result)         return { type: check.name, passed: true,  title: PASS_LABELS[check.name] ?? check.name };
+      if (result.passed)   return { type: check.name, passed: true,  title: result.title };
+      return { ...result, passed: false };
     } catch (e) {
       console.error(`Structure check error [${check.name}]:`, e);
       return { type: check.name, passed: true, title: PASS_LABELS[check.name] ?? check.name };
