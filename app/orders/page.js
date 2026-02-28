@@ -547,6 +547,7 @@ export default function OrdersPage() {
   const [searchResults, setSearchResults] = useState([]);
   const [ordersLoading, setOrdersLoading] = useState(false);
   const [openOrders, setOpenOrders] = useState([]);
+  const [movers, setMovers] = useState(null);
   const [positions, setPositions] = useState([]);
   const [positionsLoading, setPositionsLoading] = useState(false);
   const [orderPlacing, setOrderPlacing] = useState(false);
@@ -602,6 +603,14 @@ export default function OrdersPage() {
     }
   };
 
+  const fetchMovers = async () => {
+    try {
+      const res  = await fetch('/api/fno-movers');
+      const data = await res.json();
+      if (!data.error) setMovers(data);
+    } catch { /* silent — non-critical */ }
+  };
+
   const isVisible = usePageVisibility();
 
   const isMarketHours = () => {
@@ -653,13 +662,20 @@ export default function OrdersPage() {
     checkKiteConnection();
     fetchOpenOrders();
     fetchPositions();
+    fetchMovers();
 
     // Auto-refresh positions every 15s during market hours
-    const interval = setInterval(() => {
+    const posInterval = setInterval(() => {
       if (isMarketHours() && isVisible) fetchPositions(true);
     }, 15000);
 
-    return () => clearInterval(interval);
+    // Auto-refresh FnO movers every 5 minutes
+    const moversInterval = setInterval(fetchMovers, 5 * 60 * 1000);
+
+    return () => {
+      clearInterval(posInterval);
+      clearInterval(moversInterval);
+    };
   }, []);
 
   // Run intelligence when symbol / transactionType / instrumentType changes
@@ -1679,6 +1695,61 @@ export default function OrdersPage() {
                     </div>
               }
             </div>
+
+            {/* FnO Movers — refreshes every 5 min */}
+            {movers && (movers.gainers?.length > 0 || movers.losers?.length > 0) && (
+              <div className="bg-gradient-to-br from-slate-800/50 to-slate-900/50 rounded-xl border border-white/10 p-3">
+                <div className="flex items-center justify-between mb-2">
+                  <h2 className="text-sm font-semibold flex items-center gap-1.5">
+                    <BarChart2 size={14} className="text-blue-400" /> FnO Movers
+                  </h2>
+                  <button onClick={fetchMovers} className="p-1 rounded bg-white/5 hover:bg-white/10" title="Refresh movers">
+                    <RefreshCw size={12} />
+                  </button>
+                </div>
+
+                {/* Gainers */}
+                {movers.gainers?.length > 0 && (
+                  <div className="mb-2">
+                    <div className="text-xs text-gray-500 mb-1">Top Gainers</div>
+                    <div className="space-y-0.5">
+                      {movers.gainers.map(m => (
+                        <div key={m.symbol} className="flex items-center justify-between py-0.5">
+                          <span className="text-xs font-medium text-gray-300 truncate max-w-[90px]">{m.symbol}</span>
+                          <div className="flex items-center gap-2 text-xs">
+                            <span className="text-gray-400">₹{m.ltp?.toFixed(1)}</span>
+                            <span className="text-green-400 font-semibold w-14 text-right">+{m.changePct?.toFixed(2)}%</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Losers */}
+                {movers.losers?.length > 0 && (
+                  <div>
+                    <div className="text-xs text-gray-500 mb-1">Top Losers</div>
+                    <div className="space-y-0.5">
+                      {movers.losers.map(m => (
+                        <div key={m.symbol} className="flex items-center justify-between py-0.5">
+                          <span className="text-xs font-medium text-gray-300 truncate max-w-[90px]">{m.symbol}</span>
+                          <div className="flex items-center gap-2 text-xs">
+                            <span className="text-gray-400">₹{m.ltp?.toFixed(1)}</span>
+                            <span className="text-red-400 font-semibold w-14 text-right">{m.changePct?.toFixed(2)}%</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="text-xs text-gray-600 mt-2 text-right">
+                  {movers.timestamp ? new Date(movers.timestamp).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : ''} · refreshes every 5m
+                </div>
+              </div>
+            )}
+
           </div>
         </div>
       </main>
