@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server';
 import { getSector } from './lib/sector-map.js';
 import { runBehavioralAgent } from './agents/behavioral.js';
+import { runStructureAgent } from './agents/structure.js';
+import { resolveToken } from './lib/resolve-token.js';
+import { getKiteCredentials } from '@/app/lib/kite-credentials';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -128,13 +131,103 @@ async function collectData(symbol, exchange, base) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Fetch Kite historical candles
+// interval: '15minute' | 'day' | 'week'
+// days: how many calendar days back to fetch
+// ─────────────────────────────────────────────────────────────────────────────
+async function fetchKiteCandles(token, interval, days, apiKey, accessToken) {
+  try {
+    const toDate   = new Date();
+    const fromDate = new Date();
+    fromDate.setDate(fromDate.getDate() - days);
+
+    const pad2 = n => String(n).padStart(2, '0');
+    const fmt  = d => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())} 00:00:00`;
+
+    const url = `https://api.kite.trade/instruments/historical/${token}/${interval}?from=${encodeURIComponent(fmt(fromDate))}&to=${encodeURIComponent(fmt(toDate))}`;
+    const res = await fetch(url, {
+      headers: {
+        'Authorization':  `token ${apiKey}:${accessToken}`,
+        'X-Kite-Version': '3',
+      },
+    });
+    if (!res.ok) return null;
+
+    const d = await res.json();
+    const raw = d.data?.candles;
+    if (!Array.isArray(raw)) return null;
+
+    // Kite format: [timestamp_str, open, high, low, close, volume]
+    return raw.map(c => ({
+      time:   new Date(c[0]).getTime() / 1000,
+      open:   c[1], high: c[2], low: c[3], close: c[4], volume: c[5],
+    }));
+  } catch {
+    return null;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Collect structure data — token first (sequential), then candles in parallel
+// ─────────────────────────────────────────────────────────────────────────────
+async function collectStructureData(symbol, exchange, productType, base) {
+  const token = await resolveToken(symbol);
+  if (!token) {
+    console.warn(`structure: no token for ${symbol}`);
+    return null;
+  }
+
+  const { apiKey, accessToken } = await getKiteCredentials();
+  if (!apiKey || !accessToken) return null;
+
+  const isSwing = ['NRML', 'CNC'].includes(productType?.toUpperCase());
+
+  const fetches = [
+    fetchKiteCandles(token, '15minute', 7,   apiKey, accessToken),  // ~130 candles
+    fetchKiteCandles(token, 'day',      90,  apiKey, accessToken),  // ~60 candles
+    fetchKiteCandles(256265, 'day',     90,  apiKey, accessToken),  // NIFTY daily
+    fetch(`${base}/api/market-breadth`).then(r => r.ok ? r.json() : null).catch(() => null),
+  ];
+
+  if (isSwing) {
+    fetches.push(fetchKiteCandles(token, 'week', 400, apiKey, accessToken)); // ~52 candles
+  }
+
+  const [candles15m, candlesDaily, niftyDaily, breadthJson, candlesWeekly] =
+    await Promise.all(fetches);
+
+  // Parse breadth
+  let breadth = null;
+  try {
+    if (breadthJson) {
+      const adv = breadthJson.advances ?? breadthJson.data?.advances;
+      const dec = breadthJson.declines ?? breadthJson.data?.declines;
+      if (adv != null && dec != null) breadth = { advances: adv, declines: dec };
+    }
+  } catch {}
+
+  return {
+    candles15m:    candles15m    ?? [],
+    candlesDaily:  candlesDaily  ?? [],
+    niftyDaily:    niftyDaily    ?? [],
+    candlesWeekly: candlesWeekly ?? [],
+    breadth,
+    cDay: candlesDaily ?? [],  // alias used by checkRelativeStrength
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // POST /api/order-intelligence
-// Body: { symbol, exchange, instrumentType, transactionType, spotPrice }
+// Body: { symbol, exchange, instrumentType, transactionType, spotPrice,
+//         productType?, includeStructure? }
 // ─────────────────────────────────────────────────────────────────────────────
 export async function POST(req) {
   try {
     const body = await req.json();
-    const { symbol, exchange, instrumentType, transactionType, spotPrice } = body;
+    const {
+      symbol, exchange, instrumentType, transactionType, spotPrice,
+      productType, includeStructure,
+    } = body;
 
     if (!symbol || !transactionType) {
       return NextResponse.json(
@@ -145,28 +238,39 @@ export async function POST(req) {
 
     const base = baseUrl(req);
 
-    // 1. Collect all data once
+    // 1. Collect behavioural data
     const collectedData = await collectData(symbol, exchange, base);
 
     // 2. Build the shared data object consumed by agents
     const agentData = {
-      order: { symbol, exchange, instrumentType, transactionType, spotPrice },
+      order: { symbol, exchange, instrumentType, transactionType, spotPrice, productType },
       ...collectedData,
     };
 
-    // 3. Run agents
+    // 3. Run behavioral agent (always)
     const behavioral = runBehavioralAgent(agentData);
 
-    // 4. Return combined result
+    // 4. Optionally run structure agent
+    let structure = null;
+    if (includeStructure) {
+      const structureData = await collectStructureData(symbol, exchange, productType, base);
+      if (structureData) {
+        structure = runStructureAgent({ order: agentData.order, structureData });
+      } else {
+        // Token not found or Kite not authenticated — return empty result
+        structure = { behaviors: [], checks: [], verdict: 'clear', riskScore: 0, unavailable: true };
+      }
+    }
+
+    // 5. Return combined result
     return NextResponse.json({
-      // Raw data (useful for display panels later)
       positions:  collectedData.positions,
       orders:     collectedData.orders,
       sentiment:  collectedData.sentiment,
       sector:     collectedData.sector,
       vix:        collectedData.vix,
-      // Agent results
       behavioral,
+      structure,
     });
 
   } catch (error) {

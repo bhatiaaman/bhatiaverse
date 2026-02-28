@@ -5,7 +5,7 @@ import Link from 'next/link';
 import {
   ArrowLeft, Search, ShoppingCart, TrendingUp, TrendingDown, Clock, RefreshCw,
   Wallet, BarChart2, ExternalLink, Brain, AlertTriangle, ShieldCheck, ShieldAlert,
-  ShieldX, CheckCircle, Loader2, ChevronDown,
+  ShieldX, CheckCircle, Loader2, ChevronDown, Activity,
 } from 'lucide-react';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -131,6 +131,101 @@ function BehavioralPanel({ intel, symbol }) {
   );
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Structure analysis panel
+// ─────────────────────────────────────────────────────────────────────────────
+function StructurePanel({ intel }) {
+  const [open, setOpen] = useState(true);
+
+  const SEVERITY_DOT = {
+    info:    'bg-blue-500',
+    caution: 'bg-amber-500',
+    warning: 'bg-orange-500',
+    danger:  'bg-red-500',
+  };
+
+  if (intel.loading) {
+    return (
+      <div className="rounded-xl border border-white/10 p-4 mt-3">
+        <div className="flex items-center gap-2 mb-3">
+          <Activity size={15} className="text-cyan-400" />
+          <span className="text-sm font-semibold text-white">Structure Check</span>
+          <Loader2 size={13} className="animate-spin text-gray-400 ml-1" />
+        </div>
+        <div className="space-y-2">
+          {[1, 2, 3, 4].map(i => (
+            <div key={i} className="h-4 bg-white/5 rounded animate-pulse" style={{ width: `${55 + i * 8}%` }} />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  const structure = intel.result?.structure;
+  if (!structure) return null;
+
+  if (structure.unavailable) {
+    return (
+      <div className="rounded-xl border border-white/10 p-4 mt-3">
+        <div className="flex items-center gap-2">
+          <Activity size={15} className="text-cyan-400" />
+          <span className="text-sm font-semibold text-white">Structure Check</span>
+        </div>
+        <p className="text-gray-500 text-xs mt-2">Structure data unavailable — instrument token not found or Kite disconnected.</p>
+      </div>
+    );
+  }
+
+  const { verdict, riskScore, checks } = structure;
+  const vc = VERDICT[verdict] ?? VERDICT.clear;
+  const { Icon: VIcon } = vc;
+
+  return (
+    <div className={`rounded-xl border ${vc.border} ${vc.bg} mt-3`}>
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center justify-between px-4 py-3"
+      >
+        <div className="flex items-center gap-2">
+          <Activity size={15} className="text-cyan-400" />
+          <span className="text-sm font-semibold text-white">Structure Check</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-gray-400">Risk</span>
+          <span className={`text-base font-bold font-mono leading-none ${vc.color}`}>{riskScore}</span>
+          <div className={`flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs font-semibold border ${vc.border} ${vc.color}`}>
+            <VIcon size={11} />
+            {vc.label}
+          </div>
+          <ChevronDown size={13} className={`text-gray-500 transition-transform duration-150 ${open ? 'rotate-180' : ''}`} />
+        </div>
+      </button>
+
+      {open && checks?.length > 0 && (
+        <div className="px-4 pb-3 pt-1 border-t border-white/5 space-y-2">
+          {checks.map((c, i) => (
+            <div key={i} className="flex items-start gap-2.5">
+              {c.passed ? (
+                <CheckCircle size={13} className="text-green-500 flex-shrink-0 mt-0.5" />
+              ) : (
+                <div className={`w-2 h-2 rounded-full flex-shrink-0 mt-1.5 ${SEVERITY_DOT[c.severity] ?? 'bg-gray-500'}`} />
+              )}
+              <div>
+                <div className={`text-xs font-semibold ${c.passed ? 'text-gray-400' : (SEVERITY_COLOR[c.severity] ?? 'text-gray-300')}`}>
+                  {c.title}
+                </div>
+                {!c.passed && c.detail && (
+                  <div className="text-gray-500 text-xs mt-0.5 leading-relaxed">{c.detail}</div>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function OrdersPage() {
 
   const [isLoading, setIsLoading] = useState(true);
@@ -173,6 +268,7 @@ export default function OrdersPage() {
 
   // Intelligence
   const [intel, setIntel] = useState({ loading: false, result: null });
+  const [structureIntel, setStructureIntel] = useState({ loading: false, result: null });
   const [acknowledged, setAcknowledged] = useState(false);
   const [dangerModal, setDangerModal] = useState(false);
 
@@ -270,6 +366,7 @@ export default function OrdersPage() {
   useEffect(() => {
     if (!symbol) return;
     setAcknowledged(false);
+    setStructureIntel({ loading: false, result: null });
     runIntelligence();
   }, [symbol, transactionType, instrumentType]);
 
@@ -382,6 +479,7 @@ export default function OrdersPage() {
           instrumentType,
           transactionType,
           spotPrice,
+          productType,
         }),
       });
       const d = await r.json();
@@ -389,7 +487,31 @@ export default function OrdersPage() {
     } catch {
       setIntel({ loading: false, result: null });
     }
-  }, [symbol, instrumentType, transactionType, spotPrice]);
+  }, [symbol, instrumentType, transactionType, spotPrice, productType]);
+
+  const runStructureAnalysis = useCallback(async () => {
+    if (!symbol) return;
+    setStructureIntel({ loading: true, result: null });
+    try {
+      const r = await fetch('/api/order-intelligence', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          symbol,
+          exchange: instrumentType === 'EQ' ? 'NSE' : 'NFO',
+          instrumentType,
+          transactionType,
+          spotPrice,
+          productType,
+          includeStructure: true,
+        }),
+      });
+      const d = await r.json();
+      setStructureIntel({ loading: false, result: d });
+    } catch {
+      setStructureIntel({ loading: false, result: null });
+    }
+  }, [symbol, instrumentType, transactionType, spotPrice, productType]);
 
   const executePlaceOrder = async () => {
     if (!symbol) return;
@@ -1022,6 +1144,18 @@ export default function OrdersPage() {
                 )}
               </div>
               <BehavioralPanel intel={intel} symbol={symbol} />
+
+              {/* Run Structure Analysis button — shown once behavioral result is loaded */}
+              {intel.result?.behavioral && !structureIntel.loading && !structureIntel.result && (
+                <button
+                  onClick={runStructureAnalysis}
+                  className="mt-3 w-full py-2 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 text-cyan-300 text-xs font-semibold flex items-center justify-center gap-2 transition-colors"
+                >
+                  <Activity size={13} /> Run Structure Analysis
+                </button>
+              )}
+
+              <StructurePanel intel={structureIntel} />
             </div>
           </div>
 
