@@ -119,7 +119,7 @@ function BehavioralPanel({ intel, symbol }) {
                 <div className={`w-2 h-2 rounded-full flex-shrink-0 mt-1.5 ${SEVERITY_DOT[c.severity] ?? 'bg-gray-500'}`} />
               )}
               <div>
-                <div className={`text-xs font-semibold ${c.passed ? 'text-gray-400' : (SEVERITY_COLOR[c.severity] ?? 'text-gray-300')}`}>
+                <div className={`text-xs font-semibold ${c.passed ? 'text-gray-300' : (SEVERITY_COLOR[c.severity] ?? 'text-gray-300')}`}>
                   {c.title}
                 </div>
                 {!c.passed && c.detail && (
@@ -217,7 +217,7 @@ function StructurePanel({ intel }) {
                 <div className={`w-2 h-2 rounded-full flex-shrink-0 mt-1.5 ${SEVERITY_DOT[c.severity] ?? 'bg-gray-500'}`} />
               )}
               <div>
-                <div className={`text-xs font-semibold ${c.passed ? 'text-gray-400' : (SEVERITY_COLOR[c.severity] ?? 'text-gray-300')}`}>
+                <div className={`text-xs font-semibold ${c.passed ? 'text-gray-300' : (SEVERITY_COLOR[c.severity] ?? 'text-gray-300')}`}>
                   {c.title}
                 </div>
                 {!c.passed && c.detail && (
@@ -315,7 +315,7 @@ function PatternPanel({ intel }) {
                 <div className={`w-2 h-2 rounded-full flex-shrink-0 mt-1.5 ${SEVERITY_DOT[c.severity] ?? 'bg-gray-500'}`} />
               )}
               <div>
-                <div className={`text-xs font-semibold ${c.passed ? 'text-gray-400' : (SEVERITY_COLOR[c.severity] ?? 'text-gray-300')}`}>
+                <div className={`text-xs font-semibold ${c.passed ? 'text-gray-300' : (SEVERITY_COLOR[c.severity] ?? 'text-gray-300')}`}>
                   {c.title}
                 </div>
                 {!c.passed && c.detail && (
@@ -410,7 +410,7 @@ function StationPanel({ intel }) {
                 <div className={`w-2 h-2 rounded-full flex-shrink-0 mt-1.5 ${SEVERITY_DOT[c.severity] ?? 'bg-gray-500'}`} />
               )}
               <div>
-                <div className={`text-xs font-semibold ${c.passed ? 'text-gray-400' : (SEVERITY_COLOR[c.severity] ?? 'text-gray-300')}`}>
+                <div className={`text-xs font-semibold ${c.passed ? 'text-gray-300' : (SEVERITY_COLOR[c.severity] ?? 'text-gray-300')}`}>
                   {c.title}
                 </div>
                 {!c.passed && c.detail && (
@@ -508,7 +508,7 @@ function OIPanel({ intel }) {
                 <div className={`w-2 h-2 rounded-full flex-shrink-0 mt-1.5 ${SEVERITY_DOT[c.severity] ?? 'bg-gray-500'}`} />
               )}
               <div>
-                <div className={`text-xs font-semibold ${c.passed ? 'text-gray-400' : (SEVERITY_COLOR[c.severity] ?? 'text-gray-300')}`}>
+                <div className={`text-xs font-semibold ${c.passed ? 'text-gray-300' : (SEVERITY_COLOR[c.severity] ?? 'text-gray-300')}`}>
                   {c.title}
                 </div>
                 {!c.passed && c.detail && (
