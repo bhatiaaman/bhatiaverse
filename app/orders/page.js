@@ -2,25 +2,139 @@
 import { useState, useEffect, useCallback } from 'react';
 import { usePageVisibility } from '@/app/hooks/usePageVisibility';
 import Link from 'next/link';
-import { 
-  ArrowLeft, 
-  Search, 
-  ShoppingCart, 
-  TrendingUp, 
-  TrendingDown, 
-  Clock, 
-  RefreshCw,
-  Wallet,
-  BarChart2,
-  ExternalLink
+import {
+  ArrowLeft, Search, ShoppingCart, TrendingUp, TrendingDown, Clock, RefreshCw,
+  Wallet, BarChart2, ExternalLink, Brain, AlertTriangle, ShieldCheck, ShieldAlert,
+  ShieldX, CheckCircle, Loader2, ChevronDown,
 } from 'lucide-react';
-import BehavioralInsights from '@/app/components/BehavioralInsights';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Verdict config
+// ─────────────────────────────────────────────────────────────────────────────
+const VERDICT = {
+  clear:   { label: 'CLEAR',   color: 'text-green-400',  bg: 'bg-green-500/10',  border: 'border-green-500/30',  Icon: ShieldCheck  },
+  caution: { label: 'CAUTION', color: 'text-amber-400',  bg: 'bg-amber-500/10',  border: 'border-amber-500/30',  Icon: AlertTriangle },
+  warning: { label: 'WARNING', color: 'text-orange-400', bg: 'bg-orange-500/10', border: 'border-orange-500/30', Icon: ShieldAlert   },
+  danger:  { label: 'DANGER',  color: 'text-red-400',    bg: 'bg-red-500/10',    border: 'border-red-500/30',    Icon: ShieldX       },
+};
+
+const SEVERITY_COLOR = {
+  info:    'text-blue-400',
+  caution: 'text-amber-400',
+  warning: 'text-orange-400',
+  danger:  'text-red-400',
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Behavioral analysis panel
+// ─────────────────────────────────────────────────────────────────────────────
+function BehavioralPanel({ intel, symbol }) {
+  const [open, setOpen] = useState(true);
+
+  const SEVERITY_DOT = {
+    info:    'bg-blue-500',
+    caution: 'bg-amber-500',
+    warning: 'bg-orange-500',
+    danger:  'bg-red-500',
+  };
+
+  if (!symbol) {
+    return (
+      <div className="rounded-xl border border-white/10 p-4">
+        <div className="flex items-center gap-2 mb-2">
+          <Brain size={15} className="text-purple-400" />
+          <span className="text-sm font-semibold text-white">Behavioral Check</span>
+        </div>
+        <p className="text-gray-500 text-xs">Select a symbol and transaction type to run behavioral analysis.</p>
+      </div>
+    );
+  }
+
+  if (intel.loading) {
+    return (
+      <div className="rounded-xl border border-white/10 p-4">
+        <div className="flex items-center gap-2 mb-3">
+          <Brain size={15} className="text-purple-400" />
+          <span className="text-sm font-semibold text-white">Behavioral Check</span>
+          <Loader2 size={13} className="animate-spin text-gray-400 ml-1" />
+        </div>
+        <div className="space-y-2">
+          {[1, 2, 3].map(i => (
+            <div key={i} className="h-4 bg-white/5 rounded animate-pulse" style={{ width: `${60 + i * 10}%` }} />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (!intel.result?.behavioral) {
+    return (
+      <div className="rounded-xl border border-white/10 p-4">
+        <div className="flex items-center gap-2 mb-2">
+          <Brain size={15} className="text-purple-400" />
+          <span className="text-sm font-semibold text-white">Behavioral Check</span>
+        </div>
+        <p className="text-gray-500 text-xs">Analysis unavailable.</p>
+      </div>
+    );
+  }
+
+  const { verdict, riskScore, checks } = intel.result.behavioral;
+  const vc = VERDICT[verdict] ?? VERDICT.clear;
+  const { Icon: VIcon } = vc;
+
+  return (
+    <div className={`rounded-xl border ${vc.border} ${vc.bg}`}>
+      {/* Header — always visible, click to toggle */}
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center justify-between px-4 py-3"
+      >
+        <div className="flex items-center gap-2">
+          <Brain size={15} className="text-purple-400" />
+          <span className="text-sm font-semibold text-white">Behavioral Check</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-gray-400">Risk</span>
+          <span className={`text-base font-bold font-mono leading-none ${vc.color}`}>{riskScore}</span>
+          <div className={`flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs font-semibold border ${vc.border} ${vc.color}`}>
+            <VIcon size={11} />
+            {vc.label}
+          </div>
+          <ChevronDown size={13} className={`text-gray-500 transition-transform duration-150 ${open ? 'rotate-180' : ''}`} />
+        </div>
+      </button>
+
+      {/* Collapsible checks list */}
+      {open && checks?.length > 0 && (
+        <div className="px-4 pb-3 pt-1 border-t border-white/5 space-y-2">
+          {checks.map((c, i) => (
+            <div key={i} className="flex items-start gap-2.5">
+              {c.passed ? (
+                <CheckCircle size={13} className="text-green-500 flex-shrink-0 mt-0.5" />
+              ) : (
+                <div className={`w-2 h-2 rounded-full flex-shrink-0 mt-1.5 ${SEVERITY_DOT[c.severity] ?? 'bg-gray-500'}`} />
+              )}
+              <div>
+                <div className={`text-xs font-semibold ${c.passed ? 'text-gray-400' : (SEVERITY_COLOR[c.severity] ?? 'text-gray-300')}`}>
+                  {c.title}
+                </div>
+                {!c.passed && c.detail && (
+                  <div className="text-gray-500 text-xs mt-0.5 leading-relaxed">{c.detail}</div>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function OrdersPage() {
 
   const [isLoading, setIsLoading] = useState(true);
   const [isKiteConnected, setIsKiteConnected] = useState(false);
-  const [ltpLoading, setLtpLoading] = useState(false);
   const [instrumentType, setInstrumentType] = useState('EQ');
   const [optionSymbol, setOptionSymbol] = useState('');
   const [optionTvSymbol, setOptionTvSymbol] = useState('');
@@ -52,21 +166,15 @@ export default function OrdersPage() {
 
   // NFO instruments (options/futures) don't support MARKET or SL-M orders
   const isNFO = instrumentType === 'CE' || instrumentType === 'PE' || instrumentType === 'FUT';
-  const allowedOrderTypes = isNFO ? ['LIMIT', 'SL'] : ['MARKET', 'LIMIT', 'SL', 'SL-M'];
   const [slModal, setSlModal] = useState(null); // { position, slPrice }
   const [cancelConfirm, setCancelConfirm] = useState(null); // order_id
   const [actionLoading, setActionLoading] = useState(null); // order_id or symbol being actioned
   const [livePriceActive, setLivePriceActive] = useState(false);
-  const [insightBadge, setInsightBadge] = useState({ count: 0, verdict: 'clear' });
-  const [avgDownAlert, setAvgDownAlert] = useState(null); // { position } — blocks placement
-  const [avgDownBypass, setAvgDownBypass] = useState(false); // user confirmed, skip guard once
-  const [trendConflictBypass, setTrendConflictBypass] = useState(false); // user confirmed, skip trend guard once
-  const [trendConflictAlert, setTrendConflictAlert] = useState(null); // { sentiment } — warns against trend
-  // Context data for behavioral agent (fetched once on mount)
-  const [sentimentCtx, setSentimentCtx] = useState(null);
-  const [marketCtx, setMarketCtx] = useState(null);
-  const [sectorCtx, setSectorCtx] = useState([]);
-  const [optionCtx, setOptionCtx] = useState(null);
+
+  // Intelligence
+  const [intel, setIntel] = useState({ loading: false, result: null });
+  const [acknowledged, setAcknowledged] = useState(false);
+  const [dangerModal, setDangerModal] = useState(false);
 
   const popularStocks = ['NIFTY', 'BANKNIFTY', 'RELIANCE', 'TCS', 'INFY', 'HDFCBANK', 'ICICIBANK', 'SBIN', 'HDFC', 'BHARTIARTL'];
   const INDICES = ['NIFTY', 'BANKNIFTY', 'FINNIFTY', 'MIDCPNIFTY'];
@@ -132,7 +240,7 @@ export default function OrdersPage() {
     const urlSymbol = params.get('symbol');
     const urlType = params.get('type');
     const urlTransaction = params.get('transaction');
-    
+
     if (urlSymbol) {
       setSymbol(urlSymbol);
       selectStock(urlSymbol);
@@ -150,45 +258,20 @@ export default function OrdersPage() {
     fetchOpenOrders();
     fetchPositions();
 
-    // Auto-refresh positions every 5s during market hours
+    // Auto-refresh positions every 15s during market hours
     const interval = setInterval(() => {
-      if (isMarketHours() && isVisible) fetchPositions(true); // silent, only if tab visible
-    }, 15000); // 15 seconds
+      if (isMarketHours() && isVisible) fetchPositions(true);
+    }, 15000);
 
     return () => clearInterval(interval);
   }, []);
 
-  // When user confirms "Place Anyway" — bypass flag is set, re-trigger placeOrder
+  // Run intelligence when symbol / transactionType / instrumentType changes
   useEffect(() => {
-    if (avgDownBypass) {
-      placeOrder();
-      setAvgDownBypass(false);
-    }
-  }, [avgDownBypass]);
-
-  useEffect(() => {
-    if (trendConflictBypass) {
-      placeOrder();
-      setTrendConflictBypass(false);
-    }
-  }, [trendConflictBypass]);
-
-  // Load context data for behavioral agent once on mount
-  useEffect(() => {
-    const loadContext = async () => {
-      try {
-        const [sentRes, mktRes, secRes] = await Promise.allSettled([
-          fetch('/api/sentiment').then(r => r.json()),
-          fetch('/api/market-data').then(r => r.json()),
-          fetch('/api/sector-performance').then(r => r.json()),
-        ]);
-        if (sentRes.status === 'fulfilled') setSentimentCtx(sentRes.value);
-        if (mktRes.status === 'fulfilled')  setMarketCtx(mktRes.value);
-        if (secRes.status === 'fulfilled')  setSectorCtx(secRes.value?.sectors || []);
-      } catch {}
-    };
-    loadContext();
-  }, []);
+    if (!symbol) return;
+    setAcknowledged(false);
+    runIntelligence();
+  }, [symbol, transactionType, instrumentType]);
 
   useEffect(() => {
     if ((instrumentType === 'CE' || instrumentType === 'PE') && symbol && spotPrice) {
@@ -262,27 +345,21 @@ export default function OrdersPage() {
     setSymbol(selectedSymbol);
     setShowDropdown(false);
     setSearchResults([]);
-    // Apply lot size from search result immediately if available
     if (knownLotSize && knownLotSize > 1) setLotSize(knownLotSize);
-    setLtpLoading(true);
     try {
       const res = await fetch(`/api/ltp?symbol=${selectedSymbol}`);
       const data = await res.json();
       if (data.success && data.ltp) {
         setSpotPrice(data.ltp);
-        // Only use ltp lotSize if we don't already have one from search
         if (data.lotSize && data.lotSize > 1 && !knownLotSize) setLotSize(data.lotSize);
       }
     } catch (err) {
       console.error('Error:', err);
-    } finally {
-      setLtpLoading(false);
     }
   };
 
-  const openChart = (chartSymbol, isOption = false) => {
-    const tvSymbol = isOption ? chartSymbol : `NSE:${chartSymbol}`;
-    window.open(`https://www.tradingview.com/chart/?symbol=${encodeURIComponent(tvSymbol)}`, '_blank');
+  const openChart = (chartSymbol) => {
+    window.open(`https://www.tradingview.com/chart/?symbol=${encodeURIComponent(`NSE:${chartSymbol}`)}&interval=15`, '_blank');
   };
 
   const getEstimatedValue = () => {
@@ -292,66 +369,30 @@ export default function OrdersPage() {
     return (ep * quantity).toFixed(2);
   };
 
-  const placeOrder = async () => {
+  const runIntelligence = useCallback(async () => {
     if (!symbol) return;
-
-    // ── Averaging-down guard ─────────────────────────────────────────────
-    let avgDownBlocked = false;
-    if (!avgDownBypass) {
-      const openPos = positions.filter(p => p.quantity !== 0);
-      const matchingPos = openPos.find(p =>
-        p.tradingsymbol === (optionSymbol || symbol) ||
-        p.tradingsymbol?.includes(symbol)
-      );
-      if (matchingPos) {
-        const isAddingLong  = matchingPos.quantity > 0 && transactionType === 'BUY';
-        const isAddingShort = matchingPos.quantity < 0 && transactionType === 'SELL';
-        const avgPrice = matchingPos.average_price || 0;
-        const ltp = matchingPos.last_price || 0;
-        const qty = Math.abs(matchingPos.quantity);
-        const isLong = matchingPos.quantity > 0;
-        const unrealizedPnl = isLong 
-          ? (ltp - avgPrice) * qty
-          : (avgPrice - ltp) * qty;
-        const lossThreshold = matchingPos.exchange === 'NFO' ? -500 : -200;
-        const isLosingTrade = unrealizedPnl < lossThreshold;
-        if ((isAddingLong || isAddingShort) && isLosingTrade) {
-          setAvgDownAlert({ position: matchingPos, unrealizedPnl, avgPrice, ltp });
-          avgDownBlocked = true;
-        }
-      }
+    setIntel({ loading: true, result: null });
+    try {
+      const r = await fetch('/api/order-intelligence', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          symbol,
+          exchange: instrumentType === 'EQ' ? 'NSE' : 'NFO',
+          instrumentType,
+          transactionType,
+          spotPrice,
+        }),
+      });
+      const d = await r.json();
+      setIntel({ loading: false, result: d });
+    } catch {
+      setIntel({ loading: false, result: null });
     }
-    if (avgDownBlocked) return;
-    setAvgDownBypass(false);
+  }, [symbol, instrumentType, transactionType, spotPrice]);
 
-    // ── Trend conflict guard ──────────────────────────────────────────────
-    let trendBlocked = false;
-    if (!trendConflictBypass && sentimentCtx?.overall?.score != null) {
-      const dailyScore    = sentimentCtx.overall.score;
-      const intradayScore = sentimentCtx.timeframes?.intraday?.score;
-      const isBuyingCall = transactionType === 'BUY' && instrumentType === 'CE';
-      const isBuyingPut  = transactionType === 'BUY' && instrumentType === 'PE';
-      const isBuyingEQ   = transactionType === 'BUY' && instrumentType === 'EQ';
-      const isSellingEQ  = transactionType === 'SELL' && instrumentType === 'EQ';
-      const bearish = dailyScore < 45;
-      const bullish = dailyScore > 55;
-      const intradayBearish = intradayScore != null && intradayScore < 45;
-      const intradayBullish = intradayScore != null && intradayScore > 55;
-      const againstBoth = 
-        ((isBuyingCall || isBuyingEQ) && bearish && intradayBearish) ||
-        ((isBuyingPut || isSellingEQ) && bullish && intradayBullish);
-      if (againstBoth) {
-        setTrendConflictAlert({
-          dailyScore,
-          intradayScore,
-          direction: bearish ? 'bearish' : 'bullish',
-        });
-        trendBlocked = true;
-      }
-    }
-    if (trendBlocked) return;
-    setTrendConflictBypass(false);
-
+  const executePlaceOrder = async () => {
+    if (!symbol) return;
     let ts, ex;
     if (instrumentType === 'EQ') {
       ts = symbol; ex = 'NSE';
@@ -365,6 +406,7 @@ export default function OrdersPage() {
     }
     if (!ts) { alert('Invalid symbol'); return; }
     setOrderPlacing(true);
+    setDangerModal(false);
     try {
       const payload = {
         variety: 'regular',
@@ -389,6 +431,7 @@ export default function OrdersPage() {
         fetchPositions();
         setPrice('');
         setTriggerPrice('');
+        setTimeout(runIntelligence, 1200);
       } else {
         alert(`Failed: ${data.error || 'Unknown'}`);
       }
@@ -397,6 +440,12 @@ export default function OrdersPage() {
     } finally {
       setOrderPlacing(false);
     }
+  };
+
+  const handlePlaceOrder = () => {
+    const v = intel.result?.behavioral?.verdict;
+    if (v === 'danger') { setDangerModal(true); return; }
+    executePlaceOrder();
   };
 
   const fetchStrikeAnalysis = async () => {
@@ -527,6 +576,19 @@ export default function OrdersPage() {
     }
   };
 
+  // ── Verdict-gated button config ───────────────────────────────────────────
+  const verdict = intel.result?.behavioral?.verdict ?? null;
+  const buyGradient  = 'from-green-500 to-emerald-600';
+  const sellGradient = 'from-red-500 to-rose-600';
+  const btnGradient = {
+    clear:   transactionType === 'BUY' ? buyGradient : sellGradient,
+    caution: 'from-amber-500 to-yellow-600',
+    warning: 'from-orange-500 to-orange-600',
+    danger:  'from-red-600 to-red-700',
+  };
+  const activeGradient = btnGradient[verdict] ?? (transactionType === 'BUY' ? buyGradient : sellGradient);
+  const btnDisabled = (verdict === 'warning' && !acknowledged) || orderPlacing || !symbol;
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 flex items-center justify-center">
@@ -562,8 +624,8 @@ export default function OrdersPage() {
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          {/* Left Panel: Order Form (35% = 4/12) */}
-          {/* Left Panel: Order Form (40% = 5/12) */}
+
+          {/* Left Panel: Order Form (5/12) */}
           <div className="lg:col-span-5 space-y-3">
             <div className="bg-gradient-to-br from-slate-800/50 to-slate-900/50 rounded-2xl border border-white/10 p-6">
               <h2 className="text-lg font-semibold mb-5 flex items-center gap-2">
@@ -642,21 +704,21 @@ export default function OrdersPage() {
                         <div className="flex items-center gap-1 bg-slate-800/50 rounded-lg px-2 py-1 border border-white/10">
                           <BarChart2 size={14} className="text-gray-400 mr-1" />
                           <button
-                            onClick={() => openChart(symbol, false)}
+                            onClick={() => openChart(symbol)}
                             className="text-blue-400 hover:text-blue-300 text-xs font-medium px-1.5 py-0.5 hover:bg-blue-500/20 rounded transition-colors flex items-center gap-0.5"
                             title="Equity Chart"
                           >
                             EQ <ExternalLink size={10} />
                           </button>
                           <button
-                            onClick={() => optionTvSymbol && instrumentType === 'CE' ? openChart(optionTvSymbol, true) : alert('Select CE option first')}
+                            onClick={() => optionTvSymbol && instrumentType === 'CE' ? openChart(optionTvSymbol) : alert('Select CE option first')}
                             className={`text-xs font-medium px-1.5 py-0.5 rounded transition-colors flex items-center gap-0.5 ${instrumentType === 'CE' && optionTvSymbol ? 'text-green-400 hover:text-green-300 hover:bg-green-500/20' : 'text-gray-500'}`}
                             title="CE Option Chart"
                           >
                             CE <ExternalLink size={10} />
                           </button>
                           <button
-                            onClick={() => optionTvSymbol && instrumentType === 'PE' ? openChart(optionTvSymbol, true) : alert('Select PE option first')}
+                            onClick={() => optionTvSymbol && instrumentType === 'PE' ? openChart(optionTvSymbol) : alert('Select PE option first')}
                             className={`text-xs font-medium px-1.5 py-0.5 rounded transition-colors flex items-center gap-0.5 ${instrumentType === 'PE' && optionTvSymbol ? 'text-red-400 hover:text-red-300 hover:bg-red-500/20' : 'text-gray-500'}`}
                             title="PE Option Chart"
                           >
@@ -918,45 +980,52 @@ export default function OrdersPage() {
                     </div>
                   </div>
                 )}
+                {/* Warning acknowledge checkbox */}
+                {verdict === 'warning' && (
+                  <label className="flex items-start gap-2 cursor-pointer text-xs text-orange-300 mb-3">
+                    <input type="checkbox" checked={acknowledged} onChange={e => setAcknowledged(e.target.checked)}
+                      className="mt-0.5 accent-orange-500" />
+                    I understand the risk and want to proceed
+                  </label>
+                )}
                 <button
-                  onClick={placeOrder}
-                  disabled={orderPlacing || !symbol}
-                  className={`w-full py-2.5 rounded-xl font-bold text-white flex items-center justify-center gap-2 ${transactionType === 'BUY' ? 'bg-gradient-to-r from-green-500 to-emerald-600' : 'bg-gradient-to-r from-red-500 to-rose-600'} disabled:opacity-50`}
+                  onClick={handlePlaceOrder}
+                  disabled={btnDisabled}
+                  className={`w-full py-2.5 rounded-xl font-bold text-white flex items-center justify-center gap-2 bg-gradient-to-r ${activeGradient} disabled:opacity-50`}
                 >
                   {orderPlacing
                     ? <><RefreshCw size={18} className="animate-spin" /> Placing...</>
-                    : <>{transactionType === 'BUY' ? <TrendingUp size={18} /> : <TrendingDown size={18} />} {transactionType} {instrumentType === 'EQ' || instrumentType === 'FUT' ? symbol + (instrumentType === 'FUT' ? ' FUT' : '') : optionSymbol || symbol}</>
+                    : <>{transactionType === 'BUY' ? <TrendingUp size={18} /> : <TrendingDown size={18} />} {transactionType} {instrumentType === 'EQ' || instrumentType === 'FUT' ? symbol + (instrumentType === 'FUT' ? ' FUT' : '') : optionSymbol || symbol}
+                        {verdict && verdict !== 'clear' && (
+                          <span className={`text-xs font-normal ${VERDICT[verdict]?.color}`}>· {VERDICT[verdict]?.label}</span>
+                        )}
+                      </>
                   }
                 </button>
               </div>
             )}
           </div>
 
-          {/* Center Panel: Trade Insights (40% = 5/12) */}
+          {/* Center Panel: Intelligence Center (4/12) */}
           <div className="lg:col-span-4 max-h-[calc(100vh-12rem)] overflow-y-auto">
-
-            {/* Behavioral Insights */}
-            <BehavioralInsights
-              symbol={symbol}
-              tradingsymbol={optionSymbol || symbol}
-              exchange={instrumentType === 'EQ' ? 'NSE' : 'NFO'}
-              instrumentType={instrumentType}
-              transactionType={transactionType}
-              quantity={quantity}
-              price={price || spotPrice}
-              spotPrice={spotPrice}
-              expiryType={expiryType}
-              positions={positions}
-              openOrders={openOrders}
-              sentimentData={sentimentCtx}
-              marketData={marketCtx}
-              sectorData={sectorCtx}
-              optionChainData={optionCtx}
-              onPassiveReady={(count, verdict) => setInsightBadge({ count, verdict })}
-            />
+            <div className="bg-gradient-to-br from-slate-800/50 to-slate-900/50 rounded-2xl border border-white/10 p-4">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <Brain size={16} className="text-purple-400" />
+                  <h2 className="text-sm font-semibold text-white">Intelligence Center</h2>
+                </div>
+                {symbol && (
+                  <button onClick={runIntelligence} disabled={intel.loading}
+                    className="p-1.5 hover:bg-white/10 rounded-lg transition-colors" title="Re-run analysis">
+                    <RefreshCw size={13} className={`text-gray-400 ${intel.loading ? 'animate-spin' : ''}`} />
+                  </button>
+                )}
+              </div>
+              <BehavioralPanel intel={intel} symbol={symbol} />
+            </div>
           </div>
 
-          {/* Right Panel: Positions + Open Orders (25% = 3/12) */}
+          {/* Right Panel: Positions + Open Orders (3/12) */}
           <div className="lg:col-span-3 flex flex-col gap-4">
 
             {/* Positions */}
@@ -1037,27 +1106,22 @@ export default function OrdersPage() {
                 : openOrders.length === 0
                   ? <div className="text-center py-4 text-gray-500"><p className="text-xs">No open orders</p></div>
                   : <div className="space-y-2 max-h-[160px] overflow-y-auto">
-                      {[...openOrders, ...(openOrders.length === 0 ? [{
-                        order_id: 'DEMO001', tradingsymbol: 'RELIANCE',
-                        transaction_type: 'BUY', quantity: 250,
-                        price: 1420.00, status: 'TRIGGER PENDING', _demo: true
-                      }] : [])].map((o) => (
-                        <div key={o.order_id} className={`p-2.5 rounded-lg border ${o._demo ? 'bg-blue-900/10 border-blue-500/20' : 'bg-slate-900/50 border-amber-500/10'}`}>
+                      {openOrders.map((o) => (
+                        <div key={o.order_id} className="p-2.5 rounded-lg border bg-slate-900/50 border-amber-500/10">
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-2">
                               <span className={`text-xs font-medium ${o.transaction_type === 'BUY' ? 'text-green-400' : 'text-red-400'}`}>
                                 {o.transaction_type}
                               </span>
                               <span className="text-xs font-medium truncate max-w-[80px]">{o.tradingsymbol}</span>
-                              {o._demo && <span className="text-xs text-blue-400">demo</span>}
                             </div>
                             <div className="flex items-center gap-2">
                               <div className="flex items-center gap-1 text-xs text-amber-400">
                                 <Clock size={10} />{o.status}
                               </div>
                               <button
-                                onClick={() => o._demo ? alert('DEMO MODE: Would cancel order ' + o.order_id + ' — no real cancellation.') : setCancelConfirm(o.order_id)}
-                                className="px-2 py-0.5 rounded text-xs font-medium transition-colors bg-red-500/20 hover:bg-red-500/30 text-red-400"  
+                                onClick={() => setCancelConfirm(o.order_id)}
+                                className="px-2 py-0.5 rounded text-xs font-medium transition-colors bg-red-500/20 hover:bg-red-500/30 text-red-400"
                               >
                                 Cancel
                               </button>
@@ -1073,137 +1137,37 @@ export default function OrdersPage() {
         </div>
       </main>
 
-      {/* Trend Conflict Alert Modal */}
-      {trendConflictAlert && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
-          <div className="bg-slate-800 border border-amber-500/40 rounded-2xl p-6 w-96 shadow-2xl">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 rounded-full bg-amber-500/20 flex items-center justify-center flex-shrink-0">
-                <span className="text-xl">↕</span>
-              </div>
-              <div>
-                <h3 className="text-base font-bold text-amber-400">Trading Against the Trend</h3>
-                <p className="text-xs text-slate-400">Counter-trend trade alert</p>
-              </div>
+      {/* Danger confirmation modal */}
+      {dangerModal && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-800 border border-red-500/40 rounded-2xl p-6 max-w-sm w-full shadow-2xl">
+            <div className="flex items-center gap-3 mb-3">
+              <ShieldX size={22} className="text-red-400 flex-shrink-0" />
+              <h3 className="text-white font-semibold">High Risk Detected</h3>
             </div>
-
-            <div className="bg-amber-900/20 border border-amber-500/20 rounded-xl p-4 mb-4">
-              <div className="grid grid-cols-2 gap-3 mb-3">
-                <div>
-                  <p className="text-xs text-slate-500">Daily Sentiment</p>
-                  <p className={`text-lg font-bold ${trendConflictAlert.dailyScore < 45 ? 'text-red-400' : 'text-green-400'}`}>
-                    {trendConflictAlert.dailyScore}/100
-                  </p>
-                  <p className="text-xs text-slate-400">{trendConflictAlert.direction}</p>
+            <p className="text-gray-400 text-sm mb-4">
+              Risk score: <span className="text-red-400 font-bold">{intel.result?.behavioral?.riskScore ?? '--'}/100</span>.
+              The following issues were found:
+            </p>
+            <div className="space-y-2 mb-5">
+              {intel.result?.behavioral?.behaviors?.map((b, i) => (
+                <div key={i} className="flex items-start gap-2 text-sm">
+                  <AlertTriangle size={13} className={`mt-0.5 flex-shrink-0 ${SEVERITY_COLOR[b.severity] ?? 'text-gray-400'}`} />
+                  <div>
+                    <div className="text-gray-200 font-medium">{b.title}</div>
+                    <div className="text-gray-500 text-xs">{b.detail}</div>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-xs text-slate-500">Intraday Bias</p>
-                  <p className={`text-lg font-bold ${trendConflictAlert.intradayScore < 45 ? 'text-red-400' : 'text-green-400'}`}>
-                    {trendConflictAlert.intradayScore}/100
-                  </p>
-                  <p className="text-xs text-slate-400">{trendConflictAlert.direction}</p>
-                </div>
-              </div>
+              ))}
             </div>
-
-            <div className="bg-slate-900/50 border border-white/5 rounded-xl px-4 py-3 mb-5">
-              <p className="text-xs text-slate-300 leading-relaxed">
-                You're taking a <strong className="text-amber-400">counter-trend position</strong> against {trendConflictAlert.direction} sentiment on both daily and intraday timeframes.
-              </p>
-              <p className="text-xs text-slate-500 mt-2">
-                Counter-trend trades have lower probability. Consider waiting for trend reversal confirmation or use tighter stops.
-              </p>
-            </div>
-
             <div className="flex gap-3">
-              <button
-                onClick={() => setTrendConflictAlert(null)}
-                className="flex-1 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-sm font-medium transition-colors border border-white/10"
-              >
+              <button onClick={() => setDangerModal(false)}
+                className="flex-1 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-gray-200 text-sm font-medium transition-colors border border-white/10">
                 Cancel
               </button>
-              <button
-                onClick={() => {
-                  setTrendConflictAlert(null);
-                  setTrendConflictBypass(true);
-                }}
-                className="flex-1 py-2.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 text-sm font-medium transition-colors border border-amber-500/30"
-              >
-                Place Anyway
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Averaging-Down Alert Modal */}
-      {avgDownAlert && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
-          <div className="bg-slate-800 border border-red-500/40 rounded-2xl p-6 w-96 shadow-2xl">
-            {/* Header */}
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 rounded-full bg-red-500/20 flex items-center justify-center flex-shrink-0">
-                <span className="text-xl">⚠</span>
-              </div>
-              <div>
-                <h3 className="text-base font-bold text-red-400">Adding to a Losing Position</h3>
-                <p className="text-xs text-slate-400">Behavioural risk alert</p>
-              </div>
-            </div>
-
-            {/* Position details */}
-            <div className="bg-red-900/20 border border-red-500/20 rounded-xl p-4 mb-4">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-medium text-white">{avgDownAlert.position.tradingsymbol}</span>
-                <span className="text-sm font-bold text-red-400">
-                  ₹{Math.round(avgDownAlert.unrealizedPnl || 0).toLocaleString()} Unrealized Loss
-                </span>
-              </div>
-              <div className="grid grid-cols-3 gap-2 text-xs text-slate-400">
-                <div>
-                  <p className="text-slate-500">Side</p>
-                  <p className={avgDownAlert.position.quantity > 0 ? 'text-green-400' : 'text-red-400'}>
-                    {avgDownAlert.position.quantity > 0 ? 'LONG' : 'SHORT'} {Math.abs(avgDownAlert.position.quantity)}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-slate-500">Avg price</p>
-                  <p className="text-white">₹{avgDownAlert.position.average_price?.toFixed(2)}</p>
-                </div>
-                <div>
-                  <p className="text-slate-500">LTP</p>
-                  <p className="text-white">₹{avgDownAlert.position.last_price?.toFixed(2)}</p>
-                </div>
-              </div>
-            </div>
-
-            {/* Warning message */}
-            <div className="bg-amber-900/20 border border-amber-500/20 rounded-xl px-4 py-3 mb-5">
-              <p className="text-xs text-amber-300 leading-relaxed">
-                You're about to add more to a position that is currently <strong className="text-red-400">₹{Math.abs(Math.round(avgDownAlert.unrealizedPnl || 0)).toLocaleString()} underwater</strong> (Entry: ₹{avgDownAlert.avgPrice?.toFixed(2)} → LTP: ₹{avgDownAlert.ltp?.toFixed(2)}). 
-                Averaging into losing trades increases risk exposure and can lead to larger drawdowns.
-              </p>
-              <p className="text-xs text-slate-500 mt-2">
-                Common alternative: wait for price to recover above your entry, or cut the loss and re-evaluate.
-              </p>
-            </div>
-
-            {/* Buttons */}
-            <div className="flex gap-3">
-              <button
-                onClick={() => setAvgDownAlert(null)}
-                className="flex-1 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-sm font-medium transition-colors border border-white/10"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => {
-                  setAvgDownAlert(null);
-                  setAvgDownBypass(true); // skip guard on next placeOrder call
-                }}
-                className="flex-1 py-2.5 rounded-xl bg-red-500/20 hover:bg-red-500/30 text-red-400 text-sm font-medium transition-colors border border-red-500/30"
-              >
-                Place Anyway
+              <button onClick={executePlaceOrder} disabled={orderPlacing}
+                className="flex-1 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white text-sm font-semibold transition-colors disabled:opacity-50 flex items-center justify-center gap-2">
+                {orderPlacing ? <RefreshCw size={14} className="animate-spin" /> : 'Place Anyway'}
               </button>
             </div>
           </div>

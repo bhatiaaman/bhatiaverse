@@ -12,30 +12,62 @@ function getStrikeStep(symbol, price) {
   return 2.5;
 }
 
+// NSE Holiday Calendar 2026 (Official) — same list as scanner page
+const NSE_HOLIDAYS_2026 = [
+  '2026-01-15', '2026-01-26', '2026-03-03', '2026-03-26', '2026-03-31',
+  '2026-04-03', '2026-04-14', '2026-05-01', '2026-08-15', '2026-10-02',
+  '2026-10-21', '2026-10-22', '2026-11-04', '2026-11-24', '2026-12-25',
+];
+
+const pad2 = (n) => String(n).padStart(2, '0');
+
+function isNSEHoliday(date) {
+  const s = `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
+  return NSE_HOLIDAYS_2026.includes(s);
+}
+
+function isTradingDay(date) {
+  const day = date.getDay();
+  return day !== 0 && day !== 6 && !isNSEHoliday(date);
+}
+
+function prevTradingDay(date) {
+  const d = new Date(date);
+  d.setDate(d.getDate() - 1);
+  while (!isTradingDay(d)) d.setDate(d.getDate() - 1);
+  return d;
+}
+
+// Last Tuesday of month, shifted back if it's a holiday
 function getLastTuesdayOfMonth(date = new Date()) {
   const d = new Date(date.getFullYear(), date.getMonth() + 1, 0);
   while (d.getDay() !== 2) d.setDate(d.getDate() - 1);
+  if (!isTradingDay(d)) return prevTradingDay(d);
   return d;
 }
 
 function getNearestTuesday(date = new Date()) {
   const d = new Date(date);
   const day = d.getDay();
-  if (day === 2) return d;
+  if (day === 2 && isTradingDay(d)) return d;
   if (day < 2) {
     d.setDate(d.getDate() + (2 - day));
   } else {
     d.setDate(d.getDate() + (7 - day + 2));
   }
+  if (!isTradingDay(d)) return prevTradingDay(d);
   return d;
 }
 
 function getExpiry(symbol, fromDate = new Date(), expiryType = 'monthly') {
+  const today = new Date(fromDate);
+  today.setHours(0, 0, 0, 0);
+
   if (symbol === 'NIFTY' && expiryType === 'weekly') {
     return getNearestTuesday(fromDate);
   }
   const expiry = getLastTuesdayOfMonth(fromDate);
-  if (fromDate > expiry) {
+  if (today > expiry) {
     return getLastTuesdayOfMonth(
       new Date(fromDate.getFullYear(), fromDate.getMonth() + 1, 15)
     );
