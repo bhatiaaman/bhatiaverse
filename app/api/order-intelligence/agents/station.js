@@ -324,19 +324,19 @@ function checkDailyApproachAngle(data) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Registries
+// Registries — paired [fn, passLabel] so labels never rely on check.name lookup
 // ─────────────────────────────────────────────────────────────────────────────
 const INTRADAY_CHECKS = [
-  checkZonePresence,
-  checkZoneAlignment,
-  checkZoneScenario,
-  checkVolumeExpansion,
-  checkZoneStrength,
+  [checkZonePresence,    'No major zone within 2% — open space entry'],
+  [checkZoneAlignment,   'Zone aligned with trade direction'],
+  [checkZoneScenario,    'No zone scenario conflict'],
+  [checkVolumeExpansion, 'Volume confirms move'],
+  [checkZoneStrength,    'Zone strength adequate'],
 ];
 
 const SWING_EXTRA_CHECKS = [
-  checkDailyZoneConfluence,
-  checkDailyApproachAngle,
+  [checkDailyZoneConfluence, 'Daily zone confluence present'],
+  [checkDailyApproachAngle,  'Daily approach angle intact'],
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -348,17 +348,6 @@ function scoreToVerdict(score) {
   if (score < 45)   return 'warning';
   return 'danger';
 }
-
-// Pass labels for checks that don't return a dynamic title
-const PASS_LABELS = {
-  checkZonePresence:        'No major zone within 2% — open space entry',
-  checkZoneAlignment:       'Zone aligned with trade direction',
-  checkZoneScenario:        'No zone scenario conflict',
-  checkVolumeExpansion:     'Volume confirms move',
-  checkZoneStrength:        'Zone strength adequate',
-  checkDailyZoneConfluence: 'Daily zone confluence present',
-  checkDailyApproachAngle:  'Daily approach angle intact',
-};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Main export
@@ -387,22 +376,22 @@ export function runStationAgent(data) {
   // 3. Enrich data
   const enriched = { ...data, stationResult, _zoneState: zoneState };
 
-  // 4. Pick registry
+  // 4. Pick registry (each entry is [checkFn, passLabel])
   const isSwing  = ['NRML', 'CNC'].includes(data.order.productType?.toUpperCase());
   const registry = isSwing
     ? [...INTRADAY_CHECKS, ...SWING_EXTRA_CHECKS]
     : INTRADAY_CHECKS;
 
   // 5. Run checks — same try/catch map as all other agents
-  const checks = registry.map(check => {
+  const checks = registry.map(([check, passLabel]) => {
     try {
       const result = check(enriched);
-      if (!result)         return { type: check.name, passed: true,  title: PASS_LABELS[check.name] ?? check.name };
+      if (!result)         return { type: check.name, passed: true,  title: passLabel };
       if (result.passed)   return { type: check.name, passed: true,  title: result.title };
       return { ...result, passed: false };
     } catch (e) {
       console.error(`Station check error [${check.name}]:`, e);
-      return { type: check.name, passed: true, title: PASS_LABELS[check.name] ?? check.name };
+      return { type: check.name, passed: true, title: passLabel };
     }
   });
 

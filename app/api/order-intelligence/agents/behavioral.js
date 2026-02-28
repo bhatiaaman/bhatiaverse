@@ -175,15 +175,16 @@ function checkSectorExposure(data) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Registry — add new behavior checks here, nothing else needs to change
+// ─────────────────────────────────────────────────────────────────────────────
+// Registry — paired [fn, passLabel] so labels never rely on check.name lookup
 // ─────────────────────────────────────────────────────────────────────────────
 const BEHAVIORS = [
-  checkAddingToLoser,
-  checkAgainstTrend,
-  checkPositionCount,
-  checkHighVIX,
-  checkDuplicateOrder,
-  checkSectorExposure,
+  [checkAddingToLoser,  'No loser averaging'],
+  [checkAgainstTrend,   'Trade aligned with trend'],
+  [checkPositionCount,  'Position count OK'],
+  [checkHighVIX,        'VIX within normal range'],
+  [checkDuplicateOrder, 'No duplicate open order'],
+  [checkSectorExposure, 'Sector exposure is diversified'],
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -196,28 +197,18 @@ function scoreToVerdict(score) {
   return 'danger';
 }
 
-// Labels shown when a check passes (keyed by function name)
-const PASS_LABELS = {
-  checkAddingToLoser:   'No loser averaging',
-  checkAgainstTrend:    'Trade aligned with trend',
-  checkPositionCount:   'Position count OK',
-  checkHighVIX:         'VIX within normal range',
-  checkDuplicateOrder:  'No duplicate open order',
-  checkSectorExposure:  'Sector exposure is diversified',
-};
-
 // ─────────────────────────────────────────────────────────────────────────────
 // Main export — run all registered behaviors against the shared data object
 // ─────────────────────────────────────────────────────────────────────────────
 export function runBehavioralAgent(data) {
-  const checks = BEHAVIORS.map(check => {
+  const checks = BEHAVIORS.map(([check, passLabel]) => {
     try {
       const result = check(data);
       if (result) return { ...result, passed: false };
-      return { type: check.name, passed: true, title: PASS_LABELS[check.name] ?? check.name };
+      return { type: check.name, passed: true, title: passLabel };
     } catch (e) {
       console.error(`Behavior check error:`, e);
-      return { type: check.name, passed: true, title: PASS_LABELS[check.name] ?? check.name };
+      return { type: check.name, passed: true, title: passLabel };
     }
   });
 

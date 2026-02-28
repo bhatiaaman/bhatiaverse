@@ -616,24 +616,24 @@ function checkVolumeAlignmentDaily(data) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Registries
+// Registries — paired [fn, passLabel] so labels never rely on check.name lookup
 // ─────────────────────────────────────────────────────────────────────────────
 const INTRADAY_CHECKS = [
-  checkCandlePatterns15m,
-  checkVolumeAlignment15m,
-  checkBigCandle15m,
-  checkInsideBar15m,
-  checkWickRejection15m,
-  checkConsecutiveCandles15m,
-  checkPinBar15m,
-  checkEngulfingRecent15m,
+  [checkCandlePatterns15m,     'No conflicting candle pattern (15m)'],
+  [checkVolumeAlignment15m,    'Volume aligned with move (15m)'],
+  [checkBigCandle15m,          'Normal candle size — not extended (15m)'],
+  [checkInsideBar15m,          'No inside bar — breakout confirmed (15m)'],
+  [checkWickRejection15m,      'No wick rejection at entry (15m)'],
+  [checkConsecutiveCandles15m, 'No momentum conflict (15m)'],
+  [checkPinBar15m,             'No pin bar rejection (15m)'],
+  [checkEngulfingRecent15m,    'No conflicting engulfing (15m)'],
 ];
 
 const SWING_EXTRA_CHECKS = [
-  checkCandlePatternDaily,
-  checkBigCandleDaily,
-  checkConsecutiveDailyCandles,
-  checkVolumeAlignmentDaily,
+  [checkCandlePatternDaily,      'No conflicting daily candle pattern'],
+  [checkBigCandleDaily,          'Normal daily candle size'],
+  [checkConsecutiveDailyCandles, 'No consecutive daily candles against trade'],
+  [checkVolumeAlignmentDaily,    'Daily volume aligned'],
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -646,21 +646,6 @@ function scoreToVerdict(score) {
   return 'danger';
 }
 
-const PASS_LABELS = {
-  checkCandlePatterns15m:     'No conflicting candle pattern (15m)',
-  checkVolumeAlignment15m:    'Volume aligned with move (15m)',
-  checkBigCandle15m:          'Normal candle size — not extended (15m)',
-  checkInsideBar15m:          'No inside bar — breakout confirmed (15m)',
-  checkWickRejection15m:      'No wick rejection at entry (15m)',
-  checkConsecutiveCandles15m: 'No momentum conflict (15m)',
-  checkPinBar15m:             'No pin bar rejection (15m)',
-  checkEngulfingRecent15m:    'No conflicting engulfing (15m)',
-  checkCandlePatternDaily:    'No conflicting daily candle pattern',
-  checkBigCandleDaily:        'Normal daily candle size',
-  checkConsecutiveDailyCandles: 'No consecutive daily candles against trade',
-  checkVolumeAlignmentDaily:  'Daily volume aligned',
-};
-
 // ─────────────────────────────────────────────────────────────────────────────
 // Main export
 // ─────────────────────────────────────────────────────────────────────────────
@@ -670,14 +655,14 @@ export function runPatternAgent(data) {
     ? [...INTRADAY_CHECKS, ...SWING_EXTRA_CHECKS]
     : INTRADAY_CHECKS;
 
-  const checks = registry.map(check => {
+  const checks = registry.map(([check, passLabel]) => {
     try {
       const result = check(data);
       if (result) return { ...result, passed: false };
-      return { type: check.name, passed: true, title: PASS_LABELS[check.name] ?? check.name };
+      return { type: check.name, passed: true, title: passLabel };
     } catch (e) {
       console.error(`Pattern check error [${check.name}]:`, e);
-      return { type: check.name, passed: true, title: PASS_LABELS[check.name] ?? check.name };
+      return { type: check.name, passed: true, title: passLabel };
     }
   });
 

@@ -623,24 +623,24 @@ function checkRelativeStrength(data) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Registries
+// Registries — paired [fn, passLabel] so labels never rely on check.name lookup
 // ─────────────────────────────────────────────────────────────────────────────
 const INTRADAY_CHECKS = [
-  checkEMAAlignment,
-  checkVWAP,
-  checkADX,
-  checkRSI,
-  checkVolume,
-  checkOpeningRange,
-  checkHHHL,
-  checkMarketBreadth,
+  [checkEMAAlignment,  'EMA aligned on 15m'],
+  [checkVWAP,          'Price on correct side of VWAP'],
+  [checkADX,           'Trending market on 15m (ADX OK)'],
+  [checkRSI,           'RSI not extreme on 15m'],
+  [checkVolume,        'Volume confirms move'],
+  [checkOpeningRange,  'Price broke opening range'],
+  [checkHHHL,          'Daily structure supports trade'],
+  [checkMarketBreadth, 'Market breadth aligned'],
 ];
 
 const SWING_EXTRA_CHECKS = [
-  checkDailyEMA,
-  checkWeeklyTrend,
-  checkDailyMomentum,
-  checkRelativeStrength,
+  [checkDailyEMA,          'Price aligned with daily EMAs'],
+  [checkWeeklyTrend,       'Weekly trend supports trade'],
+  [checkDailyMomentum,     'Daily momentum aligned'],
+  [checkRelativeStrength,  'Relative strength favourable'],
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -652,22 +652,6 @@ function scoreToVerdict(score) {
   if (score < 45)   return 'warning';
   return 'danger';
 }
-
-// Pass labels (keyed by function name)
-const PASS_LABELS = {
-  checkEMAAlignment:    'EMA aligned on 15m',
-  checkVWAP:            'Price on correct side of VWAP',
-  checkADX:             'Trending market on 15m (ADX OK)',
-  checkRSI:             'RSI not extreme on 15m',
-  checkVolume:          'Volume confirms move',
-  checkOpeningRange:    'Price broke opening range',
-  checkHHHL:            'Daily structure supports trade',
-  checkMarketBreadth:   'Market breadth aligned',
-  checkDailyEMA:        'Price aligned with daily EMAs',
-  checkWeeklyTrend:     'Weekly trend supports trade',
-  checkDailyMomentum:   'Daily momentum aligned',
-  checkRelativeStrength: 'Relative strength favourable',
-};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Main export — run all registered checks against the shared data object
@@ -689,15 +673,15 @@ export function runStructureAgent(data) {
   // Attach indicators to data so check functions can read them
   const enriched = { ...data, indicators };
 
-  const checks = registry.map(check => {
+  const checks = registry.map(([check, passLabel]) => {
     try {
       const result = check(enriched);
-      if (!result)         return { type: check.name, passed: true,  title: PASS_LABELS[check.name] ?? check.name };
+      if (!result)         return { type: check.name, passed: true,  title: passLabel };
       if (result.passed)   return { type: check.name, passed: true,  title: result.title };
       return { ...result, passed: false };
     } catch (e) {
       console.error(`Structure check error [${check.name}]:`, e);
-      return { type: check.name, passed: true, title: PASS_LABELS[check.name] ?? check.name };
+      return { type: check.name, passed: true, title: passLabel };
     }
   });
 
