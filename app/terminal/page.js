@@ -1323,7 +1323,8 @@ export default function TerminalPage() {
         setSpotPrice(d.ltp);
         const ls = d.lotSize && d.lotSize > 1 ? d.lotSize : 1;
         setLotSize(ls);
-        setQuantity(ls);
+        const isEQ = !INDEX_SYMBOLS.includes(sym);
+        setQuantity(isEQ ? Math.max(1, Math.floor(200000 / d.ltp)) : ls);
       }
     } catch {}
   }, []);
@@ -1340,6 +1341,14 @@ export default function TerminalPage() {
     if (instrumentType === 'EQ' && productType === 'NRML') setProductType('MIS');
     else if (isNFO && productType === 'CNC') setProductType('MIS');
   }, [instrumentType]);
+
+  // ── EQ quantity: recompute when product type or instrument type changes
+  // MIS → floor(₹2L notional / ltp)  |  CNC → 1
+  // spotPrice omitted from deps intentionally — avoid resetting on every price tick
+  useEffect(() => {
+    if (instrumentType !== 'EQ' || !spotPrice) return;
+    setQuantity(productType === 'MIS' ? Math.max(1, Math.floor(200000 / spotPrice)) : 1);
+  }, [productType, instrumentType]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── ATM option auto-fetch
   const fetchOptionDetails = useCallback(async () => {
