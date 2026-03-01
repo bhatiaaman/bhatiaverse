@@ -291,7 +291,7 @@ function TopBar({ indices, kiteConnected }) {
 // ─────────────────────────────────────────────────────────────────────────────
 function WatchlistPanel({ watchTab, setWatchTab, watchlist, watchQuotes, watchSearch, setWatchSearch, watchSearchResults, watchSearching, onSymbolClick, onAddSymbol, onRemoveSymbol, activeSymbol }) {
   return (
-    <div className="w-[240px] flex-shrink-0 flex flex-col bg-gray-50 dark:bg-slate-900/60 border-r border-gray-200 dark:border-white/10 overflow-hidden">
+    <div className="w-screen md:w-[240px] flex-shrink-0 flex flex-col bg-gray-50 dark:bg-slate-900/60 border-r border-gray-200 dark:border-white/10 overflow-hidden">
 
       {/* Tab header */}
       <div className="flex border-b border-gray-200 dark:border-white/10 flex-shrink-0">
@@ -497,7 +497,7 @@ function OrdersTab({ orders, loading, onRefresh }) {
 // ─────────────────────────────────────────────────────────────────────────────
 function OrdersRightPanel({ orders, loading, onRefresh, open, setOpen, movers }) {
   return (
-    <div className={`flex-shrink-0 border-l border-gray-200 dark:border-white/10 flex flex-col bg-gray-50 dark:bg-slate-900/40 transition-all duration-200 ${open ? 'w-[260px]' : 'w-9'}`}>
+    <div className={`flex-shrink-0 border-l border-gray-200 dark:border-white/10 flex flex-col bg-gray-50 dark:bg-slate-900/40 transition-all duration-200 ${open ? 'w-screen md:w-[260px]' : 'w-screen md:w-9'}`}>
       {/* Toggle + header */}
       <div className={`flex items-center flex-shrink-0 border-b border-gray-200 dark:border-white/10 ${open ? 'px-3 py-2 justify-between' : 'justify-center py-2'}`}>
         {open && <span className="text-[10px] font-semibold text-gray-500 dark:text-white/40 uppercase tracking-wider">Orders</span>}
@@ -750,11 +750,26 @@ function PlaceOrderTab({
   const verdict  = intel.result?.behavioral?.verdict;
   const canPlace = symbol && (!isNFO || optionSymbol || instrumentType === 'FUT') && quantity > 0 && (verdict !== 'warning' || acknowledged);
 
-  return (
-    <div className="h-full flex overflow-hidden">
+  const [mobileIntelTab, setMobileIntelTab] = useState('order'); // 'order' | 'intel'
 
-      {/* ── ORDER FORM (left, fixed 360px) ── */}
-      <div className="w-[360px] flex-shrink-0 border-r border-gray-200 dark:border-white/10 overflow-y-auto scrollbar-thin p-4 space-y-3 bg-white dark:bg-transparent">
+  return (
+    <div className="h-full flex flex-col md:flex-row overflow-hidden">
+
+      {/* Mobile inner tab bar — hidden on md+ */}
+      <div className="md:hidden flex border-b border-gray-200 dark:border-white/10 flex-shrink-0 bg-white dark:bg-slate-900/40">
+        {[{ id: 'order', label: 'Order Form' }, { id: 'intel', label: 'Intelligence' }].map(t => (
+          <button key={t.id} onClick={() => setMobileIntelTab(t.id)}
+            className={`flex-1 py-2.5 text-xs font-medium border-b-2 transition-colors ${
+              mobileIntelTab === t.id
+                ? 'border-blue-500 text-blue-600 dark:text-white'
+                : 'border-transparent text-gray-400 dark:text-white/40'
+            }`}
+          >{t.label}</button>
+        ))}
+      </div>
+
+      {/* ── ORDER FORM (left, fixed 360px on desktop; full-width on mobile) ── */}
+      <div className={`${mobileIntelTab !== 'order' ? 'hidden md:block' : ''} w-full md:w-[360px] md:flex-shrink-0 border-r border-gray-200 dark:border-white/10 overflow-y-auto scrollbar-thin p-4 space-y-3 bg-white dark:bg-transparent`}>
 
         {/* Symbol search */}
         <div className="relative">
@@ -994,7 +1009,7 @@ function PlaceOrderTab({
       </div>
 
       {/* ── INTELLIGENCE PANEL (center, all 5 agents) ── */}
-      <div className="flex-1 overflow-y-auto scrollbar-thin p-4">
+      <div className={`${mobileIntelTab !== 'intel' ? 'hidden md:block' : ''} flex-1 overflow-y-auto scrollbar-thin p-4`}>
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
             <Brain size={14} className="text-purple-500 dark:text-purple-400" />
@@ -1097,6 +1112,7 @@ export default function TerminalPage() {
 
   // Tabs
   const [activeTab, setActiveTab]           = useState('placeOrder');
+  const [mobileTab, setMobileTab]           = useState('trade'); // 'watchlist' | 'trade' | 'orders'
 
   // Positions / Orders
   const [positions, setPositions]           = useState([]);
@@ -1309,6 +1325,7 @@ export default function TerminalPage() {
     setShowFormDropdown(false);
     setFormSearchResults([]);
     setActiveTab('placeOrder');
+    setMobileTab('trade');
     setOptionSymbol(''); setOptionTvSymbol(''); setOptionLtp(null); setOptionStrike(null); setOptionExpiry('');
     setOrderResult(null);
     setAcknowledged(false);
@@ -1512,19 +1529,23 @@ export default function TerminalPage() {
       <TopBar indices={indices} kiteConnected={kiteConnected} />
 
       <div className="flex flex-1 overflow-hidden">
-        <WatchlistPanel
-          watchTab={watchTab} setWatchTab={setWatchTab}
-          watchlist={activeWatchlist}
-          watchQuotes={watchQuotes}
-          watchSearch={watchSearch} setWatchSearch={setWatchSearch}
-          watchSearchResults={watchSearchResults} watchSearching={watchSearching}
-          onSymbolClick={selectSymbol}
-          onAddSymbol={addToWatchlist}
-          onRemoveSymbol={removeFromWatchlist}
-          activeSymbol={symbol}
-        />
+        {/* Watchlist: always visible on md+, mobile-controlled */}
+        <div className={`${mobileTab !== 'watchlist' ? 'hidden md:block' : 'block'} flex-shrink-0`}>
+          <WatchlistPanel
+            watchTab={watchTab} setWatchTab={setWatchTab}
+            watchlist={activeWatchlist}
+            watchQuotes={watchQuotes}
+            watchSearch={watchSearch} setWatchSearch={setWatchSearch}
+            watchSearchResults={watchSearchResults} watchSearching={watchSearching}
+            onSymbolClick={selectSymbol}
+            onAddSymbol={addToWatchlist}
+            onRemoveSymbol={removeFromWatchlist}
+            activeSymbol={symbol}
+          />
+        </div>
 
-        <div className="flex-1 flex flex-col overflow-hidden border-l border-gray-200 dark:border-white/10">
+        {/* Middle panel: always visible on md+, mobile-controlled */}
+        <div className={`${mobileTab !== 'trade' ? 'hidden md:flex' : 'flex'} flex-1 flex-col overflow-hidden border-l border-gray-200 dark:border-white/10`}>
           {/* Tab bar */}
           <div className="flex border-b border-gray-200 dark:border-white/10 flex-shrink-0 bg-white dark:bg-slate-900/40">
             {[{ id: 'positions', label: 'Positions' }, { id: 'placeOrder', label: 'Place Order' }].map(tab => (
@@ -1570,16 +1591,36 @@ export default function TerminalPage() {
           </div>
         </div>
 
-        {/* Always-visible right panel: open orders + FnO movers */}
-        <OrdersRightPanel
-          orders={panelOrders}
-          loading={panelOrdersLoading}
-          onRefresh={fetchPanelOrders}
-          open={ordersOpen}
-          setOpen={setOrdersOpen}
-          movers={movers}
-        />
+        {/* Orders right panel: always visible on md+, mobile-controlled */}
+        <div className={`${mobileTab !== 'orders' ? 'hidden md:block' : 'block'} flex-shrink-0`}>
+          <OrdersRightPanel
+            orders={panelOrders}
+            loading={panelOrdersLoading}
+            onRefresh={fetchPanelOrders}
+            open={ordersOpen}
+            setOpen={setOrdersOpen}
+            movers={movers}
+          />
+        </div>
       </div>
+
+      {/* Mobile bottom nav — hidden on md+ */}
+      <nav className="md:hidden flex-shrink-0 flex border-t border-gray-200 dark:border-white/10 bg-white dark:bg-slate-900">
+        {[
+          { id: 'watchlist', label: 'Watchlist', Icon: BarChart3 },
+          { id: 'trade',     label: 'Trade',     Icon: Target    },
+          { id: 'orders',    label: 'Orders',    Icon: Activity  },
+        ].map(({ id, label, Icon }) => (
+          <button key={id} onClick={() => setMobileTab(id)}
+            className={`flex-1 flex flex-col items-center py-2 gap-0.5 text-[10px] font-medium transition-colors ${
+              mobileTab === id ? 'text-blue-500' : 'text-gray-400 dark:text-white/30'
+            }`}
+          >
+            <Icon size={18} />
+            {label}
+          </button>
+        ))}
+      </nav>
     </div>
   );
 }
