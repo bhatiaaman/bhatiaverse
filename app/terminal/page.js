@@ -1168,7 +1168,7 @@ export default function TerminalPage() {
 
   // ── Kite connection
   useEffect(() => {
-    fetch('/api/kite-config').then(r => r.json()).then(d => setKiteConnected(d.configured || false)).catch(() => {});
+    fetch('/api/kite-config').then(r => r.json()).then(d => setKiteConnected(d.tokenValid || false)).catch(() => {});
   }, []);
 
   // ── Market indices

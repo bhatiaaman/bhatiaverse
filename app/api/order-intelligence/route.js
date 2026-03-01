@@ -351,7 +351,7 @@ export async function POST(req) {
     if (includeStructure) {
       const structureData = await collectStructureData(symbol, exchange, productType, base);
       if (structureData) {
-        structure = runStructureAgent({ order: agentData.order, structureData });
+        structure = runStructureAgent({ order: agentData.order, structureData, sector: agentData.sector });
       } else {
         // Token not found or Kite not authenticated — return empty result
         structure = { behaviors: [], checks: [], verdict: 'clear', riskScore: 0, unavailable: true };

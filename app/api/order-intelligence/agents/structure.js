@@ -2,9 +2,12 @@
 // Structure Agent — answers "Is this trade structurally valid?"
 // Checks price, momentum, volume, and market regime vs trade direction.
 //
-// MIS (intraday) → 8 checks
-// NRML / CNC (swing) → 8 + 4 = 12 checks
+// MIS (intraday) → 10 checks (8 base + NIFTY RS 5d + sector RS today)
+// NRML / CNC (swing) → 10 + 3 = 13 checks
 // ─────────────────────────────────────────────────────────────────────────────
+
+// Broad-market index symbols — RS vs NIFTY comparisons are meaningless for these
+const INDEX_SYMBOLS = new Set(['NIFTY', 'BANKNIFTY', 'FINNIFTY', 'MIDCPNIFTY', 'SENSEX']);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Direction helper (same as behavioral)
@@ -575,18 +578,23 @@ function checkDailyMomentum(data) {
   return null;
 }
 
-// CHECK 12: Relative strength vs NIFTY (swing only)
-// Compares 20-day performance of stock vs NIFTY index
+// CHECK 9+: Relative strength vs NIFTY (MIS = 5d lookback, swing = 20d lookback)
 function checkRelativeStrength(data) {
-  const { niftyDaily } = data.structureData ?? {};
-  const { cDay } = data.structureData ?? {};
+  const { niftyDaily, cDay } = data.structureData ?? {};
   if (!niftyDaily?.length || !cDay?.length) return null;
 
-  const tradeBias = getTradeBias(data.order.instrumentType, data.order.transactionType);
+  // Skip for broad-market index options (NIFTY vs NIFTY comparison is meaningless)
+  const sym = data.order.symbol?.toUpperCase();
+  if (INDEX_SYMBOLS.has(sym)) return null;
 
-  // 20-day RS: (stock return - nifty return) over last 20 sessions
-  const lookback = 20;
+  const isSwing   = ['NRML', 'CNC'].includes(data.order.productType?.toUpperCase());
+  const lookback  = isSwing ? 20 : 5;
+  const threshold = isSwing ? 5  : 3;
+  const label     = `${lookback}d`;
+
   if (niftyDaily.length < lookback + 1 || cDay.length < lookback + 1) return null;
+
+  const tradeBias = getTradeBias(data.order.instrumentType, data.order.transactionType);
 
   const niftyStart = niftyDaily[niftyDaily.length - lookback - 1].close;
   const niftyEnd   = niftyDaily[niftyDaily.length - 1].close;
@@ -598,23 +606,67 @@ function checkRelativeStrength(data) {
 
   const rsDiff = stockRet - niftyRet; // positive = outperforming
 
-  // Buying a weak stock (underperforming by >5% vs NIFTY)
-  if (tradeBias === 'BULLISH' && rsDiff < -5) {
+  if (tradeBias === 'BULLISH' && rsDiff < -threshold) {
     return {
       type: 'WEAK_RELATIVE_STRENGTH',
       severity: 'caution',
-      title: 'Stock underperforming NIFTY (20d)',
-      detail: `Stock returned ${stockRet.toFixed(1)}% vs NIFTY ${niftyRet.toFixed(1)}% over 20 days (RS: ${rsDiff.toFixed(1)}%). Consider stocks with positive RS for long trades.`,
+      title: `Underperforming NIFTY by ${Math.abs(rsDiff).toFixed(1)}% (${label})`,
+      detail: `Stock: ${stockRet.toFixed(1)}% vs NIFTY: ${niftyRet.toFixed(1)}% over ${lookback} days (RS: ${rsDiff.toFixed(1)}%). Buying relative underperformers carries higher reversal risk.`,
       riskScore: 8,
     };
   }
-  // Shorting a strong stock (outperforming by >5% vs NIFTY)
-  if (tradeBias === 'BEARISH' && rsDiff > 5) {
+  if (tradeBias === 'BEARISH' && rsDiff > threshold) {
     return {
       type: 'STRONG_RELATIVE_STRENGTH',
       severity: 'caution',
-      title: 'Stock outperforming NIFTY (20d)',
-      detail: `Stock returned ${stockRet.toFixed(1)}% vs NIFTY ${niftyRet.toFixed(1)}% over 20 days (RS: +${rsDiff.toFixed(1)}%). Shorting relative strength stocks carries higher risk.`,
+      title: `Outperforming NIFTY by ${rsDiff.toFixed(1)}% (${label})`,
+      detail: `Stock: ${stockRet.toFixed(1)}% vs NIFTY: ${niftyRet.toFixed(1)}% over ${lookback} days (RS: +${rsDiff.toFixed(1)}%). Shorting relative strength carries higher risk.`,
+      riskScore: 8,
+    };
+  }
+
+  return null;
+}
+
+// CHECK: Sector relative strength — today's stock move vs its sector index
+function checkSectorRS(data) {
+  const sector = data.sector;
+  if (!sector?.name || sector.change == null) return null;
+
+  const { cDay } = data.structureData ?? {};
+  if (!cDay || cDay.length < 2) return null;
+
+  // Skip for broad-market index options
+  const sym = data.order.symbol?.toUpperCase();
+  if (INDEX_SYMBOLS.has(sym)) return null;
+
+  // Stock's today % change from most recent two daily candles
+  const lastClose = cDay[cDay.length - 1].close;
+  const prevClose = cDay[cDay.length - 2].close;
+  if (!prevClose) return null;
+
+  const stockChange  = (lastClose - prevClose) / prevClose * 100;
+  const sectorChange = sector.change; // today's % change for sector index
+  const rsDiff       = stockChange - sectorChange; // positive = stock beating sector
+
+  const tradeBias = getTradeBias(data.order.instrumentType, data.order.transactionType);
+  const sign = (v) => (v >= 0 ? '+' : '') + v.toFixed(1) + '%';
+
+  if (tradeBias === 'BULLISH' && rsDiff < -2) {
+    return {
+      type: 'SECTOR_RS_WEAK',
+      severity: 'caution',
+      title: `Lagging ${sector.name} sector by ${Math.abs(rsDiff).toFixed(1)}% today`,
+      detail: `Stock: ${sign(stockChange)} vs ${sector.name}: ${sign(sectorChange)} today. Stock is underperforming its sector — sector tailwind isn't lifting this name.`,
+      riskScore: 8,
+    };
+  }
+  if (tradeBias === 'BEARISH' && rsDiff > 2) {
+    return {
+      type: 'SECTOR_RS_STRONG',
+      severity: 'caution',
+      title: `Outperforming ${sector.name} sector by ${rsDiff.toFixed(1)}% today`,
+      detail: `Stock: ${sign(stockChange)} vs ${sector.name}: ${sign(sectorChange)} today. Shorting a stock with relative sector strength carries higher squeeze risk.`,
       riskScore: 8,
     };
   }
@@ -626,21 +678,22 @@ function checkRelativeStrength(data) {
 // Registries — paired [fn, passLabel] so labels never rely on check.name lookup
 // ─────────────────────────────────────────────────────────────────────────────
 const INTRADAY_CHECKS = [
-  [checkEMAAlignment,  'EMA aligned on 15m'],
-  [checkVWAP,          'Price on correct side of VWAP'],
-  [checkADX,           'Trending market on 15m (ADX OK)'],
-  [checkRSI,           'RSI not extreme on 15m'],
-  [checkVolume,        'Volume confirms move'],
-  [checkOpeningRange,  'Price broke opening range'],
-  [checkHHHL,          'Daily structure supports trade'],
-  [checkMarketBreadth, 'Market breadth aligned'],
+  [checkEMAAlignment,   'EMA aligned on 15m'],
+  [checkVWAP,           'Price on correct side of VWAP'],
+  [checkADX,            'Trending market on 15m (ADX OK)'],
+  [checkRSI,            'RSI not extreme on 15m'],
+  [checkVolume,         'Volume confirms move'],
+  [checkOpeningRange,   'Price broke opening range'],
+  [checkHHHL,           'Daily structure supports trade'],
+  [checkMarketBreadth,  'Market breadth aligned'],
+  [checkRelativeStrength, 'Relative strength vs NIFTY OK'],
+  [checkSectorRS,       'Sector relative strength OK'],
 ];
 
 const SWING_EXTRA_CHECKS = [
-  [checkDailyEMA,          'Price aligned with daily EMAs'],
-  [checkWeeklyTrend,       'Weekly trend supports trade'],
-  [checkDailyMomentum,     'Daily momentum aligned'],
-  [checkRelativeStrength,  'Relative strength favourable'],
+  [checkDailyEMA,      'Price aligned with daily EMAs'],
+  [checkWeeklyTrend,   'Weekly trend supports trade'],
+  [checkDailyMomentum, 'Daily momentum aligned'],
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────
