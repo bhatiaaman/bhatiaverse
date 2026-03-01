@@ -30,6 +30,8 @@ const DEFAULT_WATCHLIST_2 = ['NIFTY', 'BANKNIFTY', 'TATAMOTORS', 'MARUTI', 'BAJF
 
 function isMarketHours() {
   const ist = new Date(Date.now() + 5.5 * 60 * 60 * 1000);
+  const day = ist.getUTCDay(); // 0 = Sun, 6 = Sat in IST
+  if (day === 0 || day === 6) return false;
   const total = ist.getUTCHours() * 60 + ist.getUTCMinutes();
   return total >= 555 && total <= 930;
 }

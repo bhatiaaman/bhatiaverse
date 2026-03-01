@@ -8,6 +8,12 @@ const NS          = process.env.REDIS_NAMESPACE || 'default';
 const CACHE_KEY   = `${NS}:fno-movers`;
 const CACHE_TTL   = 300; // 5 minutes
 
+function isWeekend() {
+  const ist = new Date(Date.now() + 5.5 * 60 * 60 * 1000);
+  const day = ist.getUTCDay(); // 0 = Sun, 6 = Sat in IST
+  return day === 0 || day === 6;
+}
+
 async function redisGet(key) {
   try {
     const res  = await fetch(`${REDIS_URL}/get/${key}`, { headers: { Authorization: `Bearer ${REDIS_TOKEN}` } });
@@ -42,6 +48,13 @@ const FNO_STOCKS = [
 export async function GET() {
   try {
     const cached = await redisGet(CACHE_KEY);
+
+    // Weekend: never hit Kite — serve cached Friday data or empty
+    if (isWeekend()) {
+      if (cached) return NextResponse.json({ ...cached, fromCache: true, weekend: true });
+      return NextResponse.json({ gainers: [], losers: [], weekend: true });
+    }
+
     if (cached) return NextResponse.json({ ...cached, fromCache: true });
 
     const { apiKey, accessToken } = await getKiteCredentials();
