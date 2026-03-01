@@ -19,25 +19,26 @@ function KiteSettingsContent() {
   const [hasApiSecretInEnv, setHasApiSecretInEnv] = useState(false);
   const [useEnvSecret, setUseEnvSecret] = useState(false);
 
-  // Load current config on mount
-  useEffect(() => {
-    fetchCurrentConfig();
-  }, []);
-
-  // Handle OAuth callback with request_token
+  // On mount: load config first, then handle OAuth callback if present.
+  // The OAuth modal must open AFTER config loads so hasApiSecretInEnv is already
+  // set — otherwise the "use env secret" checkbox is hidden for ~300ms and the
+  // user sees only the manual input box.
   useEffect(() => {
     const requestToken = searchParams.get('request_token');
-    const status = searchParams.get('status');
-    
+    const status       = searchParams.get('status');
+
     if (requestToken && status === 'success') {
-      // Store request token and show modal to enter API secret
-      setPendingRequestToken(requestToken);
-      setShowSecretModal(true);
-      setMessage({ type: 'info', text: 'Enter your API Secret to complete authentication' });
-      // Clear URL params
-      window.history.replaceState({}, '', '/settings/kite');
+      // OAuth redirect: wait for config, then show modal
+      fetchCurrentConfig().then(() => {
+        setPendingRequestToken(requestToken);
+        setShowSecretModal(true);
+        setMessage({ type: 'info', text: 'Enter your API Secret to complete authentication' });
+        window.history.replaceState({}, '', '/settings/kite');
+      });
+    } else {
+      fetchCurrentConfig();
     }
-  }, [searchParams]);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchCurrentConfig = async () => {
     try {
