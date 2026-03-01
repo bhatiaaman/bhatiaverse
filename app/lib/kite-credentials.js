@@ -1,8 +1,7 @@
-// Shared helper - copy to app/lib/kite-credentials.js
-// Reads Kite credentials directly from Redis + process.env
+// Shared helper — reads Kite credentials from Redis overrides + process.env
 // No internal HTTP calls, works on Vercel without NEXT_PUBLIC_BASE_URL
 
-const REDIS_URL = process.env.UPSTASH_REDIS_REST_URL;
+const REDIS_URL   = process.env.UPSTASH_REDIS_REST_URL;
 const REDIS_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
 
 // Namespace keys by environment so staging and prod don't clash in same Redis db
@@ -26,10 +25,22 @@ async function redisGet(k) {
   }
 }
 
+// Module-level cache — Vercel reuses warm instances across requests.
+// Credentials are valid for 30s before re-checking Redis.
+// Trade-off: a kite-config disconnect takes up to 30s to propagate.
+let _cred   = null;
+let _credTs = 0;
+const CRED_CACHE_TTL = 30_000; // 30 seconds
+
 export async function getKiteCredentials() {
-  const redisApiKey      = await redisGet(key('api_key'));
-  const redisAccessToken = await redisGet(key('access_token'));
-  const disconnected     = await redisGet(key('disconnected'));
+  if (_cred && Date.now() - _credTs < CRED_CACHE_TTL) return _cred;
+
+  // Fetch all 3 Redis keys in parallel instead of sequentially
+  const [redisApiKey, redisAccessToken, disconnected] = await Promise.all([
+    redisGet(key('api_key')),
+    redisGet(key('access_token')),
+    redisGet(key('disconnected')),
+  ]);
 
   const apiKey = redisApiKey || process.env.KITE_API_KEY || '';
 
@@ -37,5 +48,13 @@ export async function getKiteCredentials() {
     ? ''
     : (redisAccessToken || process.env.KITE_ACCESS_TOKEN || '');
 
-  return { apiKey, accessToken };
+  _cred   = { apiKey, accessToken };
+  _credTs = Date.now();
+  return _cred;
+}
+
+// Call this after kite-config changes so the next request re-fetches from Redis
+export function invalidateCredentialsCache() {
+  _cred   = null;
+  _credTs = 0;
 }
