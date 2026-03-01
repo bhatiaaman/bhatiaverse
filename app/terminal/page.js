@@ -500,7 +500,7 @@ function OrdersRightPanel({ orders, loading, onRefresh, open, setOpen, movers })
     <div className={`flex-shrink-0 border-l border-gray-200 dark:border-white/10 flex flex-col bg-gray-50 dark:bg-slate-900/40 transition-all duration-200 ${open ? 'w-screen md:w-[260px]' : 'w-screen md:w-9'}`}>
       {/* Toggle + header */}
       <div className={`flex items-center flex-shrink-0 border-b border-gray-200 dark:border-white/10 ${open ? 'px-3 py-2 justify-between' : 'justify-center py-2'}`}>
-        {open && <span className="text-[10px] font-semibold text-gray-500 dark:text-white/40 uppercase tracking-wider">Orders</span>}
+        {open && <span className="text-[10px] font-semibold text-gray-500 dark:text-white/40 uppercase tracking-wider">Open Orders</span>}
         {open && (
           <button onClick={onRefresh} className="p-1 hover:bg-gray-200 dark:hover:bg-white/10 rounded transition-colors">
             <RefreshCw size={11} className="text-gray-400" />
@@ -521,7 +521,7 @@ function OrdersRightPanel({ orders, loading, onRefresh, open, setOpen, movers })
           {loading ? (
             <div className="p-3 space-y-2">{[1,2,3,4].map(i => <div key={i} className="h-10 bg-black/5 dark:bg-white/5 rounded-lg animate-pulse" />)}</div>
           ) : orders.length === 0 ? (
-            <div className="flex items-center justify-center h-16 text-gray-400 text-xs">No orders today</div>
+            <div className="flex items-center justify-center h-16 text-gray-400 text-xs">No open orders</div>
           ) : (
             <div className="p-2 space-y-1.5">
               {orders.map(o => {
@@ -1267,7 +1267,10 @@ export default function TerminalPage() {
     try {
       const r = await fetch('/api/kite-orders?limit=50');
       const d = await r.json();
-      setPanelOrders(d.success ? (d.orders || []) : []);
+      const allOrders = d.success ? (d.orders || []) : [];
+      // Right panel shows only open/pending orders — completed/cancelled go to Positions tab
+      const openOrders = allOrders.filter(o => ['OPEN', 'TRIGGER PENDING'].includes(o.status?.toUpperCase()));
+      setPanelOrders(openOrders);
     } catch { setPanelOrders([]); }
     finally { setPanelOrdersLoading(false); }
   }, []);
