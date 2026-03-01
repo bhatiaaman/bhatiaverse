@@ -1252,14 +1252,14 @@ export default function TerminalPage() {
   // Load tab data on switch
   useEffect(() => {
     if (activeTab === 'positions') fetchPositions();
-  }, [activeTab]);
+  }, [activeTab, fetchPositions]);
 
   // Auto-refresh positions tab
   useEffect(() => {
     if (activeTab !== 'positions') return;
     const iv = setInterval(() => { if (isMarketHours() && isVisible) fetchPositions(); }, 15_000);
     return () => clearInterval(iv);
-  }, [activeTab, isVisible]);
+  }, [activeTab, isVisible, fetchPositions]);
 
   // Panel orders always refreshes (right sidebar is always visible)
   useEffect(() => {
@@ -1395,7 +1395,7 @@ export default function TerminalPage() {
   // Auto-run when strike loads
   useEffect(() => {
     if (optionStrike && symbol && spotPrice) fetchStrikeAnalysis();
-  }, [optionStrike]);
+  }, [optionStrike, fetchStrikeAnalysis]);
 
   // ── Intelligence helpers
   const buildIntelBody = useCallback((extras = {}) => ({

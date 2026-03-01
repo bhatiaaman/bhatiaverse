@@ -84,11 +84,6 @@ export async function POST(request) {
       }, { status: 400 });
     }
 
-    // Debug: Show which secret source was used
-    console.log('[Kite Token] Using secret from:', useEnvSecret ? 'ENV' : 'REQUEST');
-    console.log('[Kite Token] Secret length:', secretToUse?.length || 0);
-    console.log('[Kite Token] API Key:', apiKey?.substring(0, 4) + '***');
-
     // SHA256(api_key + request_token + api_secret)
     const checksum = crypto
       .createHash('sha256')
@@ -131,6 +126,6 @@ export async function POST(request) {
     }
   } catch (error) {
     console.error('Token exchange error:', error);
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    return NextResponse.json({ success: false, error: 'Internal server error' }, { status: 500 });
   }
 }

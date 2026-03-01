@@ -84,6 +84,6 @@ export async function GET() {
 
   } catch (error) {
     console.error('Error fetching positions:', error);
-    return NextResponse.json({ success: false, error: error.message, positions: [] }, { status: 500 });
+    return NextResponse.json({ success: false, error: 'Internal server error', positions: [] }, { status: 500 });
   }
 }

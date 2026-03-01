@@ -71,7 +71,7 @@ export async function GET() {
     });
   } catch (error) {
     console.error('kite-config GET error:', error);
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    return NextResponse.json({ success: false, error: 'Internal server error' }, { status: 500 });
   }
 }
 
@@ -105,6 +105,6 @@ export async function POST(request) {
     return NextResponse.json({ success: true, message: 'Config saved successfully' });
   } catch (error) {
     console.error('kite-config POST error:', error);
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    return NextResponse.json({ success: false, error: 'Internal server error' }, { status: 500 });
   }
 }

@@ -4,7 +4,7 @@ import { getKiteCredentials } from '@/app/lib/kite-credentials';
 export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url);
-    const limit = parseInt(searchParams.get('limit') || '50');
+    const limit = Math.min(Math.max(parseInt(searchParams.get('limit') || '50') || 50, 1), 200);
 
     const { apiKey, accessToken } = await getKiteCredentials();
     if (!apiKey || !accessToken) {
@@ -35,6 +35,6 @@ export async function GET(request) {
 
   } catch (error) {
     console.error('kite-orders error:', error);
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    return NextResponse.json({ success: false, error: 'Internal server error' }, { status: 500 });
   }
 }

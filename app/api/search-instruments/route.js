@@ -148,7 +148,7 @@ export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url);
     const query = searchParams.get('q')?.toUpperCase() || '';
-    const limit = parseInt(searchParams.get('limit') || '15');
+    const limit = Math.min(parseInt(searchParams.get('limit') || '15') || 15, 50);
 
     if (!query || query.length < 1) {
       return NextResponse.json({ success: true, instruments: [] });
@@ -187,6 +187,6 @@ export async function GET(request) {
 
   } catch (error) {
     console.error('Search instruments error:', error);
-    return NextResponse.json({ success: false, error: error.message, instruments: [] }, { status: 500 });
+    return NextResponse.json({ success: false, error: 'Internal server error', instruments: [] }, { status: 500 });
   }
 }
