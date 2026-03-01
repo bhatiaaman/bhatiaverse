@@ -134,7 +134,7 @@ async function fetchNiftyFromYahoo() {
   try {
     const response = await fetch(
       'https://query1.finance.yahoo.com/v8/finance/chart/%5ENSEI?interval=1d&range=1mo',
-      { headers: { 'User-Agent': 'Mozilla/5.0' } }
+      { headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(8000) }
     );
     if (!response.ok) throw new Error('Yahoo Nifty fetch failed');
     const data = await response.json();
@@ -157,7 +157,7 @@ async function fetchGIFTNifty() {
     try {
       const response = await fetch(
         `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d`,
-        { headers: { 'User-Agent': 'Mozilla/5.0' } }
+        { headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(8000) }
       );
       if (response.ok) {
         const data = await response.json();
@@ -172,9 +172,9 @@ async function fetchGIFTNifty() {
 async function fetchGlobalIndices() {
   try {
     const [dow, nasdaq, dax] = await Promise.all([
-      fetch('https://query1.finance.yahoo.com/v8/finance/chart/%5EDJI?interval=1d', { headers: { 'User-Agent': 'Mozilla/5.0' } }).then(r => r.json()),
-      fetch('https://query1.finance.yahoo.com/v8/finance/chart/%5EIXIC?interval=1d', { headers: { 'User-Agent': 'Mozilla/5.0' } }).then(r => r.json()),
-      fetch('https://query1.finance.yahoo.com/v8/finance/chart/%5EGDAXI?interval=1d', { headers: { 'User-Agent': 'Mozilla/5.0' } }).then(r => r.json()),
+      fetch('https://query1.finance.yahoo.com/v8/finance/chart/%5EDJI?interval=1d', { headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(8000) }).then(r => r.json()),
+      fetch('https://query1.finance.yahoo.com/v8/finance/chart/%5EIXIC?interval=1d', { headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(8000) }).then(r => r.json()),
+      fetch('https://query1.finance.yahoo.com/v8/finance/chart/%5EGDAXI?interval=1d', { headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(8000) }).then(r => r.json()),
     ]);
     function extract(meta) {
       const price = meta.regularMarketPrice;
@@ -212,7 +212,7 @@ async function fetchMCXInstruments() {
   }
   try {
     const response = await fetch('https://api.kite.trade/instruments', {
-      headers: { 'User-Agent': 'Mozilla/5.0' }
+      headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(8000),
     });
     const csvText = await response.text();
     const lines = csvText.split('\n');
@@ -289,8 +289,8 @@ async function fetchCommoditiesFromKite(apiKey, accessToken) {
 async function fetchCommoditiesFromYahoo() {
   try {
     const [crude, gold] = await Promise.all([
-      fetch('https://query1.finance.yahoo.com/v8/finance/chart/CL%3DF?interval=1d', { headers: { 'User-Agent': 'Mozilla/5.0' } }).then(r => r.json()),
-      fetch('https://query1.finance.yahoo.com/v8/finance/chart/GC%3DF?interval=1d', { headers: { 'User-Agent': 'Mozilla/5.0' } }).then(r => r.json()),
+      fetch('https://query1.finance.yahoo.com/v8/finance/chart/CL%3DF?interval=1d', { headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(8000) }).then(r => r.json()),
+      fetch('https://query1.finance.yahoo.com/v8/finance/chart/GC%3DF?interval=1d', { headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(8000) }).then(r => r.json()),
     ]);
     return {
       crude: { price: crude.chart.result[0].meta.regularMarketPrice, change: null, changePercent: null },
@@ -399,9 +399,9 @@ export async function GET() {
       // Yahoo fallback (only when Kite unavailable)
       const [yahooNifty, yahooSensex, yahooBankNifty, yahooVix] = await Promise.all([
         fetchNiftyFromYahoo(),
-        fetch('https://query1.finance.yahoo.com/v8/finance/chart/%5EBSESN?interval=1d', { headers: { 'User-Agent': 'Mozilla/5.0' } }).then(r => r.json()).then(d => d.chart.result[0].meta.regularMarketPrice).catch(() => null),
-        fetch('https://query1.finance.yahoo.com/v8/finance/chart/%5EBANKNIFTY?interval=1d', { headers: { 'User-Agent': 'Mozilla/5.0' } }).then(r => r.json()).then(d => d.chart.result[0].meta.regularMarketPrice).catch(() => null),
-        fetch('https://query1.finance.yahoo.com/v8/finance/chart/%5EINDIAVIX?interval=1d', { headers: { 'User-Agent': 'Mozilla/5.0' } }).then(r => r.json()).then(d => d.chart.result[0].meta.regularMarketPrice).catch(() => null),
+        fetch('https://query1.finance.yahoo.com/v8/finance/chart/%5EBSESN?interval=1d', { headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(8000) }).then(r => r.json()).then(d => d.chart.result[0].meta.regularMarketPrice).catch(() => null),
+        fetch('https://query1.finance.yahoo.com/v8/finance/chart/%5EBANKNIFTY?interval=1d', { headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(8000) }).then(r => r.json()).then(d => d.chart.result[0].meta.regularMarketPrice).catch(() => null),
+        fetch('https://query1.finance.yahoo.com/v8/finance/chart/%5EINDIAVIX?interval=1d', { headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(8000) }).then(r => r.json()).then(d => d.chart.result[0].meta.regularMarketPrice).catch(() => null),
       ]);
       niftyData = yahooNifty;
       sensex    = yahooSensex;

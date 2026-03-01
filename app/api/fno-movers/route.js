@@ -77,6 +77,6 @@ export async function GET() {
 
   } catch (error) {
     console.error('fno-movers error:', error.message);
-    return NextResponse.json({ error: error.message, gainers: [], losers: [] });
+    return NextResponse.json({ error: 'Internal server error', gainers: [], losers: [] });
   }
 }

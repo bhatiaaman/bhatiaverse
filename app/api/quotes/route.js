@@ -41,12 +41,16 @@ export async function GET(request) {
       return NextResponse.json({ quotes: [], error: 'symbols param required' });
     }
 
-    const symbols = [...new Set(symbolsParam.split(',').map(s => s.trim().toUpperCase()).filter(Boolean))].slice(0, 50);
+    const symbols = [...new Set(
+      symbolsParam.split(',')
+        .map(s => s.trim().toUpperCase().replace(/[^A-Z0-9]/g, ''))
+        .filter(Boolean)
+    )].slice(0, 50);
     if (symbols.length === 0) {
       return NextResponse.json({ quotes: [] });
     }
 
-    const cacheKey = `${NS}:quotes:${symbols.slice().sort().join(',')}`;
+    const cacheKey = `${NS}:quotes:${symbols.slice().sort().join('-')}`;
     const cached = await redisGet(cacheKey);
     if (cached) return NextResponse.json({ ...cached, fromCache: true });
 
@@ -78,6 +82,6 @@ export async function GET(request) {
     return NextResponse.json(payload);
   } catch (err) {
     console.error('Quotes error:', err);
-    return NextResponse.json({ quotes: [], error: err.message });
+    return NextResponse.json({ quotes: [], error: 'Internal server error' });
   }
 }

@@ -1,6 +1,12 @@
 import { NextResponse } from 'next/server';
 import { getKiteCredentials } from '@/app/lib/kite-credentials';
 
+const REDIS_URL    = process.env.UPSTASH_REDIS_REST_URL;
+const REDIS_TOKEN  = process.env.UPSTASH_REDIS_REST_TOKEN;
+const NS           = process.env.REDIS_NAMESPACE || 'default';
+const LOT_SIZE_KEY = `${NS}:lot-size-map`;
+const LOT_SIZE_TTL = 86400; // 24 hours
+
 const INDEX_INSTRUMENTS = {
   'NIFTY':      'NSE:NIFTY 50',
   'BANKNIFTY':  'NSE:NIFTY BANK',
@@ -10,7 +16,6 @@ const INDEX_INSTRUMENTS = {
   'BANKEX':     'BSE:BANKEX',
 };
 
-// Hardcoded fallback lot sizes
 const FALLBACK_LOT_SIZES = {
   NIFTY: 65, BANKNIFTY: 30, FINNIFTY: 40, MIDCPNIFTY: 120,
   SENSEX: 10, BANKEX: 15, RELIANCE: 250, TCS: 150, INFY: 300,
@@ -18,35 +23,27 @@ const FALLBACK_LOT_SIZES = {
   BHARTIARTL: 500, COFORGE: 375, LT: 175, HAVELLS: 500,
 };
 
-// Cache lot sizes for 24 hours
-let lotSizeCache = null;
-let lotSizeCacheTime = null;
-const CACHE_DURATION = 24 * 60 * 60 * 1000;
-
-function parseCSVLine(line) {
-  const result = [];
-  let current = '';
-  let inQuotes = false;
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i];
-    if (ch === '"') {
-      inQuotes = !inQuotes;
-    } else if (ch === ',' && !inQuotes) {
-      result.push(current.trim());
-      current = '';
-    } else {
-      current += ch;
-    }
-  }
-  result.push(current.trim());
-  return result;
+async function redisGet(key) {
+  try {
+    const res  = await fetch(`${REDIS_URL}/get/${key}`, { headers: { Authorization: `Bearer ${REDIS_TOKEN}` } });
+    const data = await res.json();
+    return data.result ? JSON.parse(data.result) : null;
+  } catch { return null; }
 }
 
+async function redisSet(key, value, exSeconds) {
+  try {
+    const encoded = encodeURIComponent(JSON.stringify(value));
+    await fetch(`${REDIS_URL}/set/${key}/${encoded}?ex=${exSeconds}`, {
+      headers: { Authorization: `Bearer ${REDIS_TOKEN}` },
+    });
+  } catch { /* silent */ }
+}
+
+// Shared Redis key with lot-size/route.js — if either route has already warmed the cache, both benefit
 async function getLotSizeMap(apiKey, accessToken) {
-  const now = Date.now();
-  if (lotSizeCache && lotSizeCacheTime && (now - lotSizeCacheTime) < CACHE_DURATION) {
-    return lotSizeCache;
-  }
+  const cached = await redisGet(LOT_SIZE_KEY);
+  if (cached) return cached;
 
   try {
     const nfoRes = await fetch('https://api.kite.trade/instruments/NFO', {
@@ -54,33 +51,25 @@ async function getLotSizeMap(apiKey, accessToken) {
     });
     if (!nfoRes.ok) return FALLBACK_LOT_SIZES;
 
-    const nfoCsv  = await nfoRes.text();
-    const lines   = nfoCsv.trim().split('\n');
-    const headers = parseCSVLine(lines[0]);
+    const lines   = (await nfoRes.text()).trim().split('\n');
+    const headers = lines[0].split(',');
     const nameIdx = headers.indexOf('name');
     const typeIdx = headers.indexOf('instrument_type');
     const lotIdx  = headers.indexOf('lot_size');
 
-    const nfoMap = {};
+    const map = { ...FALLBACK_LOT_SIZES };
     for (let i = 1; i < lines.length; i++) {
-      const cols = parseCSVLine(lines[i]);
+      const cols = lines[i].split(',');
       if (cols[typeIdx] === 'FUT') {
-        const name = cols[nameIdx]?.trim();
+        const name = cols[nameIdx]?.replace(/"/g, '').trim();
         const lot  = parseInt(cols[lotIdx]) || 0;
-        // Only store first occurrence (nearest expiry = current lot size)
-        if (name && lot > 0 && !nfoMap[name]) {
-          nfoMap[name] = lot;
-        }
+        if (name && lot > 0 && !map[name]) map[name] = lot;
       }
     }
-    // NFO data wins over hardcoded fallback
-    const map = { ...FALLBACK_LOT_SIZES, ...nfoMap };
 
-    lotSizeCache     = map;
-    lotSizeCacheTime = now;
+    await redisSet(LOT_SIZE_KEY, map, LOT_SIZE_TTL);
     return map;
-  } catch (err) {
-    console.error('getLotSizeMap error:', err);
+  } catch {
     return FALLBACK_LOT_SIZES;
   }
 }
@@ -137,6 +126,6 @@ export async function GET(request) {
 
   } catch (error) {
     console.error('LTP route error:', error);
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    return NextResponse.json({ success: false, error: 'Internal server error' }, { status: 500 });
   }
 }

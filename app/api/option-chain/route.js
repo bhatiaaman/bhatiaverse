@@ -195,7 +195,7 @@ export async function GET(request) {
   const expiryType = searchParams.get('expiry') || 'weekly';
 
   const config = UNDERLYING_CONFIG[underlying];
-  if (!config) return NextResponse.json({ error: 'Invalid underlying' });
+  if (!config) return NextResponse.json({ error: 'Invalid underlying' }, { status: 400 });
 
   const cacheKey      = `${NS}:option-chain-${underlying}-${expiryType}`;
   const historyKey    = `${NS}:option-history-${underlying}-${expiryType}`;
@@ -243,11 +243,10 @@ export async function GET(request) {
 
     const quoteSymbols = relevantOptions.map(o => `NFO:${o.tradingsymbol}`);
     const allQuotes = {};
-    for (let i = 0; i < quoteSymbols.length; i += 500) {
-      const batch = quoteSymbols.slice(i, i + 500);
-      const quotes = await kite.getQuote(batch);
-      Object.assign(allQuotes, quotes);
-    }
+    const batches = [];
+    for (let i = 0; i < quoteSymbols.length; i += 500) batches.push(quoteSymbols.slice(i, i + 500));
+    const batchResults = await Promise.all(batches.map(batch => kite.getQuote(batch)));
+    batchResults.forEach(quotes => Object.assign(allQuotes, quotes));
 
     const optionData = [];
     let totalCallOI = 0;
@@ -359,11 +358,12 @@ export async function GET(request) {
       timestamp: new Date().toISOString(),
     };
 
-    await redisSet(cacheKey, response, CACHE_TTL);
+    const cacheTTL = isMarketHours() ? CACHE_TTL : 3600;
+    await redisSet(cacheKey, response, cacheTTL);
     return NextResponse.json(response);
 
   } catch (error) {
     console.error('Error fetching option chain:', error.message);
-    return NextResponse.json({ error: error.message, underlying, expiryType, pcr: null, maxPain: null, support: null, resistance: null });
+    return NextResponse.json({ error: 'Internal server error', underlying, expiryType, pcr: null, maxPain: null, support: null, resistance: null }, { status: 500 });
   }
 }

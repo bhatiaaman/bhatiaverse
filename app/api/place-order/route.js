@@ -1,8 +1,14 @@
 import { NextResponse } from 'next/server';
 import { KiteConnect } from 'kiteconnect';
 import { getKiteCredentials } from '@/app/lib/kite-credentials';
+import { orderLimiter, checkLimit } from '@/app/lib/rate-limit';
 
 export async function POST(request) {
+  const rl = await checkLimit(orderLimiter, request);
+  if (rl.limited) {
+    return NextResponse.json({ error: 'Too many requests' }, { status: 429 });
+  }
+
   const { apiKey, accessToken } = await getKiteCredentials();
 
   if (!apiKey || !accessToken) {
@@ -42,11 +48,16 @@ export async function POST(request) {
     const kite = new KiteConnect({ api_key: apiKey });
     kite.setAccessToken(accessToken);
 
+    const parsedQty = parseInt(quantity, 10);
+    if (isNaN(parsedQty) || parsedQty <= 0) {
+      return NextResponse.json({ error: 'Invalid quantity' }, { status: 400 });
+    }
+
     const orderParams = {
       tradingsymbol: tradingsymbol.toUpperCase(),
       exchange: exchange.toUpperCase(),
       transaction_type: transaction_type.toUpperCase(),
-      quantity: parseInt(quantity),
+      quantity: parsedQty,
       product: product.toUpperCase(),
       order_type: order_type.toUpperCase(),
       validity,
@@ -70,23 +81,16 @@ export async function POST(request) {
           return NextResponse.json({ error: 'For SL/SL-M SELL orders, price must be equal to or lower than trigger price.' }, { status: 400 });
         }
       }
-      // Debug log
-      console.log('DEBUG SL/SL-M:', {
-        price, trigger_price, priceNum, triggerNum,
-        priceType: typeof price, triggerType: typeof trigger_price,
-        orderParams
-      });
     }
     if (disclosed_quantity > 0) {
-      orderParams.disclosed_quantity = parseInt(disclosed_quantity);
+      const parsedDQ = parseInt(disclosed_quantity, 10);
+      if (!isNaN(parsedDQ) && parsedDQ > 0) orderParams.disclosed_quantity = parsedDQ;
     }
     if (tag) {
-      orderParams.tag = tag.substring(0, 20);
+      orderParams.tag = tag.replace(/[^a-zA-Z0-9 \-_.]/g, '').slice(0, 20);
     }
 
-    console.log('Placing order:', orderParams);
     const orderResponse = await kite.placeOrder(variety, orderParams);
-    console.log('Order placed successfully:', orderResponse);
 
     return NextResponse.json({
       success: true,
@@ -112,10 +116,7 @@ export async function POST(request) {
       statusCode = 400;
     }
 
-    return NextResponse.json(
-      { error: errorMessage, details: error.message },
-      { status: statusCode }
-    );
+    return NextResponse.json({ error: errorMessage }, { status: statusCode });
   }
 }
 
@@ -146,9 +147,6 @@ export async function GET(request) {
 
   } catch (error) {
     console.error('Error fetching order data:', error);
-    return NextResponse.json(
-      { error: error.message || 'Failed to fetch data' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

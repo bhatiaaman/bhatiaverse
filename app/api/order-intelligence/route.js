@@ -7,6 +7,28 @@ import { runStationAgent } from './agents/station.js';
 import { runOIAgent } from './agents/oi.js';
 import { resolveToken } from './lib/resolve-token.js';
 import { getKiteCredentials } from '@/app/lib/kite-credentials';
+import { intelligenceLimiter, checkLimit } from '@/app/lib/rate-limit';
+
+const REDIS_URL   = process.env.UPSTASH_REDIS_REST_URL;
+const REDIS_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
+const NS          = process.env.REDIS_NAMESPACE || 'default';
+
+async function redisGet(key) {
+  try {
+    const res  = await fetch(`${REDIS_URL}/get/${key}`, { headers: { Authorization: `Bearer ${REDIS_TOKEN}` } });
+    const data = await res.json();
+    return data.result ? JSON.parse(data.result) : null;
+  } catch { return null; }
+}
+
+async function redisSet(key, value, exSeconds) {
+  try {
+    const encoded = encodeURIComponent(JSON.stringify(value));
+    await fetch(`${REDIS_URL}/set/${key}/${encoded}?ex=${exSeconds}`, {
+      headers: { Authorization: `Bearer ${REDIS_TOKEN}` },
+    });
+  } catch { /* silent */ }
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -139,6 +161,10 @@ async function collectData(symbol, exchange, base) {
 // days: how many calendar days back to fetch
 // ─────────────────────────────────────────────────────────────────────────────
 async function fetchKiteCandles(token, interval, days, apiKey, accessToken) {
+  const cacheKey = `${NS}:candles:${token}:${interval}:${days}`;
+  const cached   = await redisGet(cacheKey);
+  if (cached) return cached;
+
   try {
     const toDate   = new Date();
     const fromDate = new Date();
@@ -166,10 +192,12 @@ async function fetchKiteCandles(token, interval, days, apiKey, accessToken) {
     if (!Array.isArray(raw)) return null;
 
     // Kite format: [timestamp_str, open, high, low, close, volume]
-    return raw.map(c => ({
+    const candles = raw.map(c => ({
       time:   new Date(c[0]).getTime() / 1000,
       open:   c[1], high: c[2], low: c[3], close: c[4], volume: c[5],
     }));
+    await redisSet(cacheKey, candles, 300); // 5-min TTL
+    return candles;
   } catch {
     return null;
   }
@@ -318,6 +346,14 @@ async function collectOIData(symbol, base) {
 //         productType?, includeStructure?, includePattern?, includeStation?, includeOI? }
 // ─────────────────────────────────────────────────────────────────────────────
 export async function POST(req) {
+  const rl = await checkLimit(intelligenceLimiter, req);
+  if (rl.limited) {
+    return NextResponse.json(
+      { error: 'Too many requests. Please wait before trying again.' },
+      { status: 429, headers: { 'Retry-After': String(rl.retryAfter) } }
+    );
+  }
+
   try {
     const body = await req.json();
     const {
@@ -407,6 +443,6 @@ export async function POST(req) {
 
   } catch (error) {
     console.error('Order intelligence error:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
