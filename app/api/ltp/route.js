@@ -4,7 +4,7 @@ import { getKiteCredentials } from '@/app/lib/kite-credentials';
 const REDIS_URL    = process.env.UPSTASH_REDIS_REST_URL;
 const REDIS_TOKEN  = process.env.UPSTASH_REDIS_REST_TOKEN;
 const NS           = process.env.REDIS_NAMESPACE || 'default';
-const LOT_SIZE_KEY = `${NS}:lot-size-map`;
+const LOT_SIZE_KEY = `${NS}:lot-size-map-v2`;
 const LOT_SIZE_TTL = 86400; // 24 hours
 
 const INDEX_INSTRUMENTS = {
@@ -57,7 +57,7 @@ async function getLotSizeMap(apiKey, accessToken) {
     const typeIdx = headers.indexOf('instrument_type');
     const lotIdx  = headers.indexOf('lot_size');
 
-    const map = { ...FALLBACK_LOT_SIZES };
+    const map = {};
     for (let i = 1; i < lines.length; i++) {
       const cols = lines[i].split(',');
       if (cols[typeIdx] === 'FUT') {
@@ -65,6 +65,10 @@ async function getLotSizeMap(apiKey, accessToken) {
         const lot  = parseInt(cols[lotIdx]) || 0;
         if (name && lot > 0 && !map[name]) map[name] = lot;
       }
+    }
+    // Merge fallbacks for symbols not found in NFO (indices, less-liquid stocks)
+    for (const [sym, ls] of Object.entries(FALLBACK_LOT_SIZES)) {
+      if (!map[sym]) map[sym] = ls;
     }
 
     await redisSet(LOT_SIZE_KEY, map, LOT_SIZE_TTL);

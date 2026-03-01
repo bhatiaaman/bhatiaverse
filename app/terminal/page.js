@@ -742,7 +742,9 @@ function PlaceOrderTab({
     const p  = (instrumentType === 'EQ' || instrumentType === 'FUT') ? spotPrice : optionLtp;
     const ep = orderType === 'MARKET' ? p : (parseFloat(price) || p);
     if (!ep || !quantity) return null;
-    return (ep * parseInt(quantity)).toLocaleString('en-IN', { maximumFractionDigits: 0 });
+    const notional = ep * parseInt(quantity);
+    const margin   = (productType === 'MIS' && instrumentType === 'EQ') ? notional / 5 : notional;
+    return margin.toLocaleString('en-IN', { maximumFractionDigits: 0 });
   };
 
   const verdict  = intel.result?.behavioral?.verdict;
@@ -925,7 +927,7 @@ function PlaceOrderTab({
         {/* Quantity */}
         <div>
           <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1 block">
-            Quantity {lotSize > 1 && <span className="text-gray-300 dark:text-white/25 normal-case font-normal">(lot {lotSize})</span>}
+            Quantity {instrumentType !== 'EQ' && lotSize > 1 && <span className="text-gray-300 dark:text-white/25 normal-case font-normal">(lot {lotSize})</span>}
           </label>
           <input type="number" value={quantity} onChange={e => setQuantity(e.target.value)} min="1"
             className="w-full bg-gray-100 dark:bg-slate-800 border border-gray-200 dark:border-white/10 rounded-xl px-3 py-2 text-sm text-gray-900 dark:text-white outline-none focus:border-blue-500/60 transition-colors" />
@@ -949,7 +951,7 @@ function PlaceOrderTab({
           </div>
         )}
 
-        {getEstimatedValue() && <p className="text-xs text-gray-400">Est. ₹{getEstimatedValue()}</p>}
+        {getEstimatedValue() && <p className="text-xs text-gray-400">Est. ₹{getEstimatedValue()}{productType === 'MIS' && instrumentType === 'EQ' && <span className="text-gray-500"> margin (5×)</span>}</p>}
 
         {/* Warning acknowledge */}
         {verdict === 'warning' && !acknowledged && (
