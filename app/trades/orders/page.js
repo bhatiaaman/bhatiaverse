@@ -2,11 +2,12 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import {
   ArrowLeft, Search, TrendingUp, TrendingDown, RefreshCw,
   CheckCircle, XCircle, Clock, AlertCircle, LogIn, Loader2,
   ShoppingCart, History, Brain, AlertTriangle, ShieldCheck,
-  ShieldAlert, ShieldX, X,
+  ShieldAlert, ShieldX, X, ExternalLink,
 } from 'lucide-react';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -406,6 +407,10 @@ export default function OrdersPage() {
                 </div>
                 <p className="text-slate-500 text-xs">Place trades on Kite Connect</p>
               </div>
+              <Link href="/terminal"
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/30 rounded-xl text-blue-400 hover:text-blue-300 text-xs font-medium transition-colors">
+                Terminal <ExternalLink size={11} />
+              </Link>
             </div>
             {auth.loggedIn ? (
               <div className="flex items-center gap-2 px-3 py-1.5 bg-green-500/20 rounded-xl border border-green-500/30">
