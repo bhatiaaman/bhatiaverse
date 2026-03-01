@@ -737,6 +737,7 @@ function PlaceOrderTab({
   const isNFO   = instrumentType === 'CE' || instrumentType === 'PE' || instrumentType === 'FUT';
   const isIndex = INDEX_SYMBOLS.includes(symbol);
   const isOICapable = OI_SYMBOLS.includes(symbol);
+  const isFnO   = isIndex || lotSize > 1; // non-FnO EQ stocks return lotSize=1 from NFO API
 
   const getEstimatedValue = () => {
     const p  = (instrumentType === 'EQ' || instrumentType === 'FUT') ? spotPrice : optionLtp;
@@ -818,16 +819,28 @@ function PlaceOrderTab({
               className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-200 text-xs font-medium px-1.5 py-0.5 hover:bg-blue-500/20 rounded transition-colors flex items-center gap-0.5"
               title="Equity chart"
             >EQ <ExternalLink size={10} /></button>
-            <button
-              onClick={() => { if (instrumentType === 'CE' && optionTvSymbol) window.open(`https://www.tradingview.com/chart/?symbol=${encodeURIComponent(optionTvSymbol)}&interval=15`, '_blank'); else setInstrumentType('CE'); }}
-              className={`text-xs font-medium px-1.5 py-0.5 rounded transition-colors flex items-center gap-0.5 ${instrumentType === 'CE' && optionTvSymbol ? 'text-green-600 dark:text-green-400 hover:bg-green-500/20' : 'text-gray-400 dark:text-white/30 hover:text-green-600 dark:hover:text-green-400'}`}
-              title={instrumentType === 'CE' && optionTvSymbol ? 'CE option chart' : 'Switch to CE first'}
-            >CE <ExternalLink size={10} /></button>
-            <button
-              onClick={() => { if (instrumentType === 'PE' && optionTvSymbol) window.open(`https://www.tradingview.com/chart/?symbol=${encodeURIComponent(optionTvSymbol)}&interval=15`, '_blank'); else setInstrumentType('PE'); }}
-              className={`text-xs font-medium px-1.5 py-0.5 rounded transition-colors flex items-center gap-0.5 ${instrumentType === 'PE' && optionTvSymbol ? 'text-red-600 dark:text-red-400 hover:bg-red-500/20' : 'text-gray-400 dark:text-white/30 hover:text-red-600 dark:hover:text-red-400'}`}
-              title={instrumentType === 'PE' && optionTvSymbol ? 'PE option chart' : 'Switch to PE first'}
-            >PE <ExternalLink size={10} /></button>
+            {isFnO && (<>
+              <button
+                onClick={() => { if (instrumentType === 'CE' && optionTvSymbol) window.open(`https://www.tradingview.com/chart/?symbol=${encodeURIComponent(optionTvSymbol)}&interval=15`, '_blank'); else setInstrumentType('CE'); }}
+                className={`text-xs font-medium px-1.5 py-0.5 rounded transition-colors flex items-center gap-0.5 ${instrumentType === 'CE' && optionTvSymbol ? 'text-green-600 dark:text-green-400 hover:bg-green-500/20' : 'text-gray-400 dark:text-white/30 hover:text-green-600 dark:hover:text-green-400'}`}
+                title={instrumentType === 'CE' && optionTvSymbol ? 'CE option chart' : 'Switch to CE first'}
+              >CE <ExternalLink size={10} /></button>
+              <button
+                onClick={() => { if (instrumentType === 'PE' && optionTvSymbol) window.open(`https://www.tradingview.com/chart/?symbol=${encodeURIComponent(optionTvSymbol)}&interval=15`, '_blank'); else setInstrumentType('PE'); }}
+                className={`text-xs font-medium px-1.5 py-0.5 rounded transition-colors flex items-center gap-0.5 ${instrumentType === 'PE' && optionTvSymbol ? 'text-red-600 dark:text-red-400 hover:bg-red-500/20' : 'text-gray-400 dark:text-white/30 hover:text-red-600 dark:hover:text-red-400'}`}
+                title={instrumentType === 'PE' && optionTvSymbol ? 'PE option chart' : 'Switch to PE first'}
+              >PE <ExternalLink size={10} /></button>
+            </>)}
+          </div>
+        )}
+
+        {/* Spot price */}
+        {symbol && spotPrice && (
+          <div className="flex items-center justify-between bg-gray-50 dark:bg-slate-800/40 rounded-xl px-3 py-2 border border-gray-200 dark:border-white/10">
+            <span className="text-xs text-gray-400">Spot LTP</span>
+            <span className="text-sm font-mono font-semibold text-gray-900 dark:text-white">
+              ₹{parseFloat(spotPrice).toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+            </span>
           </div>
         )}
 
@@ -835,17 +848,24 @@ function PlaceOrderTab({
         <div>
           <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1 block">Type</label>
           <div className="grid grid-cols-4 gap-1.5">
-            {['EQ', 'CE', 'PE', 'FUT'].map(t => (
-              <button key={t} onClick={() => setInstrumentType(t)}
-                className={`py-1.5 rounded-lg text-xs font-semibold transition-colors ${
-                  instrumentType === t
-                    ? t === 'CE' ? 'bg-green-600 text-white'
-                      : t === 'PE' ? 'bg-red-600 text-white'
-                      : 'bg-blue-600 text-white'
-                    : 'bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10 text-gray-500 dark:text-white/50 hover:text-gray-800 dark:hover:text-white/80'
-                }`}
-              >{t}</button>
-            ))}
+            {['EQ', 'CE', 'PE', 'FUT'].map(t => {
+              const disabled = !isFnO && t !== 'EQ';
+              return (
+                <button key={t} onClick={() => !disabled && setInstrumentType(t)}
+                  disabled={disabled}
+                  title={disabled ? 'Not available for non-FnO stocks' : undefined}
+                  className={`py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                    disabled
+                      ? 'bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10 text-gray-300 dark:text-white/20 cursor-not-allowed'
+                      : instrumentType === t
+                        ? t === 'CE' ? 'bg-green-600 text-white'
+                          : t === 'PE' ? 'bg-red-600 text-white'
+                          : 'bg-blue-600 text-white'
+                        : 'bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10 text-gray-500 dark:text-white/50 hover:text-gray-800 dark:hover:text-white/80'
+                  }`}
+                >{t}</button>
+              );
+            })}
           </div>
         </div>
 
