@@ -98,13 +98,16 @@ export default function PreMarketPage() {
     return () => clearInterval(interval);
   }, []);
 
-  // Re-check AI window every 30s; auto-fallback to template when window closes
+  // Re-check AI window on mount + every 30s.
+  // Run immediately on mount so that cached/SSR HTML (which may have been
+  // generated outside the 8:00–9:15 window) doesn't leave the button disabled.
   useEffect(() => {
     const check = () => {
       const open = isPreMarketAIWindow();
       setAiWindowOpen(open);
       if (!open) setPlanMode(prev => prev === 'ai' ? 'template' : prev);
     };
+    check(); // correct any stale SSR-cached state right after hydration
     const interval = setInterval(check, 30000);
     return () => clearInterval(interval);
   }, []);

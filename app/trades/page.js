@@ -6,6 +6,78 @@
   import { useTheme } from '../../lib/theme-context';
   import { usePageVisibility } from '@/app/hooks/usePageVisibility';
 
+  // ── Bias history + reversal signals → human-readable narrative ───────────
+  // history is newest-first: [current, previous, older, ...]
+  // reversal is the detectReversalZone() result already in commentary.reversal
+  function getBiasNarrative(history, reversal) {
+    if (!history?.length) return null;
+
+    const biasLabel = b =>
+      b === 'BULLISH' ? 'Bullish' : b === 'BEARISH' ? 'Bearish' : 'Neutral';
+
+    // ── Build reversal signal suffix from candlestick/RSI/OI/volume signals ──
+    let reversalSuffix = '';
+    if (reversal?.reversalZone) {
+      const signalLabels = {
+        rsi_reversal:   'RSI',
+        volume_reversal:'volume spike',
+        price_extreme:  'at extremes',
+        oi_divergence:  'OI divergence',
+        key_level_test: 'key level',
+      };
+      const signals = (reversal.signals || [])
+        .map(s => signalLabels[s.type] || s.type)
+        .filter(Boolean)
+        .join(', ');
+      const dir  = biasLabel(reversal.direction);
+      const conf = reversal.confidence;
+      if (conf === 'HIGH') {
+        reversalSuffix = ` | ⚡ ${dir} reversal zone${signals ? ` — ${signals}` : ''}`;
+      } else if (conf === 'MEDIUM') {
+        reversalSuffix = ` | ⚠️ ${dir} reversal setup${signals ? ` — ${signals}` : ''}`;
+      }
+    }
+
+    const [c, prev, older] = history; // c = current (newest)
+
+    // ── 3+ entries: detect reversal accepted vs rejected ──────────────────
+    if (prev && older) {
+      const throughNeutral = prev.bias === 'NEUTRAL';
+      if (throughNeutral && older.bias !== 'NEUTRAL') {
+        if (c.bias === older.bias) {
+          const side = c.bias === 'BULLISH' ? 'bulls held' : 'bears held';
+          return `${older.time} ${biasLabel(older.bias)} → ${prev.time} Neutral → ${c.time} ${biasLabel(c.bias)} — reversal rejected, ${side}${reversalSuffix}`;
+        }
+        if (c.bias !== 'NEUTRAL') {
+          return `${older.time} ${biasLabel(older.bias)} → ${prev.time} Neutral → ${c.time} ${biasLabel(c.bias)} — reversal confirmed${reversalSuffix}`;
+        }
+      }
+    }
+
+    // ── 2 entries: describe the transition ────────────────────────────────
+    if (prev) {
+      if (c.bias === prev.bias) {
+        return `${biasLabel(c.bias)} holding since ${prev.time}${reversalSuffix}`;
+      }
+      const from = prev.bias;
+      const to   = c.bias;
+      const notes = {
+        'BEARISH→BULLISH': 'reversal — bears capitulating',
+        'BULLISH→BEARISH': 'reversal — bulls fading',
+        'BEARISH→NEUTRAL': 'bearish pressure easing, reversal setup building',
+        'BULLISH→NEUTRAL': 'bullish momentum fading, reversal setup building',
+        'NEUTRAL→BEARISH': 'bias turning bearish',
+        'NEUTRAL→BULLISH': 'bias turning bullish',
+      };
+      const note = notes[`${from}→${to}`] || '';
+      return `${prev.time} ${biasLabel(from)} → ${c.time} ${biasLabel(to)}${note ? ' — ' + note : ''}${reversalSuffix}`;
+    }
+
+    // ── Single entry ──────────────────────────────────────────────────────
+    const stateNote = c.state && c.state !== 'LOADING' ? ` (${c.state})` : '';
+    return `${biasLabel(c.bias)} since ${c.time}${stateNote}${reversalSuffix}`;
+  }
+
   export default function TradesPage() {
     const { isDark, toggleTheme } = useTheme();
     const [marketData, setMarketData] = useState(null);
@@ -494,6 +566,40 @@
                     <span className="text-cyan-300 text-sm font-medium">
                       {commentary.action}
                     </span>
+                  </div>
+
+                  {/* Breadth + Bias trail row */}
+                  <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 text-xs">
+                    {/* Advance / Decline */}
+                    {commentary.advances !== undefined && (
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-slate-400">Breadth:</span>
+                        <span className="font-mono font-semibold text-green-400">{commentary.advances}↑</span>
+                        <span className="font-mono font-semibold text-red-400">{commentary.declines}↓</span>
+                        {commentary.declines > 0 && (
+                          <span className="text-slate-500">({(commentary.advances / commentary.declines).toFixed(1)}:1)</span>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Intraday bias narrative */}
+                    {commentary.biasHistory?.length > 0 && (() => {
+                      const narrative = getBiasNarrative(commentary.biasHistory, commentary.reversal);
+                      const current = commentary.biasHistory[0];
+                      // If in a high-confidence reversal zone, tint toward the reversal direction
+                      const revDir = commentary.reversal?.reversalZone && commentary.reversal?.confidence === 'HIGH'
+                        ? commentary.reversal.direction : null;
+                      const effectiveBias = revDir || current?.bias;
+                      const color = effectiveBias === 'BULLISH' ? 'text-green-300'
+                                  : effectiveBias === 'BEARISH' ? 'text-red-300'
+                                  : 'text-yellow-300';
+                      return narrative ? (
+                        <div className="flex items-baseline gap-1.5 flex-wrap">
+                          <span className="text-slate-400 flex-shrink-0">Intraday bias:</span>
+                          <span className={`font-medium ${color}`}>{narrative}</span>
+                        </div>
+                      ) : null;
+                    })()}
                   </div>
                 </div>
               )}

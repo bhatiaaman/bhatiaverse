@@ -289,13 +289,19 @@ function TopBar({ indices, kiteConnected }) {
 // ─────────────────────────────────────────────────────────────────────────────
 // WatchlistPanel — with 2 tabs
 // ─────────────────────────────────────────────────────────────────────────────
-function WatchlistPanel({ watchTab, setWatchTab, watchlist, watchQuotes, watchSearch, setWatchSearch, watchSearchResults, watchSearching, onSymbolClick, onAddSymbol, onRemoveSymbol, activeSymbol }) {
+function WatchlistPanel({ watchTab, setWatchTab, watchlist, watchQuotes, watchSearch, setWatchSearch, watchSearchResults, watchSearching, onSymbolClick, onAddSymbol, onRemoveSymbol, activeSymbol, scannerStocks, scannerLastScan }) {
+  const isScanner = watchTab === 'S';
+  // Build scanName lookup for scanner tab
+  const scannerMeta = isScanner
+    ? Object.fromEntries(scannerStocks.map(s => [s.symbol, s]))
+    : {};
+
   return (
     <div className="w-screen md:w-[240px] flex-shrink-0 flex flex-col bg-gray-50 dark:bg-slate-900/60 border-r border-gray-200 dark:border-white/10 overflow-hidden">
 
       {/* Tab header */}
       <div className="flex border-b border-gray-200 dark:border-white/10 flex-shrink-0">
-        {[1, 2].map(t => (
+        {[1, 2, 'S'].map(t => (
           <button
             key={t}
             onClick={() => setWatchTab(t)}
@@ -305,48 +311,67 @@ function WatchlistPanel({ watchTab, setWatchTab, watchlist, watchQuotes, watchSe
                 : 'border-transparent text-gray-400 dark:text-white/30 hover:text-gray-600 dark:hover:text-white/60'
             }`}
           >
-            List {t}
+            {t === 'S' ? 'Scanner' : `List ${t}`}
           </button>
         ))}
       </div>
 
-      {/* Add symbol search */}
-      <div className="px-3 py-2 border-b border-gray-100 dark:border-white/5 flex-shrink-0 relative">
-        <div className="flex items-center gap-2 bg-gray-200 dark:bg-slate-800 rounded-lg px-2.5 py-1.5">
-          <Search size={12} className="text-gray-400 dark:text-white/30 flex-shrink-0" />
-          <input
-            value={watchSearch}
-            onChange={e => setWatchSearch(e.target.value.toUpperCase())}
-            placeholder="Add symbol..."
-            className="bg-transparent text-xs text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-white/25 outline-none flex-1 w-0"
-          />
-          {watchSearching && <Loader2 size={11} className="animate-spin text-gray-400 flex-shrink-0" />}
+      {/* Scanner header info */}
+      {isScanner && (
+        <div className="px-3 py-1.5 border-b border-gray-100 dark:border-white/5 flex-shrink-0 flex items-center justify-between">
+          <span className="text-[10px] text-gray-400 dark:text-white/30">Chartink alerts</span>
+          {scannerLastScan ? (
+            <span className="text-[10px] text-blue-400 truncate max-w-[130px]" title={scannerLastScan.name}>
+              {scannerLastScan.name}
+            </span>
+          ) : (
+            <span className="text-[10px] text-gray-300 dark:text-white/20">No alerts yet</span>
+          )}
         </div>
-        {watchSearchResults.length > 0 && (
-          <div className="absolute left-3 right-3 top-full mt-1 bg-white dark:bg-slate-800 border border-gray-200 dark:border-white/10 rounded-lg shadow-xl z-50 overflow-hidden">
-            {watchSearchResults.map(inst => (
-              <button
-                key={inst.symbol}
-                onClick={() => onAddSymbol(inst.symbol)}
-                className="w-full px-3 py-2 text-left text-xs hover:bg-gray-100 dark:hover:bg-white/10 flex items-center justify-between transition-colors"
-              >
-                <span className="font-medium text-gray-900 dark:text-white">{inst.symbol}</span>
-                <span className="text-gray-400">{inst.exchange}</span>
-              </button>
-            ))}
+      )}
+
+      {/* Add symbol search — hidden for scanner tab */}
+      {!isScanner && (
+        <div className="px-3 py-2 border-b border-gray-100 dark:border-white/5 flex-shrink-0 relative">
+          <div className="flex items-center gap-2 bg-gray-200 dark:bg-slate-800 rounded-lg px-2.5 py-1.5">
+            <Search size={12} className="text-gray-400 dark:text-white/30 flex-shrink-0" />
+            <input
+              value={watchSearch}
+              onChange={e => setWatchSearch(e.target.value.toUpperCase())}
+              placeholder="Add symbol..."
+              className="bg-transparent text-xs text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-white/25 outline-none flex-1 w-0"
+            />
+            {watchSearching && <Loader2 size={11} className="animate-spin text-gray-400 flex-shrink-0" />}
           </div>
-        )}
-      </div>
+          {watchSearchResults.length > 0 && (
+            <div className="absolute left-3 right-3 top-full mt-1 bg-white dark:bg-slate-800 border border-gray-200 dark:border-white/10 rounded-lg shadow-xl z-50 overflow-hidden">
+              {watchSearchResults.map(inst => (
+                <button
+                  key={inst.symbol}
+                  onClick={() => onAddSymbol(inst.symbol)}
+                  className="w-full px-3 py-2 text-left text-xs hover:bg-gray-100 dark:hover:bg-white/10 flex items-center justify-between transition-colors"
+                >
+                  <span className="font-medium text-gray-900 dark:text-white">{inst.symbol}</span>
+                  <span className="text-gray-400">{inst.exchange}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Symbol list */}
       <div className="flex-1 overflow-y-auto scrollbar-thin">
         {watchlist.length === 0 ? (
-          <p className="text-xs text-gray-400 text-center p-4">Search above to add symbols.</p>
+          <p className="text-xs text-gray-400 dark:text-white/30 text-center p-4">
+            {isScanner ? 'No Chartink alerts received yet.' : 'Search above to add symbols.'}
+          </p>
         ) : (
           watchlist.map(sym => {
             const q = watchQuotes[sym];
             const isUp = q ? q.changePct >= 0 : null;
             const isActive = sym === activeSymbol;
+            const meta = scannerMeta[sym];
             return (
               <div
                 key={sym}
@@ -355,9 +380,13 @@ function WatchlistPanel({ watchTab, setWatchTab, watchlist, watchQuotes, watchSe
               >
                 <div className="flex-1 min-w-0">
                   <div className="text-xs font-semibold text-gray-900 dark:text-white truncate">{sym}</div>
-                  <div className={`text-xs font-mono ${q === undefined ? 'text-gray-300 dark:text-white/25' : isUp ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                    {q === undefined ? '---' : `${isUp ? '+' : ''}${q.changePct?.toFixed(2)}%`}
-                  </div>
+                  {isScanner && meta?.scanName ? (
+                    <div className="text-[10px] text-purple-400 truncate">{meta.scanName}</div>
+                  ) : (
+                    <div className={`text-xs font-mono ${q === undefined ? 'text-gray-300 dark:text-white/25' : isUp ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                      {q === undefined ? '---' : `${isUp ? '+' : ''}${q.changePct?.toFixed(2)}%`}
+                    </div>
+                  )}
                 </div>
                 <div className="text-right flex-shrink-0">
                   <div className="text-xs font-mono font-semibold text-gray-900 dark:text-white">
@@ -368,13 +397,20 @@ function WatchlistPanel({ watchTab, setWatchTab, watchlist, watchQuotes, watchSe
                       {q.change >= 0 ? '+' : ''}{q.change?.toFixed(2)}
                     </div>
                   )}
+                  {isScanner && q !== undefined && (
+                    <div className={`text-[10px] font-mono ${q.changePct >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                      {q.changePct >= 0 ? '+' : ''}{q.changePct?.toFixed(2)}%
+                    </div>
+                  )}
                 </div>
-                <button
-                  onClick={e => { e.stopPropagation(); onRemoveSymbol(sym); }}
-                  className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 hover:text-red-500 text-gray-300 dark:text-white/25 flex-shrink-0"
-                >
-                  <X size={11} />
-                </button>
+                {!isScanner && (
+                  <button
+                    onClick={e => { e.stopPropagation(); onRemoveSymbol(sym); }}
+                    className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 hover:text-red-500 text-gray-300 dark:text-white/25 flex-shrink-0"
+                  >
+                    <X size={11} />
+                  </button>
+                )}
               </div>
             );
           })
@@ -1120,10 +1156,12 @@ export default function TerminalPage() {
   const [kiteConnected, setKiteConnected]   = useState(false);
   const [indices, setIndices]               = useState(null);
 
-  // Watchlist (2 tabs)
+  // Watchlist (2 manual tabs + 1 scanner tab)
   const [watchTab, setWatchTab]             = useState(1);
   const [watchlist1, setWatchlist1]         = useState([]);
   const [watchlist2, setWatchlist2]         = useState([]);
+  const [scannerStocks, setScannerStocks]   = useState([]); // [{symbol, scanName, receivedAt}]
+  const [scannerLastScan, setScannerLastScan] = useState(null);
   const [watchQuotes, setWatchQuotes]       = useState({});
   const [watchSearch, setWatchSearch]       = useState('');
   const [watchSearchResults, setWatchSearchResults] = useState([]);
@@ -1191,9 +1229,10 @@ export default function TerminalPage() {
   const [dangerModal, setDangerModal]       = useState(false);
 
   // Derived
-  const activeWatchlist     = watchTab === 1 ? watchlist1 : watchlist2;
+  const scannerSymbols      = scannerStocks.map(s => s.symbol);
+  const activeWatchlist     = watchTab === 'S' ? scannerSymbols : (watchTab === 1 ? watchlist1 : watchlist2);
   const setActiveWatchlist  = watchTab === 1 ? setWatchlist1 : setWatchlist2;
-  const activeWatchlistKey  = watchTab === 1 ? 'bv-watchlist-1' : 'bv-watchlist-2';
+  const activeWatchlistKey  = watchTab === 1 ? 'bv-watchlist-1' : watchTab === 2 ? 'bv-watchlist-2' : null;
 
   // ── Init watchlists from localStorage
   useEffect(() => {
@@ -1205,6 +1244,22 @@ export default function TerminalPage() {
 
   useEffect(() => { if (watchlist1.length > 0) localStorage.setItem('bv-watchlist-1', JSON.stringify(watchlist1)); }, [watchlist1]);
   useEffect(() => { if (watchlist2.length > 0) localStorage.setItem('bv-watchlist-2', JSON.stringify(watchlist2)); }, [watchlist2]);
+
+  // ── Scanner stocks (from Chartink webhooks)
+  const fetchScannerStocks = useCallback(async () => {
+    try {
+      const r = await fetch('/api/scanner-stocks');
+      const d = await r.json();
+      if (d.stocks) setScannerStocks(d.stocks);
+      if (d.lastScan) setScannerLastScan(d.lastScan);
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    fetchScannerStocks();
+    const iv = setInterval(fetchScannerStocks, 5 * 60_000); // 5 min — matches Chartink scan frequency
+    return () => clearInterval(iv);
+  }, [fetchScannerStocks]);
 
   // ── Kite connection
   useEffect(() => {
@@ -1564,6 +1619,8 @@ export default function TerminalPage() {
             onAddSymbol={addToWatchlist}
             onRemoveSymbol={removeFromWatchlist}
             activeSymbol={symbol}
+            scannerStocks={scannerStocks}
+            scannerLastScan={scannerLastScan}
           />
         </div>
 
