@@ -1250,7 +1250,14 @@ export default function TerminalPage() {
     try {
       const r = await fetch('/api/scanner-stocks');
       const d = await r.json();
-      if (d.stocks) setScannerStocks(d.stocks);
+      if (d.stocks) {
+        // Only replace state when the symbol list actually changed — avoids list flicker
+        setScannerStocks(prev => {
+          const prevKey = prev.map(s => s.symbol).join(',');
+          const newKey  = d.stocks.map(s => s.symbol).join(',');
+          return prevKey === newKey ? prev : d.stocks;
+        });
+      }
       if (d.lastScan) setScannerLastScan(d.lastScan);
     } catch {}
   }, []);
@@ -1316,19 +1323,34 @@ export default function TerminalPage() {
     finally { setPositionsLoading(false); }
   }, []);
 
+  // All non-terminal Kite order statuses (per Kite Connect v3 docs).
+  // Terminal states COMPLETE / CANCELLED / REJECTED are excluded.
+  const OPEN_STATUSES = new Set([
+    'OPEN',                      // active at exchange
+    'TRIGGER PENDING',           // SL waiting for trigger price
+    'PUT ORDER REQ RECEIVED',    // just placed, backend received
+    'VALIDATION PENDING',        // passing RMS validation
+    'OPEN PENDING',              // awaiting exchange registration
+    'MODIFY PENDING',            // modification awaiting exchange
+    'MODIFY VALIDATION PENDING', // modification under RMS review
+    'MODIFIED',                  // successfully modified, still open
+    'CANCEL PENDING',            // cancellation in progress
+    'AMO REQ RECEIVED',          // after-market order received
+  ]);
+
   // ── Panel orders (always-visible right sidebar)
-  const fetchPanelOrders = useCallback(async () => {
-    setPanelOrdersLoading(true);
+  const fetchPanelOrders = useCallback(async (showLoading = false) => {
+    // Only show skeleton on the very first load (when list is empty)
+    if (showLoading) setPanelOrdersLoading(true);
     try {
       const r = await fetch('/api/kite-orders?limit=50');
       const d = await r.json();
       const allOrders = d.success ? (d.orders || []) : [];
-      // Right panel shows only open/pending orders — completed/cancelled go to Positions tab
-      const openOrders = allOrders.filter(o => ['OPEN', 'TRIGGER PENDING'].includes(o.status?.toUpperCase()));
+      const openOrders = allOrders.filter(o => OPEN_STATUSES.has(o.status?.toUpperCase()));
       setPanelOrders(openOrders);
-    } catch { setPanelOrders([]); }
+    } catch { /* keep existing list on transient error */ }
     finally { setPanelOrdersLoading(false); }
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── FnO movers
   const fetchMovers = useCallback(async () => {
@@ -1359,7 +1381,7 @@ export default function TerminalPage() {
 
   // Panel orders always refreshes (right sidebar is always visible)
   useEffect(() => {
-    fetchPanelOrders();
+    fetchPanelOrders(true); // show skeleton only on initial mount
     const iv = setInterval(() => { if (isMarketHours() && isVisible) fetchPanelOrders(); }, 30_000);
     return () => clearInterval(iv);
   }, [isVisible, fetchPanelOrders]);

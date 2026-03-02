@@ -193,19 +193,27 @@
 
     // Fetch sector performance data
     useEffect(() => {
+      let firstLoad = true;
       const fetchSectorData = async () => {
-        setSectorLoading(true);
+        // Show spinner only on initial load — subsequent polls update silently
+        if (firstLoad) setSectorLoading(true);
         try {
           const response = await fetch('/api/sector-performance');
           const data = await response.json();
-          if (data?.error) setSectorError(data.error);
-          else setSectorError('');
-          if (data.sectors) setSectorData(data.sectors);
+          // On transient error the API returns stale cached sectors + error field.
+          // Only update the sector list when real sector data is present; never clear it.
+          if (data.sectors?.length > 0) {
+            setSectorData(data.sectors);
+            setSectorError('');
+          } else if (data?.error) {
+            // Keep existing data visible; just note the error quietly
+            setSectorError(data.error);
+          }
         } catch (error) {
           console.error('Failed to fetch sector data:', error);
-          setSectorError('Failed to fetch sector data');
+          // Don't clear sectorData on network error — keep last known values
         } finally {
-          setSectorLoading(false);
+          if (firstLoad) { setSectorLoading(false); firstLoad = false; }
         }
       };
       fetchSectorData();

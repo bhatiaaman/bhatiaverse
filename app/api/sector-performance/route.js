@@ -51,8 +51,9 @@ const SECTOR_INDICES = [
 ];
 
 const CACHE_KEY = `${NS}:sector-performance`;
-const CACHE_TTL = 300; // 5 minutes
-const FRESH_TTL = 60000; // 1 minute in ms
+const CACHE_TTL = 300;          // 5 minutes — Redis TTL (seconds)
+const FRESH_TTL = 300 * 1000;   // 5 minutes — serve cache within this window (ms)
+// FRESH_TTL must equal CACHE_TTL×1000; previously 60 s → hit Kite 5× per cache cycle → rate limits
 
 export async function GET() {
   try {
