@@ -87,6 +87,53 @@ export default function AIGames() {
   const [theme, setTheme] = useState('dark');
   const T = theme === 'dark' ? DARK : LIGHT;
 
+  const tradingGames = [
+    {
+      num: '01',
+      title: 'What Happens Next?',
+      subtitle: 'Chart Reading',
+      description: 'Study a real NIFTY scenario — 15 candles, context, and a key level. Predict whether the market moves UP, DOWN, or SIDEWAYS. Learn to read patterns under pressure.',
+      href: '/aigames/what-happens-next',
+      color: '#f59e0b',
+      accent: 'card-whn',
+      stats: [['8', 'Scenarios'], ['📊', 'Charts'], ['🎯', 'Patterns']],
+      comingSoon: false,
+    },
+    {
+      num: '02',
+      title: 'Tilt Control',
+      subtitle: 'Behavioural Psychology',
+      description: 'Revenge trades, FOMO entries, averaging losers — the classic traps. Each scenario is designed to make you choose wrong. Can you hold your discipline?',
+      href: '/aigames/tilt-control',
+      color: '#ef5350',
+      accent: 'card-tilt',
+      stats: [['8', 'Scenarios'], ['🧠', 'Psychology'], ['⚠️', 'Traps']],
+      comingSoon: false,
+    },
+    {
+      num: '03',
+      title: 'Trend Rider',
+      subtitle: 'Position Sizing',
+      description: 'A trending market unfolds one candle at a time. Manage your entry, add on confirmation, ride the trend, and exit before the reversal. Capital is finite.',
+      href: '#',
+      color: '#a78bfa',
+      accent: 'card-trend',
+      stats: [['—', 'Simulated'], ['📈', 'Trends'], ['💰', 'Sizing']],
+      comingSoon: true,
+    },
+    {
+      num: '04',
+      title: 'Risk Architect',
+      subtitle: 'Portfolio Risk',
+      description: 'Build a virtual options portfolio and survive a volatile expiry week. Delta, theta, VIX spikes — manage it all without blowing up the account.',
+      href: '#',
+      color: '#38bdf8',
+      accent: 'card-risk',
+      stats: [['—', 'Simulated'], ['🏛', 'Options'], ['📐', 'Greeks']],
+      comingSoon: true,
+    },
+  ];
+
   // Load saved theme
   useEffect(() => {
     const saved = localStorage.getItem('bv-theme');
@@ -293,8 +340,12 @@ export default function AIGames() {
           transition:right 0.5s ease;
         }
         .card-bottom-line:hover::after { right:0; }
-        .card-ttt::after    { background:#4a9eff; }
-        .card-memory::after { background:#3ecf8e; }
+        .card-ttt::after         { background:#4a9eff; }
+        .card-memory::after      { background:#3ecf8e; }
+        .card-whn::after         { background:#f59e0b; }
+        .card-tilt::after        { background:#ef5350; }
+        .card-trend::after       { background:#a78bfa; }
+        .card-risk::after        { background:#38bdf8; }
         .nav-link {
           position:relative; font-family:'DM Mono',monospace;
           font-size:0.72rem; letter-spacing:0.15em; text-transform:uppercase;
@@ -397,7 +448,7 @@ export default function AIGames() {
           </p>
 
           <p style={{ fontFamily: "'DM Mono',monospace", fontSize: '0.72rem', color: T.textMuted2, letterSpacing: '0.2em', marginBottom: '3rem' }}>
-            {games.length} games available &nbsp;·&nbsp; More coming soon
+            {games.length + tradingGames.filter(g => !g.comingSoon).length} games available &nbsp;·&nbsp; More coming soon
           </p>
 
           <a href="#games" style={{
@@ -478,6 +529,89 @@ export default function AIGames() {
 
         {/* COSMIC DIVIDER */}
         <div style={{ height: 1, background: 'linear-gradient(to right, transparent, rgba(62,207,142,0.3), transparent)', margin: '0 3rem', position: 'relative', zIndex: 1 }} />
+
+        {/* TRADING GAMES SECTION */}
+        <section style={{ padding: '8rem 3rem', maxWidth: 1200, margin: '0 auto', position: 'relative', zIndex: 1 }}>
+
+          <div className="reveal" style={{ display: 'flex', alignItems: 'baseline', gap: '1.5rem', marginBottom: '1rem' }}>
+            <span style={{ fontFamily: "'DM Mono',monospace", fontSize: '0.65rem', letterSpacing: '0.3em', color: '#f59e0b', textTransform: 'uppercase', opacity: 0.7 }}>/ 02</span>
+            <h2 className="grad-section-title" style={{ fontFamily: "'Syne',sans-serif", fontSize: 'clamp(2.5rem,5vw,4rem)', fontWeight: 800, margin: 0 }}>Trading Games</h2>
+          </div>
+          <p className="reveal" style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: '1.1rem', color: T.textSub, fontWeight: 300, fontStyle: 'italic', marginBottom: '4rem', maxWidth: 540 }}>
+            Simulated market scenarios to sharpen your edge — chart reading, discipline, trend following, and risk management.
+          </p>
+
+          <div className="games-grid reveal" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5px' }}>
+            {tradingGames.map((game, i) => {
+              const inner = (
+                <div
+                  className={`card-hover game-card-hover card-bottom-line ${game.accent} reveal`}
+                  style={{
+                    position: 'relative', padding: '4rem', height: '100%',
+                    background: T.cardBg(game.color),
+                    border: `1px solid ${T.border}`,
+                    overflow: 'hidden',
+                    cursor: game.comingSoon ? 'default' : 'none',
+                    transitionDelay: `${i * 0.12}s`,
+                    opacity: game.comingSoon ? 0.6 : 1,
+                  }}
+                >
+                  <span style={{ fontFamily: "'DM Mono',monospace", fontSize: '0.6rem', letterSpacing: '0.3em', color: `${game.color}66` }}>
+                    {game.num} — {game.subtitle}
+                  </span>
+
+                  <div style={{
+                    position: 'absolute', top: '1.5rem', right: '2rem',
+                    fontFamily: "'Syne',sans-serif", fontSize: '8rem', fontWeight: 800,
+                    color: `${game.color}08`, lineHeight: 1, pointerEvents: 'none', userSelect: 'none',
+                  }}>
+                    {game.num}
+                  </div>
+
+                  {game.comingSoon && (
+                    <div style={{ position: 'absolute', top: '1.5rem', right: '2rem' }}>
+                      <span style={{ fontFamily: "'DM Mono',monospace", fontSize: '0.55rem', letterSpacing: '0.2em', textTransform: 'uppercase', color: T.comingSoonText, border: `1px solid ${T.tagBorder}`, padding: '0.2rem 0.6rem' }}>
+                        Coming Soon
+                      </span>
+                    </div>
+                  )}
+
+                  <div style={{ fontFamily: "'Syne',sans-serif", fontSize: '2.4rem', fontWeight: 700, color: T.text, margin: '1.5rem 0 1rem' }}>
+                    {game.title}
+                  </div>
+
+                  <p style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: '1.1rem', lineHeight: 1.8, color: T.textSub, fontWeight: 300, marginBottom: '2.5rem', maxWidth: 420 }}>
+                    {game.description}
+                  </p>
+
+                  {!game.comingSoon && (
+                    <div className="card-link-arrow" style={{ fontFamily: "'DM Mono',monospace", fontSize: '0.68rem', letterSpacing: '0.2em', textTransform: 'uppercase', color: game.color, display: 'inline-flex', alignItems: 'center', gap: '0.7rem', marginBottom: '3rem' }}>
+                      Play Now →
+                    </div>
+                  )}
+
+                  <div style={{ display: 'flex', gap: '3rem', paddingTop: '2.5rem', borderTop: `1px solid ${T.borderSub}`, marginTop: game.comingSoon ? 'auto' : 0 }}>
+                    {game.stats.map(([val, label]) => (
+                      <div key={label}>
+                        <span style={{ fontFamily: "'Syne',sans-serif", fontSize: '1.8rem', fontWeight: 800, color: game.color, display: 'block', lineHeight: 1, marginBottom: '0.3rem' }}>{val}</span>
+                        <span style={{ fontFamily: "'DM Mono',monospace", fontSize: '0.6rem', letterSpacing: '0.2em', textTransform: 'uppercase', color: T.textMuted }}>{label}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+
+              return game.comingSoon ? (
+                <div key={game.href + i}>{inner}</div>
+              ) : (
+                <Link key={game.href} href={game.href} style={{ textDecoration: 'none' }}>{inner}</Link>
+              );
+            })}
+          </div>
+        </section>
+
+        {/* COSMIC DIVIDER 2 */}
+        <div style={{ height: 1, background: 'linear-gradient(to right, transparent, rgba(245,158,11,0.25), transparent)', margin: '0 3rem', position: 'relative', zIndex: 1 }} />
 
         {/* MORE COMING SECTION */}
         <section style={{ padding: '8rem 3rem', maxWidth: 900, margin: '0 auto', textAlign: 'center', position: 'relative', zIndex: 1 }}>
