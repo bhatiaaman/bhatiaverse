@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import Link from 'next/link';
 import { usePageVisibility } from '@/app/hooks/usePageVisibility';
 import { useTheme } from '@/lib/theme-context';
@@ -1287,8 +1287,8 @@ export default function TerminalPage() {
   const [orderWarnings, setOrderWarnings]   = useState({ tier1: [], tier2: [], hasBehavioralDanger: false });
 
   // Derived — memoized so useEffect deps get stable references
-  const scannerSymbols      = React.useMemo(() => scannerStocks.map(s => s.symbol), [scannerStocks]);
-  const activeWatchlist     = React.useMemo(
+  const scannerSymbols      = useMemo(() => scannerStocks.map(s => s.symbol), [scannerStocks]);
+  const activeWatchlist     = useMemo(
     () => watchTab === 'S' ? scannerSymbols : (watchTab === 1 ? watchlist1 : watchlist2),
     [watchTab, scannerSymbols, watchlist1, watchlist2]
   );
