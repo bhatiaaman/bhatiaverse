@@ -1,3 +1,5 @@
+// Copyright (c) 2025 Amandeep Bhatia — TradePreflight
+// Licensed under Apache 2.0 — https://github.com/amanbhatia/tradepreflight
 import { getKiteCredentials } from '@/app/lib/kite-credentials';
 
 // ─────────────────────────────────────────────────────────────────────────────

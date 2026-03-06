@@ -1,3 +1,5 @@
+// Copyright (c) 2025 Amandeep Bhatia — TradePreflight
+// Licensed under Apache 2.0 — https://github.com/amanbhatia/tradepreflight
 // ─────────────────────────────────────────────────────────────────────────────
 // OI Agent — "What does Open Interest tell me about this trade?"
 //

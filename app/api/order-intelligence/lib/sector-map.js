@@ -1,3 +1,5 @@
+// Copyright (c) 2025 Amandeep Bhatia — TradePreflight
+// Licensed under Apache 2.0 — https://github.com/amanbhatia/tradepreflight
 // Maps NSE trading symbols → sector name (must match sector-performance API `name` field)
 // Sectors available: 'Bank Nifty' | 'IT' | 'Financial' | 'Auto' | 'Pharma' |
 //                    'Metal' | 'FMCG' | 'Realty' | 'Energy' | 'Media' | 'PSU Bank' | 'Infra'

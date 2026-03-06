@@ -1,3 +1,5 @@
+// Copyright (c) 2025 Amandeep Bhatia — TradePreflight
+// Licensed under Apache 2.0 — https://github.com/amanbhatia/tradepreflight
 // ─────────────────────────────────────────────────────────────────────────────
 // Pattern Agent — answers "What is price action saying in the last 1-5 candles?"
 // Checks candle patterns, volume alignment, ATR-based size, and structure.
