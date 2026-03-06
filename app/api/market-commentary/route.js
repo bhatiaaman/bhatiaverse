@@ -229,15 +229,15 @@ async function getOIChange5Min(currentCallOI, currentPutOI) {
 function analyzePriceStructure(data) {
   const { spot, ema9, ema21, vwap, support, resistance } = data;
 
-  const intradayBias = (ema9 && spot > ema9)   ? 'Bullish' : 'Bearish';
-  const dailyBias    = (ema21 && spot > ema21)  ? 'Bullish' : 'Bearish';
+  const intradayBias = ema9  ? (spot > ema9  ? 'Bullish' : 'Bearish') : null;
+  const dailyBias    = ema21 ? (spot > ema21 ? 'Bullish' : 'Bearish') : null;
 
   let structure = 'Neutral';
-  if (spot > (ema9 || 0) && spot > (ema21 || 0) && (vwap == null || spot > vwap)) {
+  if (ema9 && ema21 && spot > ema9 && spot > ema21 && (vwap == null || spot > vwap)) {
     structure = 'Strong Uptrend';
-  } else if (spot < (ema9 || Infinity) && spot < (ema21 || Infinity) && (vwap == null || spot < vwap)) {
+  } else if (ema9 && ema21 && spot < ema9 && spot < ema21 && (vwap == null || spot < vwap)) {
     structure = 'Strong Downtrend';
-  } else if (intradayBias !== dailyBias) {
+  } else if (intradayBias && dailyBias && intradayBias !== dailyBias) {
     structure = 'Conflicted';
   }
 
@@ -367,13 +367,13 @@ function findConflicts(data) {
 
   // PCR conflict
   if (pcr != null) {
-    if (pcr > 1.3 && ema9 && spot < ema9) {
+    if (pcr > 1.2 && ema9 && spot < ema9) {
       conflicts.push({
         type:        'PCR_CONFLICT',
         message:     `High PCR (${pcr.toFixed(2)}) but price weak`,
         implication: 'Heavy put writing vs weak price - wait for reversal confirmation',
       });
-    } else if (pcr < 0.7 && ema9 && spot > ema9) {
+    } else if (pcr < 0.8 && ema9 && spot > ema9) {
       conflicts.push({
         type:        'PCR_CONFLICT',
         message:     `Low PCR (${pcr.toFixed(2)}) but price strong`,
@@ -470,14 +470,14 @@ function generateLiveCommentary(marketData, optionChain, intraday) {
   let biasEmoji = '🟡';
 
   if (!hasConflicts) {
-    const { intradayBias } = priceStructure;
+    const { intradayBias, dailyBias: dailyBiasVal } = priceStructure;
     const { tradingImplication } = oiActivity;
 
     if (tradingImplication.includes('buy') || tradingImplication.includes('long') || tradingImplication.includes('longs')) {
       if (intradayBias === 'Bullish') { bias = 'BULLISH'; biasEmoji = '🟢'; }
     } else if (tradingImplication.includes('sell') || tradingImplication.includes('short') || tradingImplication.includes('shorts')) {
       if (intradayBias === 'Bearish') { bias = 'BEARISH'; biasEmoji = '🔴'; }
-    } else if (intradayBias === priceStructure.dailyBias) {
+    } else if (intradayBias && dailyBiasVal && intradayBias === dailyBiasVal) {
       if (intradayBias === 'Bullish') { bias = 'BULLISH'; biasEmoji = '🟢'; }
       else                           { bias = 'BEARISH'; biasEmoji = '🔴'; }
     }
@@ -489,8 +489,8 @@ function generateLiveCommentary(marketData, optionChain, intraday) {
   if (timeBucket.bucket === 'opening_hour') warnings.push('⏰ Opening volatility - wait for 9:30 AM consolidation');
   if (timeBucket.bucket === 'closing_hour') warnings.push('⏰ Closing hour - book profits or trail stops');
   if (vix > 20)  warnings.push(`⚠️ VIX elevated (${vix.toFixed(1)}) - reduce position size`);
-  if (pcr && pcr > 1.3 && bias === 'BEARISH') warnings.push(`⚠️ PCR ${pcr.toFixed(2)} shows heavy put writing - shorts risky`);
-  if (pcr && pcr < 0.7 && bias === 'BULLISH') warnings.push(`⚠️ PCR ${pcr.toFixed(2)} shows excessive call buying - longs risky`);
+  if (pcr && pcr > 1.2 && bias === 'BEARISH') warnings.push(`⚠️ PCR ${pcr.toFixed(2)} shows heavy put writing - shorts risky`);
+  if (pcr && pcr < 0.8 && bias === 'BULLISH') warnings.push(`⚠️ PCR ${pcr.toFixed(2)} shows excessive call buying - longs risky`);
 
   // ── Priority 1: High-confidence reversal zone ──
   if (reversalResult.reversalZone && reversalResult.confidence === 'HIGH') {
@@ -531,10 +531,9 @@ function generateLiveCommentary(marketData, optionChain, intraday) {
     action = `⚠️ ${conflicts[0].implication}. ${action}`;
   }
 
-  // Medium-confidence reversal appended as note
+  // Medium-confidence reversal: add to warnings only — never mix into action text
   if (reversalResult.reversalZone && reversalResult.confidence === 'MEDIUM') {
-    action = `${action} | ${reversalResult.commentary.state}: ${reversalResult.commentary.headline}`;
-    warnings.push(`🔄 ${reversalResult.commentary.action}`);
+    warnings.push(`🔄 ${reversalResult.commentary.state}: ${reversalResult.commentary.headline}. ${reversalResult.commentary.action}`);
   }
 
   return {
@@ -559,23 +558,39 @@ function generateLiveCommentary(marketData, optionChain, intraday) {
 function buildOIStateCommentary(activity, oiActivity, levelAnalysis, support, resistance) {
   const { narrative, tradingImplication } = oiActivity;
   const { primaryLevel, actionableLevel } = levelAnalysis;
-  const actionSuffix = actionableLevel?.action || '';
 
   const map = {
-    'Long Buildup':    { state: 'LONG BUILDUP',    stateEmoji: '🚀', keyLevel: support?.toFixed(0) },
-    'Short Buildup':   { state: 'SHORT BUILDUP',   stateEmoji: '📉', keyLevel: resistance?.toFixed(0) },
-    'Long Unwinding':  { state: 'LONG UNWINDING',  stateEmoji: '😰', keyLevel: support?.toFixed(0) },
-    'Short Covering':  { state: 'SHORT COVERING',  stateEmoji: '🎯', keyLevel: resistance?.toFixed(0) },
-    'Consolidation':   { state: 'CONSOLIDATION',   stateEmoji: '😴', keyLevel: support?.toFixed(0) },
+    'Long Buildup':    { state: 'LONG BUILDUP',    stateEmoji: '🚀', keyLevel: support?.toFixed(0),    oiBias: 'Bullish' },
+    'Short Buildup':   { state: 'SHORT BUILDUP',   stateEmoji: '📉', keyLevel: resistance?.toFixed(0), oiBias: 'Bearish' },
+    'Long Unwinding':  { state: 'LONG UNWINDING',  stateEmoji: '😰', keyLevel: support?.toFixed(0),    oiBias: 'Bearish' },
+    'Short Covering':  { state: 'SHORT COVERING',  stateEmoji: '🎯', keyLevel: resistance?.toFixed(0), oiBias: 'Bullish' },
+    'Consolidation':   { state: 'CONSOLIDATION',   stateEmoji: '😴', keyLevel: support?.toFixed(0),    oiBias: 'Neutral' },
   };
 
-  const entry = map[activity] || { state: activity.toUpperCase(), stateEmoji: '📊', keyLevel: primaryLevel?.toFixed(0) };
+  const entry = map[activity] || { state: activity.toUpperCase(), stateEmoji: '📊', keyLevel: primaryLevel?.toFixed(0), oiBias: 'Neutral' };
+  const oiBias    = entry.oiBias;
+  const levelBias = actionableLevel?.bias || 'Neutral'; // 'Bullish' | 'Bearish' | 'Neutral'
+
+  // Only append level action if it doesn't directly contradict the OI direction.
+  // Conflicting example: OI says Long Buildup (Bullish) but level says "Short with SL X" (Bearish).
+  let actionSuffix = '';
+  if (actionableLevel) {
+    const isConflict = (oiBias === 'Bullish' && levelBias === 'Bearish') ||
+                       (oiBias === 'Bearish' && levelBias === 'Bullish');
+    if (!isConflict) {
+      actionSuffix = actionableLevel.action;
+    } else {
+      // Soften: just note the level as context without a trade instruction
+      const levelType = levelBias === 'Bearish' ? 'resistance' : 'support';
+      actionSuffix = `Watch ${levelType} at ${actionableLevel.level}`;
+    }
+  }
 
   return {
     state:      entry.state,
     stateEmoji: entry.stateEmoji,
     headline:   narrative,
-    action:     `${tradingImplication}. ${actionSuffix}`.trim(),
+    action:     actionSuffix ? `${tradingImplication}. ${actionSuffix}`.trim() : tradingImplication,
     keyLevel:   entry.keyLevel || primaryLevel?.toFixed(0),
   };
 }
@@ -667,6 +682,7 @@ function buildPriceStateCommentary(ema9, vwap, priceStructure, levelAnalysis, su
 function generatePreMarketCommentary(marketData, optionChain) {
   const prevClose  = parseFloat(marketData.indices?.niftyPrevClose || 0);
   const giftNifty  = parseFloat(marketData.indices?.giftNifty      || 0);
+  const vix        = parseFloat(marketData.indices?.vix            || 0);
 
   // Use Gift Nifty's own % change (from its own prev close) applied to Nifty's prev close.
   // Fallback: if giftNiftyChangePercent unavailable, approximate via price diff.
@@ -674,12 +690,17 @@ function generatePreMarketCommentary(marketData, optionChain) {
   const gapPercent   = giftNiftyChangePct || (prevClose ? (giftNifty - prevClose) / prevClose * 100 : 0);
   const expectedOpen = prevClose * (1 + gapPercent / 100);
 
+  const pcr         = optionChain?.pcr        || null;
+  const support     = optionChain?.support    || null;
+  const resistance  = optionChain?.resistance || null;
+  const maxPain     = optionChain?.maxPain    || null;
+
   let state, stateEmoji, tradingBias, biasEmoji, headline, action, keyLevel;
 
   if (Math.abs(gapPercent) < 0.2) {
     state = 'FLAT OPENING'; stateEmoji = '➡️'; tradingBias = 'NEUTRAL'; biasEmoji = '🟡';
     headline = `Flat opening expected near ${expectedOpen.toFixed(0)}`;
-    action   = 'Wait for direction post 9:30 AM. Avoid early trades.';
+    action   = `Wait for direction post 9:30 AM. Avoid early trades.`;
     keyLevel = prevClose.toFixed(0);
   } else if (gapPercent > 1.0) {
     state = 'BIG GAP UP'; stateEmoji = '🚀'; tradingBias = 'BULLISH'; biasEmoji = '🟢';
@@ -713,7 +734,23 @@ function generatePreMarketCommentary(marketData, optionChain) {
     keyLevel = expectedOpen.toFixed(0);
   }
 
-  return { state, stateEmoji, bias: tradingBias, biasEmoji, keyLevel, headline, action };
+  // Enrich action with OI context
+  const oiParts = [];
+  if (support && resistance) oiParts.push(`OI levels: support ${support}, resistance ${resistance}`);
+  else if (support)    oiParts.push(`OI put wall at ${support}`);
+  else if (resistance) oiParts.push(`OI call wall at ${resistance}`);
+  if (maxPain) oiParts.push(`max pain ${maxPain}`);
+  if (oiParts.length) action = `${action} ${oiParts.join(', ')}.`;
+
+  // Build warnings
+  const warnings = [];
+  if (vix > 20)  warnings.push(`⚠️ VIX ${vix.toFixed(1)} elevated — expect wider swings, reduce size`);
+  if (pcr && pcr > 1.2 && tradingBias === 'BEARISH') warnings.push(`⚠️ PCR ${pcr.toFixed(2)} (heavy put writing) — shorts risky`);
+  if (pcr && pcr < 0.8 && tradingBias === 'BULLISH') warnings.push(`⚠️ PCR ${pcr.toFixed(2)} (heavy call buying) — longs risky`);
+  if (pcr && pcr > 1.2 && tradingBias !== 'BEARISH') warnings.push(`PCR ${pcr.toFixed(2)} — put writers defending, bullish lean`);
+  if (pcr && pcr < 0.8 && tradingBias !== 'BULLISH') warnings.push(`PCR ${pcr.toFixed(2)} — call heavy, bearish lean`);
+
+  return { state, stateEmoji, bias: tradingBias, biasEmoji, keyLevel, headline, action, warnings };
 }
 
 // ─────────────────────────────────────────────────────────────────────

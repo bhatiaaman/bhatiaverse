@@ -18,23 +18,24 @@ export async function POST(request) {
       mode   = 'template',   // 'template' | 'ai'
     } = await request.json();
 
+    // Fetch live OI + VIX for both modes (best-effort, cached by market-data TTL)
+    const liveCtx = await fetchLiveContext(request, symbol);
+    const enrichedOptions = liveCtx?.oi || optionsData;
+    const vix = liveCtx?.vix || null;
+
     if (mode === 'ai') {
       const apiKey = process.env.ANTHROPIC_API_KEY;
       if (!apiKey) {
-        const plan = generateTemplatePlan(gapData, keyLevels, globalMarkets, calendar, optionsData, symbol);
+        const plan = generateTemplatePlan(gapData, keyLevels, globalMarkets, calendar, enrichedOptions, symbol, vix);
         return NextResponse.json({ success: true, plan, method: 'template-fallback', timestamp: new Date().toISOString() });
       }
 
-      // Fetch live OI data to enrich the AI context
-      const liveOI = await fetchLiveOI(request, symbol);
-      const enrichedOptions = liveOI || optionsData;
-
-      const plan = await generateAIPlan(gapData, keyLevels, globalMarkets, calendar, enrichedOptions, symbol, apiKey);
+      const plan = await generateAIPlan(gapData, keyLevels, globalMarkets, calendar, enrichedOptions, symbol, apiKey, vix);
       return NextResponse.json({ success: true, plan, method: 'ai', timestamp: new Date().toISOString() });
     }
 
     // Template mode (default)
-    const plan = generateTemplatePlan(gapData, keyLevels, globalMarkets, calendar, optionsData, symbol);
+    const plan = generateTemplatePlan(gapData, keyLevels, globalMarkets, calendar, enrichedOptions, symbol, vix);
     return NextResponse.json({ success: true, plan, method: 'template', timestamp: new Date().toISOString() });
 
   } catch (error) {
@@ -48,30 +49,44 @@ export async function POST(request) {
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// Fetch live OI from option-chain API (best-effort, silent on failure)
+// Fetch live OI + VIX in parallel (best-effort, silent on failure)
 // ─────────────────────────────────────────────────────────────────────
-async function fetchLiveOI(request, symbol) {
+async function fetchLiveContext(request, symbol) {
   try {
     const base = new URL(request.url).origin;
-    const res  = await fetch(`${base}/api/option-chain?underlying=${symbol}&expiry=weekly`, {
-      signal: AbortSignal.timeout(6000),
-    });
-    if (!res.ok) return null;
-    const d = await res.json();
-    if (!d.pcr) return null;
-    return {
-      pcr:            d.pcr,
-      maxPain:        d.maxPain,
-      support:        d.support,
-      supportOI:      d.supportOI,
-      resistance:     d.resistance,
-      resistanceOI:   d.resistanceOI,
-      totalCallOI:    d.totalCallOI,
-      totalPutOI:     d.totalPutOI,
-      activityType:   d.marketActivity?.activity  || null,
-      activityDesc:   d.marketActivity?.description || null,
-      spotPrice:      d.spotPrice,
-    };
+    const [oiRes, mdRes] = await Promise.allSettled([
+      fetch(`${base}/api/option-chain?underlying=${symbol}&expiry=weekly`, {
+        signal: AbortSignal.timeout(6000),
+      }).then(r => r.json()),
+      fetch(`${base}/api/market-data`, {
+        signal: AbortSignal.timeout(5000),
+      }).then(r => r.json()),
+    ]);
+
+    let oi = null;
+    if (oiRes.status === 'fulfilled' && oiRes.value?.pcr) {
+      const d = oiRes.value;
+      oi = {
+        pcr:            d.pcr,
+        maxPain:        d.maxPain,
+        support:        d.support,
+        supportOI:      d.supportOI,
+        resistance:     d.resistance,
+        resistanceOI:   d.resistanceOI,
+        totalCallOI:    d.totalCallOI,
+        totalPutOI:     d.totalPutOI,
+        activityType:   d.marketActivity?.activity  || null,
+        activityDesc:   d.marketActivity?.description || null,
+        spotPrice:      d.spotPrice,
+      };
+    }
+
+    let vix = null;
+    if (mdRes.status === 'fulfilled') {
+      vix = parseFloat(mdRes.value?.indices?.vix) || null;
+    }
+
+    return { oi, vix };
   } catch {
     return null;
   }
@@ -80,12 +95,12 @@ async function fetchLiveOI(request, symbol) {
 // ─────────────────────────────────────────────────────────────────────
 // AI Plan Generator (Claude Haiku)
 // ─────────────────────────────────────────────────────────────────────
-async function generateAIPlan(gapData, keyLevels, globalMarkets, calendar, optionsData, symbol, apiKey) {
+async function generateAIPlan(gapData, keyLevels, globalMarkets, calendar, optionsData, symbol, apiKey, vix) {
   const client = new Anthropic({ apiKey });
 
   const istDate = new Date(new Date().getTime() + 5.5 * 60 * 60 * 1000);
   const dateStr = istDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
-  const ctx     = buildMarketContext(gapData, keyLevels, globalMarkets, calendar, optionsData);
+  const ctx     = buildMarketContext(gapData, keyLevels, globalMarkets, calendar, optionsData, vix);
 
   const prompt = `You are Raj, a seasoned Indian intraday trader with 15 years of experience. You're sharing your pre-market analysis for ${symbol} with a fellow trader on ${dateStr}.
 
@@ -127,7 +142,7 @@ Rules:
   return message.content[0]?.text || getFallbackPlan();
 }
 
-function buildMarketContext(gapData, keyLevels, globalMarkets, calendar, optionsData) {
+function buildMarketContext(gapData, keyLevels, globalMarkets, calendar, optionsData, vix) {
   const lines = [];
 
   if (gapData?.success) {
@@ -146,6 +161,11 @@ function buildMarketContext(gapData, keyLevels, globalMarkets, calendar, options
     const us = globalMarkets.markets.filter(m => m.region === 'US');
     const summary = us.map(m => `${m.name}: ${m.changePercent > 0 ? '+' : ''}${m.changePercent?.toFixed(2)}%`).join(', ');
     if (summary) lines.push(`US Markets (last close): ${summary}`);
+  }
+
+  if (vix) {
+    const vixLabel = vix > 20 ? 'High — reduce size' : vix > 15 ? 'Elevated' : 'Normal';
+    lines.push(`India VIX: ${vix.toFixed(1)} (${vixLabel})`);
   }
 
   if (optionsData?.pcr) {
@@ -182,7 +202,7 @@ function buildMarketContext(gapData, keyLevels, globalMarkets, calendar, options
 // Safe number coercion
 function n(v) { return parseFloat(v) || 0; }
 
-function generateTemplatePlan(gapData, keyLevels, globalMarkets, calendar, optionsData, symbol) {
+function generateTemplatePlan(gapData, keyLevels, globalMarkets, calendar, optionsData, symbol, vix) {
   const istDate = new Date(new Date().getTime() + 5.5 * 60 * 60 * 1000);
   const date    = istDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
 
@@ -350,9 +370,15 @@ function generateTemplatePlan(gapData, keyLevels, globalMarkets, calendar, optio
   plan += `  • Let opening range form before entering\n`;
   plan += `  • DO NOT counter-trend trade before 10:00 AM\n`;
 
+  if (vix) {
+    plan += `  • India VIX: ${vix.toFixed(1)} — ${vix > 20 ? '⚠️ High volatility, reduce position size' : vix > 15 ? 'Elevated, use tight stops' : 'Normal range'}\n`;
+  }
   if (optionsData?.pcr) {
     plan += `  • Options PCR: ${optionsData.pcr.toFixed(2)} (${optionsData.pcr > 1.2 ? 'Bullish' : optionsData.pcr < 0.8 ? 'Bearish' : 'Neutral'})\n`;
   }
+  if (optionsData?.support)    plan += `  • OI Put Wall (Support): ${optionsData.support}\n`;
+  if (optionsData?.resistance) plan += `  • OI Call Wall (Resistance): ${optionsData.resistance}\n`;
+  if (optionsData?.maxPain)    plan += `  • Max Pain: ${optionsData.maxPain}\n`;
 
   if (calendar?.events) {
     const highImpact = calendar.events.filter(e => e.impact === 'HIGH' && e.status !== 'COMPLETED');

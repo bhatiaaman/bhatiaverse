@@ -6,7 +6,21 @@
   import { useTheme } from '../../lib/theme-context';
   import { usePageVisibility } from '@/app/hooks/usePageVisibility';
 
-  // ── Bias history + reversal signals → human-readable narrative ───────────
+  // ── Check if nifty price is near a key H/L level (within 0.3%) ────────────
+function getNiftyLevelAlerts(indices) {
+  const price = parseFloat(indices?.nifty);
+  if (!price || isNaN(price)) return [];
+  const threshold = price * 0.003;
+  const levels = [
+    { val: parseFloat(indices?.niftyHigh),        label: 'daily high',   type: 'resistance' },
+    { val: parseFloat(indices?.niftyLow),         label: 'daily low',    type: 'support'    },
+    { val: parseFloat(indices?.niftyWeeklyHigh),  label: 'weekly high',  type: 'resistance' },
+    { val: parseFloat(indices?.niftyWeeklyLow),   label: 'weekly low',   type: 'support'    },
+  ];
+  return levels.filter(l => l.val && !isNaN(l.val) && Math.abs(price - l.val) <= threshold);
+}
+
+// ── Bias history + reversal signals → human-readable narrative ───────────
   // history is newest-first: [current, previous, older, ...]
   // reversal is the detectReversalZone() result already in commentary.reversal
   function getBiasNarrative(history, reversal) {
@@ -33,8 +47,6 @@
       const conf = reversal.confidence;
       if (conf === 'HIGH') {
         reversalSuffix = ` | ⚡ ${dir} reversal zone${signals ? ` — ${signals}` : ''}`;
-      } else if (conf === 'MEDIUM') {
-        reversalSuffix = ` | ⚠️ ${dir} reversal setup${signals ? ` — ${signals}` : ''}`;
       }
     }
 
@@ -64,8 +76,8 @@
       const notes = {
         'BEARISH→BULLISH': 'reversal — bears capitulating',
         'BULLISH→BEARISH': 'reversal — bulls fading',
-        'BEARISH→NEUTRAL': 'bearish pressure easing, reversal setup building',
-        'BULLISH→NEUTRAL': 'bullish momentum fading, reversal setup building',
+        'BEARISH→NEUTRAL': 'bearish signal weakening',
+        'BULLISH→NEUTRAL': 'bullish signal weakening',
         'NEUTRAL→BEARISH': 'bias turning bearish',
         'NEUTRAL→BULLISH': 'bias turning bullish',
       };
@@ -608,6 +620,21 @@
                         </div>
                       ) : null;
                     })()}
+
+                    {/* H/L proximity alert */}
+                    {marketData?.indices && (() => {
+                      const alerts = getNiftyLevelAlerts(marketData.indices);
+                      if (!alerts.length) return null;
+                      return (
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          {alerts.map((a, i) => (
+                            <span key={i} className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${a.type === 'resistance' ? 'bg-amber-900/40 text-amber-300' : 'bg-sky-900/40 text-sky-300'}`}>
+                              ⚡ Near {a.label} ({parseFloat(a.val).toFixed(0)})
+                            </span>
+                          ))}
+                        </div>
+                      );
+                    })()}
                   </div>
                 </div>
               )}
@@ -615,7 +642,7 @@
           )}
 
           {/* Top Market Data Grid */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-1 mb-4">
+          <div className="grid grid-cols-2 lg:grid-cols-5 gap-1 mb-4">
             {/* Market Indices */}
             <div className="bg-[#112240] border border-blue-800/40 rounded-lg p-1.5 lg:p-2 flex flex-col justify-center min-h-14 lg:min-h-16">
               <h4 className="text-blue-300 text-[10px] font-semibold mb-1 lg:mb-1.5 text-center">Market Indices</h4>
@@ -788,6 +815,47 @@
 
               </div>
             </div>
+
+            {/* Nifty Range */}
+            {(() => {
+              const idx = marketData?.indices;
+              const price = parseFloat(idx?.nifty);
+              const alerts = idx ? getNiftyLevelAlerts(idx) : [];
+              const nearLabel = alerts.length > 0
+                ? alerts.map(a => `Near ${a.label}`).join(' · ')
+                : null;
+              const fmt = v => v && !isNaN(v) ? parseFloat(v).toFixed(0) : '---';
+              const isNearHigh = (key) => {
+                const v = parseFloat(idx?.[key]);
+                return price && v && !isNaN(v) && Math.abs(price - v) <= price * 0.003;
+              };
+              return (
+                <div className="bg-[#112240] border border-blue-800/40 rounded-lg p-1.5 lg:p-2 flex flex-col justify-center min-h-14 lg:min-h-16">
+                  <h4 className="text-blue-300 text-[10px] font-semibold mb-1 lg:mb-1.5 text-center">Nifty Range</h4>
+                  <div className="space-y-1">
+                    <div>
+                      <div className="text-slate-500 text-[8px] mb-0.5">Daily</div>
+                      <div className="flex justify-between items-center">
+                        <span className={`text-xs font-mono font-semibold ${isNearHigh('niftyHigh') ? 'text-amber-300 animate-pulse' : 'text-emerald-400'}`}>{fmt(idx?.niftyHigh)}</span>
+                        <span className="text-slate-600 text-[8px]">H/L</span>
+                        <span className={`text-xs font-mono font-semibold ${isNearHigh('niftyLow') ? 'text-sky-300 animate-pulse' : 'text-red-400'}`}>{fmt(idx?.niftyLow)}</span>
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-slate-500 text-[8px] mb-0.5">Weekly</div>
+                      <div className="flex justify-between items-center">
+                        <span className={`text-xs font-mono font-semibold ${isNearHigh('niftyWeeklyHigh') ? 'text-amber-300 animate-pulse' : 'text-emerald-600'}`}>{fmt(idx?.niftyWeeklyHigh)}</span>
+                        <span className="text-slate-600 text-[8px]">H/L</span>
+                        <span className={`text-xs font-mono font-semibold ${isNearHigh('niftyWeeklyLow') ? 'text-sky-300 animate-pulse' : 'text-red-700'}`}>{fmt(idx?.niftyWeeklyLow)}</span>
+                      </div>
+                    </div>
+                    {nearLabel && (
+                      <div className="text-[8px] text-amber-400 font-medium text-center mt-0.5">⚡ {nearLabel}</div>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* Commodities */}
             <div className="bg-[#112240] border border-blue-800/40 rounded-lg p-1.5 lg:p-2 flex flex-col justify-center min-h-14 lg:min-h-16">

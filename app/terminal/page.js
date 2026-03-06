@@ -241,6 +241,34 @@ function IndexTicker({ label, price, changePct }) {
   );
 }
 
+function NiftyRangeBar({ indices }) {
+  const dH  = indices?.niftyHigh        ? parseFloat(indices.niftyHigh).toLocaleString('en-IN', { maximumFractionDigits: 0 }) : null;
+  const dL  = indices?.niftyLow         ? parseFloat(indices.niftyLow).toLocaleString('en-IN',  { maximumFractionDigits: 0 }) : null;
+  const wH  = indices?.niftyWeeklyHigh  ? parseFloat(indices.niftyWeeklyHigh).toLocaleString('en-IN', { maximumFractionDigits: 0 }) : null;
+  const wL  = indices?.niftyWeeklyLow   ? parseFloat(indices.niftyWeeklyLow).toLocaleString('en-IN',  { maximumFractionDigits: 0 }) : null;
+  if (!dH && !wH) return null;
+  return (
+    <div className="flex items-center gap-3 text-[10px] font-mono text-gray-400 dark:text-white/30">
+      {dH && dL && (
+        <span title="Today's High / Low">
+          <span className="text-gray-500 dark:text-white/20 mr-1">D</span>
+          <span className="text-green-600 dark:text-green-500">{dH}</span>
+          <span className="mx-0.5">/</span>
+          <span className="text-red-600 dark:text-red-500">{dL}</span>
+        </span>
+      )}
+      {wH && wL && (
+        <span title="Weekly High / Low (last 5 days)" className="hidden lg:inline">
+          <span className="text-gray-500 dark:text-white/20 mr-1">W</span>
+          <span className="text-green-600 dark:text-green-500">{wH}</span>
+          <span className="mx-0.5">/</span>
+          <span className="text-red-600 dark:text-red-500">{wL}</span>
+        </span>
+      )}
+    </div>
+  );
+}
+
 function TopBar({ indices, kiteConnected }) {
   const { isDark, toggleTheme } = useTheme();
   return (
@@ -251,6 +279,7 @@ function TopBar({ indices, kiteConnected }) {
 
       <div className="flex items-center gap-4 sm:gap-6">
         <IndexTicker label="NIFTY"     price={indices?.nifty}   changePct={indices?.niftyChangePercent} />
+        <NiftyRangeBar indices={indices} />
         <IndexTicker label="BANKNIFTY" price={indices?.bankNifty} changePct={indices?.bankNiftyChangePercent} />
         <IndexTicker label="SENSEX"    price={indices?.sensex}  changePct={indices?.sensexChangePercent} />
         {indices?.vix && (
@@ -766,7 +795,7 @@ function PlaceOrderTab({
   strikeAnalysis, analysisLoading, onRefreshAnalysis,
   orderPlacing, orderResult,
   intel, structureIntel, patternIntel, stationIntel, oiIntel,
-  acknowledged, setAcknowledged, dangerModal, setDangerModal,
+  acknowledged, setAcknowledged, dangerModal, setDangerModal, orderWarnings,
   onSymbolSearch, onSymbolSelect, onPlaceOrder, onExecuteOrder, onRunIntel,
   onRunStructure, onRunPattern, onRunStation, onRunOI,
 }) {
@@ -1123,13 +1152,41 @@ function PlaceOrderTab({
       {dangerModal && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white dark:bg-slate-900 border border-red-500/30 rounded-2xl p-6 max-w-sm w-full shadow-2xl">
-            <div className="flex items-center gap-2 mb-3">
+            <div className="flex items-center gap-2 mb-4">
               <ShieldX size={20} className="text-red-500" />
-              <h3 className="text-lg font-bold text-red-500">DANGER — High Risk</h3>
+              <h3 className="text-lg font-bold text-red-500">
+                {(orderWarnings?.tier1?.length > 0 || orderWarnings?.hasBehavioralDanger) ? 'Trade Risk Detected' : 'Heads Up'}
+              </h3>
             </div>
-            <p className="text-sm text-gray-500 dark:text-white/60 mb-5">
-              Behavioral analysis flagged serious risk for this trade. Are you certain you want to proceed?
-            </p>
+
+            <div className="space-y-2 mb-4">
+              {/* Tier 1 — blocking risks */}
+              {orderWarnings?.tier1?.map((w, i) => (
+                <div key={i} className="flex items-start gap-2 p-2.5 bg-red-500/10 border border-red-500/20 rounded-lg">
+                  <ShieldX size={13} className="text-red-500 flex-shrink-0 mt-0.5" />
+                  <span className="text-xs text-red-600 dark:text-red-400">{w.msg}</span>
+                </div>
+              ))}
+              {/* Behavioral danger */}
+              {orderWarnings?.hasBehavioralDanger && (
+                <div className="flex items-start gap-2 p-2.5 bg-red-500/10 border border-red-500/20 rounded-lg">
+                  <ShieldX size={13} className="text-red-500 flex-shrink-0 mt-0.5" />
+                  <span className="text-xs text-red-600 dark:text-red-400">Behavioral agent flagged serious risk for this trade</span>
+                </div>
+              )}
+              {/* Tier 2 — soft warnings */}
+              {orderWarnings?.tier2?.map((w, i) => (
+                <div key={i} className="flex items-start gap-2 p-2.5 bg-amber-500/10 border border-amber-500/20 rounded-lg">
+                  <AlertTriangle size={13} className="text-amber-500 flex-shrink-0 mt-0.5" />
+                  <span className="text-xs text-amber-600 dark:text-amber-400">{w.msg}</span>
+                </div>
+              ))}
+              {/* Fallback if no structured warnings */}
+              {!orderWarnings?.tier1?.length && !orderWarnings?.tier2?.length && !orderWarnings?.hasBehavioralDanger && (
+                <p className="text-sm text-gray-500 dark:text-white/60">Behavioral analysis flagged serious risk. Are you certain?</p>
+              )}
+            </div>
+
             <div className="flex gap-3">
               <button onClick={() => setDangerModal(false)}
                 className="flex-1 py-2.5 rounded-xl bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10 text-sm text-gray-700 dark:text-white/70 hover:text-gray-900 dark:hover:text-white transition-colors">
@@ -1137,7 +1194,7 @@ function PlaceOrderTab({
               </button>
               <button onClick={onExecuteOrder}
                 className="flex-1 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-sm font-bold text-white transition-colors">
-                Override &amp; Place
+                I understand, Place
               </button>
             </div>
           </div>
@@ -1227,10 +1284,14 @@ export default function TerminalPage() {
   const [oiIntel, setOIIntel]               = useState({ loading: false, result: null });
   const [acknowledged, setAcknowledged]     = useState(false);
   const [dangerModal, setDangerModal]       = useState(false);
+  const [orderWarnings, setOrderWarnings]   = useState({ tier1: [], tier2: [], hasBehavioralDanger: false });
 
-  // Derived
-  const scannerSymbols      = scannerStocks.map(s => s.symbol);
-  const activeWatchlist     = watchTab === 'S' ? scannerSymbols : (watchTab === 1 ? watchlist1 : watchlist2);
+  // Derived — memoized so useEffect deps get stable references
+  const scannerSymbols      = React.useMemo(() => scannerStocks.map(s => s.symbol), [scannerStocks]);
+  const activeWatchlist     = React.useMemo(
+    () => watchTab === 'S' ? scannerSymbols : (watchTab === 1 ? watchlist1 : watchlist2),
+    [watchTab, scannerSymbols, watchlist1, watchlist2]
+  );
   const setActiveWatchlist  = watchTab === 1 ? setWatchlist1 : setWatchlist2;
   const activeWatchlistKey  = watchTab === 1 ? 'bv-watchlist-1' : watchTab === 2 ? 'bv-watchlist-2' : null;
 
@@ -1619,7 +1680,49 @@ export default function TerminalPage() {
   };
 
   const handlePlaceOrder = () => {
-    if (intel.result?.behavioral?.verdict === 'danger') { setDangerModal(true); return; }
+    const tier1 = [];
+    const tier2 = [];
+
+    // 1. Trend conflict — EMA9 vs order direction
+    const niftyPrice = parseFloat(indices?.nifty);
+    const ema9       = parseFloat(indices?.niftyEMA9);
+    if (niftyPrice && ema9 && !isNaN(niftyPrice) && !isNaN(ema9)) {
+      const marketBias  = niftyPrice > ema9 ? 'BULLISH' : 'BEARISH';
+      const orderBullish =
+        (transactionType === 'BUY'  && (instrumentType === 'CE' || instrumentType === 'EQ' || instrumentType === 'FUT')) ||
+        (transactionType === 'SELL' && instrumentType === 'PE');
+      if (marketBias === 'BULLISH' && !orderBullish) {
+        tier1.push({ msg: `Market BULLISH (Nifty above EMA9 ${ema9.toFixed(0)}) — you're placing a bearish trade` });
+      } else if (marketBias === 'BEARISH' && orderBullish) {
+        tier1.push({ msg: `Market BEARISH (Nifty below EMA9 ${ema9.toFixed(0)}) — you're placing a bullish trade` });
+      }
+    }
+
+    // 2. Adding to loser — check positions for same base symbol with loss
+    if (positions?.length > 0) {
+      const baseSymbol     = symbol?.replace(/\d.*/, '').toUpperCase();
+      const losingPositions = positions.filter(p => {
+        const posBase = p.tradingsymbol?.replace(/\d.*/, '').toUpperCase();
+        return posBase === baseSymbol && parseFloat(p.pnl) < -500;
+      });
+      if (losingPositions.length > 0) {
+        const totalLoss = losingPositions.reduce((s, p) => s + parseFloat(p.pnl), 0);
+        tier1.push({ msg: `Adding to losing position — ${baseSymbol} already at ₹${Math.abs(totalLoss).toLocaleString('en-IN', { maximumFractionDigits: 0 })} loss` });
+      }
+    }
+
+    // 3. VIX elevated (soft warning)
+    const vixVal = parseFloat(indices?.vix);
+    if (vixVal > 20) {
+      tier2.push({ msg: `VIX ${vixVal.toFixed(1)} — High volatility, consider reducing quantity` });
+    }
+
+    const hasBehavioralDanger = intel.result?.behavioral?.verdict === 'danger';
+    if (tier1.length > 0 || tier2.length > 0 || hasBehavioralDanger) {
+      setOrderWarnings({ tier1, tier2, hasBehavioralDanger });
+      setDangerModal(true);
+      return;
+    }
     executePlaceOrder();
   };
 
@@ -1683,7 +1786,7 @@ export default function TerminalPage() {
                 orderPlacing={orderPlacing} orderResult={orderResult}
                 intel={intel} structureIntel={structureIntel} patternIntel={patternIntel} stationIntel={stationIntel} oiIntel={oiIntel}
                 acknowledged={acknowledged} setAcknowledged={setAcknowledged}
-                dangerModal={dangerModal} setDangerModal={setDangerModal}
+                dangerModal={dangerModal} setDangerModal={setDangerModal} orderWarnings={orderWarnings}
                 onSymbolSearch={handleFormSearch} onSymbolSelect={selectSymbol}
                 onPlaceOrder={handlePlaceOrder} onExecuteOrder={executePlaceOrder} onRunIntel={runIntelligence}
                 onRunStructure={runStructureAnalysis} onRunPattern={runPatternAnalysis}

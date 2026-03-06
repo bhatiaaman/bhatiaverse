@@ -101,14 +101,28 @@ async function fetchNiftyHistoricalFromKite(apiKey, accessToken) {
     );
 
     if (historicalData && historicalData.length >= 2) {
-      const closePrices = historicalData.map(candle => candle.close);
-      
-      // CRITICAL: Last element is yesterday's actual close
+      // During market hours Kite includes today's PARTIAL candle as the last element.
+      // Its close = last traded price ≈ current price, NOT yesterday's close.
+      // Filter it out so previousClose is always the last COMPLETE trading day's close.
+      const todayStr = new Date().toISOString().slice(0, 10);
+      const completedCandles = historicalData.filter(
+        c => new Date(c.date).toISOString().slice(0, 10) < todayStr
+      );
+      if (completedCandles.length < 2) return null;
+
+      const closePrices    = completedCandles.map(c => c.close);
       const yesterdayClose = closePrices[closePrices.length - 1];
-      
+
+      // Weekly H/L: max high / min low across last 5 COMPLETE trading days
+      const last5      = completedCandles.slice(-5);
+      const weeklyHigh = Math.max(...last5.map(c => c.high));
+      const weeklyLow  = Math.min(...last5.map(c => c.low));
+
       return {
-        prices: closePrices,  // For EMA9 calculation
-        previousClose: yesterdayClose  // Correct previous close to override OHLC
+        prices:        closePrices,    // For EMA9 (today's price appended later)
+        previousClose: yesterdayClose, // Correct previous close
+        weeklyHigh,
+        weeklyLow,
       };
     }
     
@@ -152,17 +166,25 @@ async function fetchNiftyFromYahoo() {
   }
 }
 
+// Fetch GIFT Nifty current price + its own previous session close (5d daily history).
+// Using GIFT's own prev close (not NSE NIFTY's) gives the correct change% that
+// matches what SGX/NSE IFSC shows and correctly reflects the expected NIFTY gap.
 async function fetchGIFTNifty() {
   for (const ticker of ['GIFTNIFTY.NS', 'NIFTY.NS']) {
     try {
       const response = await fetch(
-        `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d`,
+        `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=5d`,
         { headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(8000) }
       );
       if (response.ok) {
         const data = await response.json();
-        const price = data.chart.result[0]?.meta?.regularMarketPrice;
-        if (price) return price;
+        const result    = data.chart.result?.[0];
+        const price     = result?.meta?.regularMarketPrice;
+        const closes    = result?.indicators?.quote?.[0]?.close?.filter(p => p !== null);
+        // closes[] contains complete trading-day closes (most recent last).
+        // During market hours today's candle is incomplete so last complete close = yesterday.
+        const prevClose = closes?.length >= 1 ? closes[closes.length - 1] : null;
+        if (price) return { price, prevClose };
       }
     } catch { continue; }
   }
@@ -360,13 +382,9 @@ export async function GET() {
     // ═══════════════════════════════════════════════════════════════════════
     const historicalResult = hasKite ? await fetchNiftyHistoricalFromKite(apiKey, accessToken) : null;
     const correctPreviousClose = historicalResult?.previousClose;
-    const historicalPrices = historicalResult?.prices;
-
-    console.log('Historical data:', { 
-      hasPrices: !!historicalPrices, 
-      pricesCount: historicalPrices?.length,
-      correctPreviousClose 
-    });
+    const historicalPrices     = historicalResult?.prices;
+    const niftyWeeklyHigh      = historicalResult?.weeklyHigh ?? null;
+    const niftyWeeklyLow       = historicalResult?.weeklyLow  ?? null;
 
     const [kiteIndices, globalIndices, kiteCommodities, yahooCommodities, giftNifty, breadthData] = await Promise.all([
       hasKite ? fetchIndianIndicesFromKite(apiKey, accessToken) : Promise.resolve(null),
@@ -389,8 +407,6 @@ export async function GET() {
       // CRITICAL FIX: Override stale prevClose with correct historical data
       // ═══════════════════════════════════════════════════════════════════════
       if (correctPreviousClose && niftyData) {
-        console.log(`Overriding stale prevClose ${niftyData.prevClose} with correct ${correctPreviousClose}`);
-        
         niftyData.prevClose = correctPreviousClose;
         niftyData.change = niftyData.price - correctPreviousClose;
         niftyData.changePercent = ((niftyData.price - correctPreviousClose) / correctPreviousClose) * 100;
@@ -426,26 +442,16 @@ export async function GET() {
     }
 
     // GIFT Nifty handling
-    let giftNiftyPrice = kiteIndices?.giftNifty?.price;
-    let giftNiftyPrevClose = kiteIndices?.giftNifty?.prevClose;
-    let giftNiftyChange = kiteIndices?.giftNifty?.change;
-    let giftNiftyChangePercent = kiteIndices?.giftNifty?.changePercent;
-
-    const GIFT_NIFTY_CLOSE_KEY = `${NS}:gift-nifty-prev-close`;
-    if (giftNiftyPrice) {
-      if (!giftNiftyPrevClose) {
-        const cachedPrevClose = await redisGet(GIFT_NIFTY_CLOSE_KEY);
-        if (cachedPrevClose) {
-          giftNiftyPrevClose = cachedPrevClose;
-          giftNiftyChange = giftNiftyPrice - cachedPrevClose;
-          giftNiftyChangePercent = cachedPrevClose !== 0 ? (giftNiftyChange / cachedPrevClose) * 100 : null;
-        }
-      } else {
-        await redisSet(GIFT_NIFTY_CLOSE_KEY, giftNiftyPrevClose, 60 * 60 * 24 * 2);
-      }
-    }
-    if (!giftNiftyPrice && giftNifty) giftNiftyPrice = giftNifty;
+    // Priority for price: Kite (live) → Yahoo result → fallback estimate
+    // Priority for prev close: Yahoo's own daily prev close (GIFT's own session)
+    //   → Kite OHLC close → omit (don't use NSE prev close as it gives wrong sign)
+    let giftNiftyPrice   = kiteIndices?.giftNifty?.price ?? giftNifty?.price ?? null;
     if (!giftNiftyPrice && niftyData) giftNiftyPrice = niftyData.price + 15;
+
+    // GIFT's own previous session close from Yahoo 5d daily history — most reliable source.
+    const giftPrevClose  = giftNifty?.prevClose ?? kiteIndices?.giftNifty?.prevClose ?? null;
+    let giftNiftyChange        = (giftNiftyPrice && giftPrevClose) ? giftNiftyPrice - giftPrevClose : null;
+    let giftNiftyChangePercent = (giftNiftyChange !== null && giftPrevClose) ? (giftNiftyChange / giftPrevClose) * 100 : null;
 
     const marketData = {
       indices: {
@@ -461,9 +467,12 @@ export async function GET() {
         bankNifty:           bankNifty?.price           ? bankNifty.price.toFixed(2)           : (typeof bankNifty === 'number' ? bankNifty.toFixed(2) : null),
         bankNiftyChange:     bankNifty?.change          ? bankNifty.change.toFixed(2)          : null,
         bankNiftyChangePercent: bankNifty?.changePercent ? bankNifty.changePercent.toFixed(2) : null,
+        bankNiftyPrevClose:  bankNifty?.prevClose       ? bankNifty.prevClose.toFixed(2)       : null,
         giftNifty:           giftNiftyPrice             ? (typeof giftNiftyPrice === 'number' ? giftNiftyPrice.toFixed(2) : giftNiftyPrice) : null,
         giftNiftyChange:     (giftNiftyChange !== undefined && giftNiftyChange !== null) ? giftNiftyChange.toFixed(2) : null,
         giftNiftyChangePercent: (giftNiftyChangePercent !== undefined && giftNiftyChangePercent !== null) ? giftNiftyChangePercent.toFixed(2) : null,
+        niftyWeeklyHigh:     niftyWeeklyHigh            ? niftyWeeklyHigh.toFixed(2)           : null,
+        niftyWeeklyLow:      niftyWeeklyLow             ? niftyWeeklyLow.toFixed(2)            : null,
         vix:                 vix?.price                 ? vix.price.toFixed(2)                 : (typeof vix === 'number' ? vix.toFixed(2) : null),
         vixChange:           vix?.change                ? vix.change.toFixed(2)                : null,
         niftyEMA9:           niftyEMA9                  ? niftyEMA9.toFixed(2)                 : null,
