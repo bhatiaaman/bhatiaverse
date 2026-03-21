@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import {
   ArrowLeft,
@@ -1133,8 +1133,8 @@ export default function FinancialPlanningPage() {
                         const subs = (cat.subs || []);
                         if (!subs.length) return null;
                         return (
-                          <>
-                            <tr key={`hdr-${cat.id}`}>
+                          <React.Fragment key={cat.id}>
+                            <tr>
                               <td colSpan={4} className="pt-4 pb-1 text-xs font-semibold text-blue-300 uppercase tracking-wider">{cat.label}</td>
                             </tr>
                             {subs.map((sub) => {
@@ -1160,7 +1160,7 @@ export default function FinancialPlanningPage() {
                                 </tr>
                               );
                             })}
-                          </>
+                          </React.Fragment>
                         );
                       })}
                     </tbody>
