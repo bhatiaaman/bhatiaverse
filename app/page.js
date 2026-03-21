@@ -380,7 +380,7 @@ export default function Home() {
           <ul style={{ display: 'flex', gap: '2.5rem', listStyle: 'none', margin: 0, padding: 0, flexWrap: 'wrap', alignItems: 'center' }}>
             <li><Link href="/articles" className="nav-link">Articles</Link></li>
             <li><Link href="/spirituality" className="nav-link">Spirituality</Link></li>
-            <li><Link href="/trades" className="nav-link">Trades</Link></li>
+            <li><Link href="/financial-planning" className="nav-link">Plan Financials</Link></li>
             <li><Link href="/aigames" className="nav-link">AI Games</Link></li>
             <li><a href="#contact" className="nav-link">Contact</a></li>
             <li>
