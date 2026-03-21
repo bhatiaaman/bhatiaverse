@@ -1110,6 +1110,73 @@ export default function FinancialPlanningPage() {
                 </table>
               </div>
             </section>
+
+            {/* Running Budget — quick spend entry */}
+            {activeMonthData.categories.some((c) => (c.subs || []).length > 0) && (
+              <section className="bg-slate-900/50 border border-white/10 rounded-2xl p-5">
+                <div className="mb-4">
+                  <h3 className="text-lg font-semibold text-purple-200">Running Budget</h3>
+                  <p className="text-xs text-gray-500 mt-0.5">Set Available per sub-category (include carryover) and log what you&apos;ve spent.</p>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-left text-gray-400 border-b border-white/10">
+                        <th className="py-2 pr-3">Sub-category</th>
+                        <th className="py-2 pr-2">Available (₹)</th>
+                        <th className="py-2 pr-2">Spent (₹)</th>
+                        <th className="py-2">Left</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {activeMonthData.categories.map((cat) => {
+                        const subs = (cat.subs || []);
+                        if (!subs.length) return null;
+                        return (
+                          <>
+                            <tr key={`hdr-${cat.id}`}>
+                              <td colSpan={4} className="pt-4 pb-1 text-xs font-semibold text-blue-300 uppercase tracking-wider">{cat.label}</td>
+                            </tr>
+                            {subs.map((sub) => {
+                              const avail = Number(sub.runAvail) || 0;
+                              const spent = Number(sub.runSpent) || 0;
+                              const left  = avail - spent;
+                              return (
+                                <tr key={sub.id} className="border-b border-white/5">
+                                  <td className="py-2 pr-3 text-gray-300">{sub.label || <span className="text-gray-600 italic">Unnamed</span>}</td>
+                                  <td className="py-2 pr-2">
+                                    <input type="number" min={0} value={sub.runAvail ?? 0}
+                                      onChange={(e) => updateMonthSubcat(cat.id, sub.id, 'runAvail', e.target.value)}
+                                      className="w-24 px-2 py-1.5 bg-slate-900/50 border border-white/10 rounded-lg text-sm" />
+                                  </td>
+                                  <td className="py-2 pr-2">
+                                    <input type="number" min={0} value={sub.runSpent ?? 0}
+                                      onChange={(e) => updateMonthSubcat(cat.id, sub.id, 'runSpent', e.target.value)}
+                                      className="w-24 px-2 py-1.5 bg-slate-900/50 border border-white/10 rounded-lg text-sm" />
+                                  </td>
+                                  <td className={`py-2 font-semibold whitespace-nowrap ${left < 0 ? 'text-red-300' : left === 0 ? 'text-gray-500' : 'text-green-300'}`}>
+                                    {left < 0 ? '-' : ''}{formatINR(Math.abs(left))}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="mt-4 flex items-center gap-3 border-t border-white/5 pt-4">
+                  <button type="button" onClick={saveMonthly}
+                    className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-purple-500/20 border border-purple-400/40 text-purple-200 hover:bg-purple-500/25 transition-colors text-sm">
+                    <Save size={14} /> Save
+                  </button>
+                  {monthlySaveState.status !== 'idle' && (
+                    <span className={monthlySaveState.status === 'saved' ? 'text-green-300 text-sm' : 'text-red-300 text-sm'}>{monthlySaveState.message}</span>
+                  )}
+                </div>
+              </section>
+            )}
           </div>
         )}
 
@@ -1152,51 +1219,26 @@ export default function FinancialPlanningPage() {
                   {subs.length === 0 && (
                     <p className="text-sm text-gray-500 text-center py-6">No sub-categories yet. Add one below.</p>
                   )}
-                  {subs.map((sub) => {
-                    const left = (Number(sub.runAvail) || 0) - (Number(sub.runSpent) || 0);
-                    return (
-                      <div key={sub.id} className="bg-slate-900/60 border border-white/8 rounded-xl p-4 space-y-3">
-                        <div className="flex items-center gap-2">
-                          <input
-                            value={sub.label}
-                            onChange={(e) => updateMonthSubcat(cat.id, sub.id, 'label', e.target.value)}
-                            placeholder="Sub-category name"
-                            className="flex-1 px-3 py-1.5 bg-slate-900/50 border border-white/10 rounded-lg text-sm"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => removeMonthSubcat(cat.id, sub.id)}
-                            className="p-1.5 rounded-lg text-gray-500 hover:text-red-300 hover:bg-red-500/10 transition-colors"
-                          >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                          </button>
-                        </div>
-                        <div className="grid grid-cols-3 gap-2">
-                          <label className="block">
-                            <span className="text-xs text-gray-500 mb-1 block">Budget (₹)</span>
-                            <input type="number" min={0} value={sub.budget ?? 0} onChange={(e) => updateMonthSubcat(cat.id, sub.id, 'budget', e.target.value)}
-                              className="w-full px-2 py-1.5 bg-slate-900/50 border border-white/10 rounded-lg text-sm" />
-                          </label>
-                          <label className="block">
-                            <span className="text-xs text-gray-500 mb-1 block">Available (₹)</span>
-                            <input type="number" min={0} value={sub.runAvail ?? 0} onChange={(e) => updateMonthSubcat(cat.id, sub.id, 'runAvail', e.target.value)}
-                              className="w-full px-2 py-1.5 bg-slate-900/50 border border-white/10 rounded-lg text-sm" />
-                          </label>
-                          <label className="block">
-                            <span className="text-xs text-gray-500 mb-1 block">Spent (₹)</span>
-                            <input type="number" min={0} value={sub.runSpent ?? 0} onChange={(e) => updateMonthSubcat(cat.id, sub.id, 'runSpent', e.target.value)}
-                              className="w-full px-2 py-1.5 bg-slate-900/50 border border-white/10 rounded-lg text-sm" />
-                          </label>
-                        </div>
-                        <div className="flex items-center justify-between text-xs">
-                          <span className="text-gray-500">Left</span>
-                          <span className={`font-semibold ${left < 0 ? 'text-red-300' : left === 0 ? 'text-gray-500' : 'text-green-300'}`}>
-                            {left < 0 ? '-' : ''}{formatINR(Math.abs(left))}
-                          </span>
-                        </div>
-                      </div>
-                    );
-                  })}
+                  {subs.map((sub) => (
+                    <div key={sub.id} className="flex items-center gap-3 bg-slate-900/60 border border-white/8 rounded-xl px-4 py-3">
+                      <input
+                        value={sub.label}
+                        onChange={(e) => updateMonthSubcat(cat.id, sub.id, 'label', e.target.value)}
+                        placeholder="Sub-category name"
+                        className="flex-1 px-3 py-1.5 bg-slate-900/50 border border-white/10 rounded-lg text-sm"
+                      />
+                      <label className="flex items-center gap-2 text-sm text-gray-400 whitespace-nowrap">
+                        Budget (₹)
+                        <input type="number" min={0} value={sub.budget ?? 0}
+                          onChange={(e) => updateMonthSubcat(cat.id, sub.id, 'budget', e.target.value)}
+                          className="w-28 px-2 py-1.5 bg-slate-900/50 border border-white/10 rounded-lg text-sm text-white" />
+                      </label>
+                      <button type="button" onClick={() => removeMonthSubcat(cat.id, sub.id)}
+                        className="p-1.5 rounded-lg text-gray-500 hover:text-red-300 hover:bg-red-500/10 transition-colors flex-shrink-0">
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                      </button>
+                    </div>
+                  ))}
                   <button
                     type="button"
                     onClick={() => addMonthSubcat(cat.id)}
@@ -1207,13 +1249,11 @@ export default function FinancialPlanningPage() {
                   </button>
                 </div>
 
-                {/* Footer totals + save */}
+                {/* Footer */}
                 <div className="p-5 border-t border-white/10 flex-shrink-0 space-y-3">
-                  <div className="grid grid-cols-4 gap-3 text-center text-sm">
-                    <div><div className="text-xs text-gray-500 mb-0.5">Budget</div><div className="font-semibold text-white">{formatINR(totalBudget)}</div></div>
-                    <div><div className="text-xs text-gray-500 mb-0.5">Available</div><div className="font-semibold text-white">{formatINR(totalAvail)}</div></div>
-                    <div><div className="text-xs text-gray-500 mb-0.5">Spent</div><div className="font-semibold text-white">{formatINR(totalSpent)}</div></div>
-                    <div><div className="text-xs text-gray-500 mb-0.5">Left</div><div className={`font-semibold ${totalLeft < 0 ? 'text-red-300' : 'text-green-300'}`}>{totalLeft < 0 ? '-' : ''}{formatINR(Math.abs(totalLeft))}</div></div>
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-gray-400">Total Budget</span>
+                    <span className="font-semibold text-white">{formatINR(totalBudget)}</span>
                   </div>
                   <button
                     type="button"
