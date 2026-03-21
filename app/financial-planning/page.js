@@ -5,12 +5,10 @@ import Link from 'next/link';
 import {
   ArrowLeft,
   Home,
-  Calculator,
   Save,
   Lock,
   ShieldCheck,
   AlertTriangle,
-  Percent,
   Baby,
   Landmark,
   CalendarDays,
@@ -117,6 +115,44 @@ const INVESTMENT_ASSETS = [
   { label: 'Sukanya',      key: 'invSukanya',     itemsKey: 'invSukanyaItems' },
 ];
 
+// Monthly View categories: [label, camelKey]
+const MONTHLY_CATS = [
+  ['Groceries',     'groceries'],
+  ['Utilities',     'utilities'],
+  ['Rent / EMI',    'rentEmi'],
+  ['Entertainment', 'entertainment'],
+  ['Travel',        'travel'],
+  ['Health',        'health'],
+  ['Dining Out',    'dining'],
+];
+
+function defaultMonthData() {
+  return {
+    budgetGroceries: 0, budgetUtilities: 0, budgetRentEmi: 0,
+    budgetEntertainment: 0, budgetTravel: 0, budgetHealth: 0, budgetDining: 0,
+    customLabel: 'Other', customBudget: 0,
+    runAvailGroceries: 0,     runGroceries: 0,
+    runAvailUtilities: 0,     runUtilities: 0,
+    runAvailRentEmi: 0,       runRentEmi: 0,
+    runAvailEntertainment: 0, runEntertainment: 0,
+    runAvailTravel: 0,        runTravel: 0,
+    runAvailHealth: 0,        runHealth: 0,
+    runAvailDining: 0,        runDining: 0,
+    runAvailCustom: 0,        runCustomAmount: 0,
+  };
+}
+
+function currentMonthKey() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+const DEFAULT_MONTHLY = {
+  budgetOpen: true,
+  activeMonth: currentMonthKey(),
+  months: {},
+};
+
 const DEFAULT_RETIREMENT = {
   currentAge: 35,
   retireAge: 60,
@@ -160,6 +196,8 @@ export default function FinancialPlanningPage() {
   const [assetPanel, setAssetPanel] = useState(null); // itemsKey string | null
 
   const [retirement, setRetirement] = useState(DEFAULT_RETIREMENT);
+  const [monthly, setMonthly] = useState(DEFAULT_MONTHLY);
+  const [monthlySaveState, setMonthlySaveState] = useState({ status: 'idle', message: '' });
   const [retSaveState, setRetSaveState] = useState({ status: 'idle', message: '' });
 
   useEffect(() => {
@@ -199,6 +237,12 @@ export default function FinancialPlanningPage() {
     try {
       const r = localStorage.getItem('bv-financial-plan-retirement');
       if (r) setRetirement((prev) => ({ ...prev, ...JSON.parse(r) }));
+    } catch {
+      // ignore
+    }
+    try {
+      const mo = localStorage.getItem('bv-financial-plan-monthly');
+      if (mo) setMonthly((prev) => ({ ...prev, ...JSON.parse(mo) }));
     } catch {
       // ignore
     }
@@ -259,6 +303,16 @@ export default function FinancialPlanningPage() {
     }
   };
 
+  const saveMonthly = () => {
+    try {
+      localStorage.setItem('bv-financial-plan-monthly', JSON.stringify(monthly));
+      setMonthlySaveState({ status: 'saved', message: 'Monthly plan saved.' });
+      setTimeout(() => setMonthlySaveState({ status: 'idle', message: '' }), 2500);
+    } catch {
+      setMonthlySaveState({ status: 'error', message: 'Could not save.' });
+    }
+  };
+
   const setSection = (id) => {
     setActiveSection(id);
     try {
@@ -266,6 +320,36 @@ export default function FinancialPlanningPage() {
     } catch {
       // ignore
     }
+  };
+
+  const activeMonthData = useMemo(() => ({
+    ...defaultMonthData(),
+    ...(monthly.months[monthly.activeMonth] || {}),
+  }), [monthly]);
+
+  const updateMonthField = (field, value) => {
+    const month = monthly.activeMonth;
+    setMonthly((prev) => ({
+      ...prev,
+      months: {
+        ...prev.months,
+        [month]: { ...(prev.months[month] || defaultMonthData()), [field]: value },
+      },
+    }));
+  };
+
+  const navigateMonth = (dir) => {
+    const [y, m] = monthly.activeMonth.split('-').map(Number);
+    const d = new Date(y, m - 1 + dir, 1);
+    setMonthly((prev) => ({
+      ...prev,
+      activeMonth: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`,
+    }));
+  };
+
+  const monthLabel = (key) => {
+    const [y, m] = key.split('-').map(Number);
+    return new Date(y, m - 1, 1).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
   };
 
   const activeKidData = kids[kids.activeKid] || kids.mannat;
@@ -696,143 +780,248 @@ export default function FinancialPlanningPage() {
         )}
 
         {activeSection === 'monthly' && (
-          <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-            <div className="lg:col-span-3 space-y-6">
-              <section className="bg-slate-900/50 border border-white/10 rounded-2xl p-5">
-                <h2 className="text-lg font-semibold flex items-center gap-2 mb-4">
-                  <Calculator size={18} className="text-blue-400" /> Monthly Budget Inputs
+          <div className="space-y-6">
+            {/* Month selector */}
+            <div className="bg-slate-900/50 border border-white/10 rounded-2xl p-5">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <h2 className="text-lg font-semibold flex items-center gap-2">
+                  <CalendarDays size={18} className="text-blue-400" /> Monthly View
                 </h2>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <label className="block">
-                    <span className="text-sm text-gray-400">Monthly Income</span>
-                    <input
-                      type="number"
-                      min={0}
-                      value={plan.monthlyIncome}
-                      onChange={(e) => setPlan((p) => ({ ...p, monthlyIncome: e.target.value }))}
-                      className="mt-2 w-full px-4 py-2.5 bg-slate-900/50 border border-white/10 rounded-xl text-sm"
-                    />
-                  </label>
-
-                  <label className="block">
-                    <span className="text-sm text-gray-400">Emergency Fund (months)</span>
-                    <select
-                      value={plan.emergencyMonths}
-                      onChange={(e) => setPlan((p) => ({ ...p, emergencyMonths: e.target.value }))}
-                      className="mt-2 w-full px-4 py-2.5 bg-slate-900/50 border border-white/10 rounded-xl text-sm"
-                    >
-                      <option value={3}>3</option>
-                      <option value={6}>6</option>
-                      <option value={9}>9</option>
-                    </select>
-                  </label>
-
-                  <label className="block">
-                    <span className="text-sm text-gray-400">Essential Expenses</span>
-                    <input
-                      type="number"
-                      min={0}
-                      value={plan.essentialExpenses}
-                      onChange={(e) => setPlan((p) => ({ ...p, essentialExpenses: e.target.value }))}
-                      className="mt-2 w-full px-4 py-2.5 bg-slate-900/50 border border-white/10 rounded-xl text-sm"
-                    />
-                  </label>
-
-                  <label className="block">
-                    <span className="text-sm text-gray-400">Discretionary Expenses</span>
-                    <input
-                      type="number"
-                      min={0}
-                      value={plan.discretionaryExpenses}
-                      onChange={(e) => setPlan((p) => ({ ...p, discretionaryExpenses: e.target.value }))}
-                      className="mt-2 w-full px-4 py-2.5 bg-slate-900/50 border border-white/10 rounded-xl text-sm"
-                    />
-                  </label>
-
-                  <label className="block sm:col-span-2">
-                    <span className="text-sm text-gray-400">Invest % of Monthly Surplus ({computed.investPercent}%)</span>
-                    <input
-                      type="range"
-                      min={0}
-                      max={100}
-                      value={plan.investPercent}
-                      onChange={(e) => setPlan((p) => ({ ...p, investPercent: e.target.value }))}
-                      className="mt-3 w-full"
-                    />
-                    <div className="mt-2 flex items-center justify-between text-xs text-gray-500">
-                      <span>0%</span>
-                      <span>50%</span>
-                      <span>100%</span>
-                    </div>
-                  </label>
-                </div>
-
-                <div className="mt-5 flex flex-wrap items-center gap-3">
+                <div className="flex items-center gap-2">
                   <button
                     type="button"
-                    onClick={savePlan}
-                    className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-500/20 border border-blue-400/40 text-blue-200 hover:bg-blue-500/25 transition-colors"
+                    onClick={() => navigateMonth(-1)}
+                    className="p-2 rounded-lg bg-white/5 hover:bg-white/10 transition-colors"
                   >
-                    <Save size={16} />
-                    Save Plan
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                    </svg>
                   </button>
-                  {saveState.status !== 'idle' && (
-                    <span className={saveState.status === 'saved' ? 'text-green-300 text-sm' : 'text-red-300 text-sm'}>
-                      {saveState.message}
-                    </span>
-                  )}
+                  <span className="text-base font-semibold text-white min-w-[160px] text-center">
+                    {monthLabel(monthly.activeMonth)}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => navigateMonth(1)}
+                    className="p-2 rounded-lg bg-white/5 hover:bg-white/10 transition-colors"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMonthly((prev) => ({ ...prev, activeMonth: currentMonthKey() }))}
+                    className="px-3 py-1.5 text-xs rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-gray-400 transition-colors"
+                  >
+                    Today
+                  </button>
                 </div>
-
-                <p className="mt-4 text-xs text-gray-500">Not financial advice. This is a planning heuristic.</p>
-              </section>
+              </div>
             </div>
 
-            <div className="lg:col-span-2 flex flex-col gap-6">
-              <section className="bg-slate-900/50 border border-white/10 rounded-2xl p-5">
-                <h2 className="text-lg font-semibold flex items-center gap-2 mb-4">
-                  <Percent size={18} className="text-purple-300" /> Computed Plan
-                </h2>
-
-                <div className="space-y-3">
-                  <div className="p-3 rounded-xl border border-white/5 bg-slate-900/40">
-                    <div className="flex items-center justify-between">
-                      <span className="text-gray-400 text-sm">Total Expenses</span>
-                      <span className="font-semibold">{formatINR(computed.totalExpenses)}</span>
-                    </div>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <div className="space-y-6">
+                {/* Budget Planning */}
+                <section className="bg-slate-900/50 border border-white/10 rounded-2xl p-5">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-lg font-semibold text-amber-200">Budget Planning</h3>
+                    <button
+                      type="button"
+                      onClick={() => setMonthly((prev) => ({ ...prev, budgetOpen: !prev.budgetOpen }))}
+                      className="px-3 py-1.5 rounded-lg text-xs border border-white/10 bg-slate-900/40 hover:bg-white/5"
+                    >
+                      {monthly.budgetOpen ? 'Collapse' : 'Expand'}
+                    </button>
                   </div>
+                  {monthly.budgetOpen && (
+                    <>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="text-left text-gray-400 border-b border-white/10">
+                              <th className="py-2 pr-3">Category</th>
+                              <th className="py-2">Budget (₹)</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {MONTHLY_CATS.map(([label, key]) => {
+                              const fieldKey = `budget${key.charAt(0).toUpperCase() + key.slice(1)}`;
+                              return (
+                                <tr key={key} className="border-b border-white/5">
+                                  <td className="py-2 pr-3">{label}</td>
+                                  <td className="py-2">
+                                    <input
+                                      type="number"
+                                      min={0}
+                                      value={activeMonthData[fieldKey] ?? 0}
+                                      onChange={(e) => updateMonthField(fieldKey, e.target.value)}
+                                      className="w-full sm:w-52 px-3 py-2 bg-slate-900/50 border border-white/10 rounded-lg"
+                                    />
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                            <tr className="border-b border-white/5">
+                              <td className="py-2 pr-3">
+                                <input
+                                  value={activeMonthData.customLabel || 'Other'}
+                                  onChange={(e) => updateMonthField('customLabel', e.target.value)}
+                                  className="w-full sm:w-52 px-3 py-2 bg-slate-900/50 border border-white/10 rounded-lg"
+                                  placeholder="Custom category"
+                                />
+                              </td>
+                              <td className="py-2">
+                                <input
+                                  type="number"
+                                  min={0}
+                                  value={activeMonthData.customBudget ?? 0}
+                                  onChange={(e) => updateMonthField('customBudget', e.target.value)}
+                                  className="w-full sm:w-52 px-3 py-2 bg-slate-900/50 border border-white/10 rounded-lg"
+                                />
+                              </td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                      {(() => {
+                        const total = MONTHLY_CATS.reduce((s, [, k]) => {
+                          const fk = `budget${k.charAt(0).toUpperCase() + k.slice(1)}`;
+                          return s + (Number(activeMonthData[fk]) || 0);
+                        }, 0) + (Number(activeMonthData.customBudget) || 0);
+                        return (
+                          <div className="mt-3 text-sm text-gray-300">
+                            Budget total: <span className="font-semibold">{formatINR(total)}</span>
+                          </div>
+                        );
+                      })()}
+                    </>
+                  )}
+                </section>
 
-                  <div className="p-3 rounded-xl border border-white/5 bg-slate-900/40">
-                    <div className="flex items-center justify-between">
-                      <span className="text-gray-400 text-sm">Monthly Surplus</span>
-                      <span className={computed.surplus >= 0 ? 'font-semibold text-green-300' : 'font-semibold text-red-300'}>
-                        {formatINR(computed.surplus)}
+                {/* Running Month Budget */}
+                <section className="bg-slate-900/50 border border-white/10 rounded-2xl p-5">
+                  <div className="mb-3">
+                    <h3 className="text-lg font-semibold text-purple-200">Running Month Budget</h3>
+                    <p className="text-xs text-gray-500 mt-0.5">Set &quot;Available&quot; per category — include carryover from last month if any.</p>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="text-left text-gray-400 border-b border-white/10">
+                          <th className="py-2 pr-2">Category</th>
+                          <th className="py-2 pr-2">Available (₹)</th>
+                          <th className="py-2 pr-2">Spent (₹)</th>
+                          <th className="py-2">Left</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {MONTHLY_CATS.map(([label, key]) => {
+                          const capKey = key.charAt(0).toUpperCase() + key.slice(1);
+                          const availKey = `runAvail${capKey}`;
+                          const spentKey = `run${capKey}`;
+                          const avail = Number(activeMonthData[availKey]) || 0;
+                          const spent = Number(activeMonthData[spentKey]) || 0;
+                          const left = avail - spent;
+                          return (
+                            <tr key={key} className="border-b border-white/5">
+                              <td className="py-2 pr-2 text-gray-400 whitespace-nowrap">{label}</td>
+                              <td className="py-2 pr-2">
+                                <input
+                                  type="number"
+                                  min={0}
+                                  value={activeMonthData[availKey] ?? 0}
+                                  onChange={(e) => updateMonthField(availKey, e.target.value)}
+                                  className="w-24 px-2 py-1.5 bg-slate-900/50 border border-white/10 rounded-lg text-sm"
+                                />
+                              </td>
+                              <td className="py-2 pr-2">
+                                <input
+                                  type="number"
+                                  min={0}
+                                  value={activeMonthData[spentKey] ?? 0}
+                                  onChange={(e) => updateMonthField(spentKey, e.target.value)}
+                                  className="w-24 px-2 py-1.5 bg-slate-900/50 border border-white/10 rounded-lg text-sm"
+                                />
+                              </td>
+                              <td className={`py-2 text-sm font-semibold whitespace-nowrap ${left < 0 ? 'text-red-300' : left === 0 ? 'text-gray-500' : 'text-green-300'}`}>
+                                {left < 0 ? '-' : ''}{formatINR(Math.abs(left))}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                        {(() => {
+                          const avail = Number(activeMonthData.runAvailCustom) || 0;
+                          const spent = Number(activeMonthData.runCustomAmount) || 0;
+                          const left = avail - spent;
+                          return (
+                            <tr className="border-b border-white/5">
+                              <td className="py-2 pr-2 text-gray-400">{activeMonthData.customLabel || 'Other'}</td>
+                              <td className="py-2 pr-2">
+                                <input
+                                  type="number"
+                                  min={0}
+                                  value={activeMonthData.runAvailCustom ?? 0}
+                                  onChange={(e) => updateMonthField('runAvailCustom', e.target.value)}
+                                  className="w-24 px-2 py-1.5 bg-slate-900/50 border border-white/10 rounded-lg text-sm"
+                                />
+                              </td>
+                              <td className="py-2 pr-2">
+                                <input
+                                  type="number"
+                                  min={0}
+                                  value={activeMonthData.runCustomAmount ?? 0}
+                                  onChange={(e) => updateMonthField('runCustomAmount', e.target.value)}
+                                  className="w-24 px-2 py-1.5 bg-slate-900/50 border border-white/10 rounded-lg text-sm"
+                                />
+                              </td>
+                              <td className={`py-2 text-sm font-semibold ${left < 0 ? 'text-red-300' : left === 0 ? 'text-gray-500' : 'text-green-300'}`}>
+                                {left < 0 ? '-' : ''}{formatINR(Math.abs(left))}
+                              </td>
+                            </tr>
+                          );
+                        })()}
+                      </tbody>
+                    </table>
+                  </div>
+                  {(() => {
+                    const allAvailKeys = MONTHLY_CATS.map(([, k]) => `runAvail${k.charAt(0).toUpperCase() + k.slice(1)}`).concat(['runAvailCustom']);
+                    const allSpentKeys = MONTHLY_CATS.map(([, k]) => `run${k.charAt(0).toUpperCase() + k.slice(1)}`).concat(['runCustomAmount']);
+                    const totalAvail = allAvailKeys.reduce((s, k) => s + (Number(activeMonthData[k]) || 0), 0);
+                    const totalSpent = allSpentKeys.reduce((s, k) => s + (Number(activeMonthData[k]) || 0), 0);
+                    const totalLeft = totalAvail - totalSpent;
+                    return (
+                      <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1 text-sm border-t border-white/5 pt-3">
+                        <span className="text-gray-400">Available: <span className="font-semibold text-white">{formatINR(totalAvail)}</span></span>
+                        <span className="text-gray-400">Spent: <span className="font-semibold text-white">{formatINR(totalSpent)}</span></span>
+                        <span className={totalLeft < 0 ? 'text-red-300' : 'text-green-300'}>
+                          Left: <span className="font-semibold">{totalLeft < 0 ? '-' : ''}{formatINR(Math.abs(totalLeft))}</span>
+                        </span>
+                      </div>
+                    );
+                  })()}
+                  <div className="mt-4 flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={saveMonthly}
+                      className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-purple-500/20 border border-purple-400/40 text-purple-200 hover:bg-purple-500/25 transition-colors text-sm"
+                    >
+                      <Save size={16} /> Save
+                    </button>
+                    {monthlySaveState.status !== 'idle' && (
+                      <span className={monthlySaveState.status === 'saved' ? 'text-green-300 text-sm' : 'text-red-300 text-sm'}>
+                        {monthlySaveState.message}
                       </span>
-                    </div>
+                    )}
                   </div>
+                </section>
+              </div>
 
-                  <div className="p-3 rounded-xl border border-white/5 bg-slate-900/40">
-                    <div className="flex items-center justify-between">
-                      <span className="text-gray-400 text-sm">Emergency Fund Target</span>
-                      <span className="font-semibold">{formatINR(computed.emergencyTarget)}</span>
-                    </div>
-                    <div className="mt-1 text-xs text-gray-500">Based on essentials × {plan.emergencyMonths} months</div>
-                  </div>
-
-                  <div className="p-3 rounded-xl border border-white/5 bg-slate-900/40">
-                    <div className="flex items-center justify-between">
-                      <span className="text-gray-400 text-sm">Recommended Investment (Monthly)</span>
-                      <span className="font-semibold text-blue-200">{formatINR(computed.recommendedInvestment)}</span>
-                    </div>
-                    <div className="mt-1 text-xs text-gray-500">{plan.investPercent}% of the surplus</div>
-                  </div>
-
-                  <div className="p-3 rounded-xl border border-white/5 bg-slate-900/40">
-                    <div className="flex items-center justify-between">
-                      <span className="text-gray-400 text-sm">Buffer After Investing</span>
-                      <span className="font-semibold">{formatINR(computed.bufferAfterInvestment)}</span>
-                    </div>
-                  </div>
+              {/* Right placeholder */}
+              <section className="bg-slate-900/50 border border-dashed border-white/10 rounded-2xl p-5 flex flex-col items-center justify-center min-h-[300px]">
+                <div className="text-center text-gray-600">
+                  <CalendarDays size={32} className="mx-auto mb-3 opacity-30" />
+                  <p className="text-sm">More coming soon</p>
                 </div>
               </section>
             </div>
