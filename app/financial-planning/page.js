@@ -199,6 +199,7 @@ export default function FinancialPlanningPage() {
   const [monthly, setMonthly] = useState(DEFAULT_MONTHLY);
   const [monthlySaveState, setMonthlySaveState] = useState({ status: 'idle', message: '' });
   const [retSaveState, setRetSaveState] = useState({ status: 'idle', message: '' });
+  const [dataLoading, setDataLoading] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -222,32 +223,56 @@ export default function FinancialPlanningPage() {
   }, []);
 
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem('bv-financial-plan');
-      if (raw) setPlan((prev) => ({ ...prev, ...JSON.parse(raw) }));
-    } catch {
-      // ignore
-    }
-    try {
-      const k = localStorage.getItem('bv-financial-plan-kids');
-      if (k) setKids((prev) => ({ ...prev, ...JSON.parse(k) }));
-    } catch {
-      // ignore
-    }
-    try {
-      const r = localStorage.getItem('bv-financial-plan-retirement');
-      if (r) setRetirement((prev) => ({ ...prev, ...JSON.parse(r) }));
-    } catch {
-      // ignore
-    }
-    try {
-      const mo = localStorage.getItem('bv-financial-plan-monthly');
-      if (mo) setMonthly((prev) => ({ ...prev, ...JSON.parse(mo) }));
-    } catch {
-      // ignore
-    }
-    setActiveSection('home');
-  }, []);
+    if (!authed) return;
+    let alive = true;
+    setDataLoading(true);
+    (async () => {
+      try {
+        const [homeRes, kidsRes, retRes, monthlyRes] = await Promise.all([
+          fetch('/api/plan/home',       { credentials: 'include' }),
+          fetch('/api/plan/kids',       { credentials: 'include' }),
+          fetch('/api/plan/retirement', { credentials: 'include' }),
+          fetch('/api/plan/monthly',    { credentials: 'include' }),
+        ]);
+        const [homeJson, kidsJson, retJson, monthlyJson] = await Promise.all([
+          homeRes.json(), kidsRes.json(), retRes.json(), monthlyRes.json(),
+        ]);
+        if (!alive) return;
+
+        // API data takes priority; fall back to localStorage if API returned null
+        if (homeJson.data) {
+          setPlan((prev) => ({ ...prev, ...homeJson.data }));
+        } else {
+          try { const r = localStorage.getItem('bv-financial-plan'); if (r) setPlan((prev) => ({ ...prev, ...JSON.parse(r) })); } catch {}
+        }
+        if (kidsJson.data) {
+          setKids((prev) => ({ ...prev, ...kidsJson.data }));
+        } else {
+          try { const r = localStorage.getItem('bv-financial-plan-kids'); if (r) setKids((prev) => ({ ...prev, ...JSON.parse(r) })); } catch {}
+        }
+        if (retJson.data) {
+          setRetirement((prev) => ({ ...prev, ...retJson.data }));
+        } else {
+          try { const r = localStorage.getItem('bv-financial-plan-retirement'); if (r) setRetirement((prev) => ({ ...prev, ...JSON.parse(r) })); } catch {}
+        }
+        if (monthlyJson.data) {
+          setMonthly((prev) => ({ ...prev, ...monthlyJson.data }));
+        } else {
+          try { const r = localStorage.getItem('bv-financial-plan-monthly'); if (r) setMonthly((prev) => ({ ...prev, ...JSON.parse(r) })); } catch {}
+        }
+      } catch {
+        if (!alive) return;
+        // Full fallback to localStorage on network error
+        try { const r = localStorage.getItem('bv-financial-plan'); if (r) setPlan((prev) => ({ ...prev, ...JSON.parse(r) })); } catch {}
+        try { const r = localStorage.getItem('bv-financial-plan-kids'); if (r) setKids((prev) => ({ ...prev, ...JSON.parse(r) })); } catch {}
+        try { const r = localStorage.getItem('bv-financial-plan-retirement'); if (r) setRetirement((prev) => ({ ...prev, ...JSON.parse(r) })); } catch {}
+        try { const r = localStorage.getItem('bv-financial-plan-monthly'); if (r) setMonthly((prev) => ({ ...prev, ...JSON.parse(r) })); } catch {}
+      } finally {
+        if (alive) setDataLoading(false);
+      }
+    })();
+    return () => { alive = false; };
+  }, [authed]);
 
   const computed = useMemo(() => {
     const monthlyIncome = Number(plan.monthlyIncome) || 0;
@@ -273,19 +298,31 @@ export default function FinancialPlanningPage() {
     };
   }, [plan]);
 
-  const savePlan = () => {
+  const savePlan = async () => {
     try {
-      localStorage.setItem('bv-financial-plan', JSON.stringify(plan));
-      setSaveState({ status: 'saved', message: 'Plan saved on this device.' });
+      const res = await fetch('/api/plan/home', {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(plan),
+      });
+      if (!res.ok) throw new Error();
+      try { localStorage.setItem('bv-financial-plan', JSON.stringify(plan)); } catch {}
+      setSaveState({ status: 'saved', message: 'Plan saved.' });
       setTimeout(() => setSaveState({ status: 'idle', message: '' }), 2500);
     } catch {
       setSaveState({ status: 'error', message: 'Could not save plan.' });
     }
   };
 
-  const saveKids = () => {
+  const saveKids = async () => {
     try {
-      localStorage.setItem('bv-financial-plan-kids', JSON.stringify(kids));
+      const res = await fetch('/api/plan/kids', {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(kids),
+      });
+      if (!res.ok) throw new Error();
+      try { localStorage.setItem('bv-financial-plan-kids', JSON.stringify(kids)); } catch {}
       setKidsSaveState({ status: 'saved', message: 'Kids plan saved.' });
       setTimeout(() => setKidsSaveState({ status: 'idle', message: '' }), 2500);
     } catch {
@@ -293,9 +330,15 @@ export default function FinancialPlanningPage() {
     }
   };
 
-  const saveRetirement = () => {
+  const saveRetirement = async () => {
     try {
-      localStorage.setItem('bv-financial-plan-retirement', JSON.stringify(retirement));
+      const res = await fetch('/api/plan/retirement', {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(retirement),
+      });
+      if (!res.ok) throw new Error();
+      try { localStorage.setItem('bv-financial-plan-retirement', JSON.stringify(retirement)); } catch {}
       setRetSaveState({ status: 'saved', message: 'Retirement plan saved.' });
       setTimeout(() => setRetSaveState({ status: 'idle', message: '' }), 2500);
     } catch {
@@ -303,9 +346,15 @@ export default function FinancialPlanningPage() {
     }
   };
 
-  const saveMonthly = () => {
+  const saveMonthly = async () => {
     try {
-      localStorage.setItem('bv-financial-plan-monthly', JSON.stringify(monthly));
+      const res = await fetch('/api/plan/monthly', {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(monthly),
+      });
+      if (!res.ok) throw new Error();
+      try { localStorage.setItem('bv-financial-plan-monthly', JSON.stringify(monthly)); } catch {}
       setMonthlySaveState({ status: 'saved', message: 'Monthly plan saved.' });
       setTimeout(() => setMonthlySaveState({ status: 'idle', message: '' }), 2500);
     } catch {
@@ -740,7 +789,12 @@ export default function FinancialPlanningPage() {
       </nav>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {activeSection === 'home' && (
+        {dataLoading && (
+          <div className="flex items-center justify-center py-20">
+            <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500" />
+          </div>
+        )}
+        {!dataLoading && activeSection === 'home' && (
           <div className="space-y-6">
             <section className="bg-slate-900/50 border border-white/10 rounded-2xl p-6">
               <h2 className="text-2xl font-bold mb-2">Financial Planning Home</h2>
@@ -779,7 +833,7 @@ export default function FinancialPlanningPage() {
           </div>
         )}
 
-        {activeSection === 'monthly' && (
+        {!dataLoading && activeSection === 'monthly' && (
           <div className="space-y-6">
             {/* Month selector */}
             <div className="bg-slate-900/50 border border-white/10 rounded-2xl p-5">
@@ -1028,7 +1082,7 @@ export default function FinancialPlanningPage() {
           </div>
         )}
 
-        {activeSection === 'kids' && (
+        {!dataLoading && activeSection === 'kids' && (
           <div className="space-y-6">
             <div className="bg-slate-900/50 border border-white/10 rounded-2xl p-5">
               <h2 className="text-lg font-semibold flex items-center gap-2 mb-4">
@@ -1490,7 +1544,7 @@ export default function FinancialPlanningPage() {
           </div>
         )}
 
-        {activeSection === 'retirement' && (
+        {!dataLoading && activeSection === 'retirement' && (
           <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
             <div className="lg:col-span-3 space-y-6">
               <section className="bg-slate-900/50 border border-white/10 rounded-2xl p-5">
