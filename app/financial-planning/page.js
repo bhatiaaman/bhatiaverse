@@ -12,6 +12,7 @@ import {
   Baby,
   Landmark,
   CalendarDays,
+  FileDown,
 } from 'lucide-react';
 
 const SECTIONS = [
@@ -612,6 +613,117 @@ export default function FinancialPlanningPage() {
     };
   }, [retirement]);
 
+  const [exportOpen, setExportOpen] = useState(false);
+
+  const triggerDownload = (blob, filename) => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const exportJSON = () => {
+    const data = { home: plan, kids, retirement, monthly, exportedAt: new Date().toISOString() };
+    triggerDownload(
+      new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }),
+      `financial-plan-${new Date().toISOString().slice(0, 10)}.json`
+    );
+    setExportOpen(false);
+  };
+
+  const exportCSV = () => {
+    const rows = [];
+    const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const row = (...cols) => rows.push(cols.map(esc).join(','));
+    const blank = () => rows.push('');
+
+    // Home plan
+    row('Section', 'Category', 'Value');
+    row('Home Plan', 'Monthly Income', plan.monthlyIncome);
+    row('Home Plan', 'Essential Expenses', plan.essentialExpenses);
+    row('Home Plan', 'Discretionary Expenses', plan.discretionaryExpenses);
+    row('Home Plan', 'Emergency Fund Months', plan.emergencyMonths);
+    row('Home Plan', 'Invest % of Surplus', plan.investPercent);
+    blank();
+
+    // Retirement
+    row('Retirement', 'Current Age', retirement.currentAge);
+    row('Retirement', 'Retire Age', retirement.retireAge);
+    row('Retirement', 'Monthly Expense Today', retirement.monthlyExpenseToday);
+    row('Retirement', 'Inflation %', retirement.inflationPct);
+    row('Retirement', 'Current Corpus', retirement.currentCorpus);
+    row('Retirement', 'Monthly Contribution', retirement.monthlyContribution);
+    row('Retirement', 'Expected Return %', retirement.expectedReturnPct);
+    blank();
+
+    // Kids — budget + running + holdings
+    for (const kidId of ['mannat', 'meher']) {
+      const kid = kids[kidId] || {};
+      const name = kidId.charAt(0).toUpperCase() + kidId.slice(1);
+
+      row(`Kids ${name}`, 'Budget 2026', kid.budget2026);
+      row(`Kids ${name}`, 'Investment Target 2026', kid.investmentBudget2026);
+      for (const [label, key] of [['School','school'],['Birthday','birthday'],['Mutual Funds','mutualFunds'],['Classes','classes'],['Shopping','shopping'],['Sukanya','sukanya']]) {
+        row(`Kids ${name} Budget`, label, kid[key]);
+      }
+      row(`Kids ${name} Budget`, kid.customLabel || 'Other', kid.customAmount);
+      blank();
+
+      for (const [label, availKey, spentKey] of [
+        ['School','runAvailSchool','runSchool'],['Birthday','runAvailBirthday','runBirthday'],
+        ['Mutual Funds','runAvailMutualFunds','runMutualFunds'],['Classes','runAvailClasses','runClasses'],
+        ['Shopping','runAvailShopping','runShopping'],['Sukanya','runAvailSukanya','runSukanya'],
+      ]) {
+        row(`Kids ${name} Running`, `${label} Available`, kid[availKey] ?? 0);
+        row(`Kids ${name} Running`, `${label} Spent`, kid[spentKey] ?? 0);
+      }
+      row(`Kids ${name} Running`, `${kid.customLabel || 'Other'} Available`, kid.runAvailCustom ?? 0);
+      row(`Kids ${name} Running`, `${kid.customLabel || 'Other'} Spent`, kid.runCustomAmount ?? 0);
+      blank();
+
+      // Holdings
+      for (const asset of INVESTMENT_ASSETS) {
+        const items = kid[asset.itemsKey] || [];
+        if (items.length) {
+          row(`Kids ${name} ${asset.label}`, 'Name', 'Qty', 'Price', 'Value', 'Notes');
+          for (const item of items) row(`Kids ${name} ${asset.label}`, item.name, item.qty, item.price, item.amount, item.notes);
+          blank();
+        }
+      }
+      for (const cat of kid.invExtraCategories || []) {
+        if (cat.items?.length) {
+          row(`Kids ${name} ${cat.label}`, 'Name', 'Qty', 'Price', 'Value', 'Notes');
+          for (const item of cat.items) row(`Kids ${name} ${cat.label}`, item.name, item.qty, item.price, item.amount, item.notes);
+          blank();
+        }
+      }
+    }
+
+    // Monthly — all saved months
+    for (const [monthKey, md] of Object.entries(monthly.months || {})) {
+      const [y, m] = monthKey.split('-').map(Number);
+      const label = new Date(y, m - 1, 1).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+      for (const [catLabel, key] of MONTHLY_CATS) {
+        const cap = key.charAt(0).toUpperCase() + key.slice(1);
+        row(`Monthly ${label}`, `${catLabel} Budget`, md[`budget${cap}`] ?? 0);
+        row(`Monthly ${label}`, `${catLabel} Available`, md[`runAvail${cap}`] ?? 0);
+        row(`Monthly ${label}`, `${catLabel} Spent`, md[`run${cap}`] ?? 0);
+      }
+      row(`Monthly ${label}`, `${md.customLabel || 'Other'} Budget`, md.customBudget ?? 0);
+      row(`Monthly ${label}`, `${md.customLabel || 'Other'} Available`, md.runAvailCustom ?? 0);
+      row(`Monthly ${label}`, `${md.customLabel || 'Other'} Spent`, md.runCustomAmount ?? 0);
+      blank();
+    }
+
+    triggerDownload(
+      new Blob([rows.join('\n')], { type: 'text/csv' }),
+      `financial-plan-${new Date().toISOString().slice(0, 10)}.csv`
+    );
+    setExportOpen(false);
+  };
+
   const doLogout = async () => {
     try {
       await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
@@ -754,14 +866,49 @@ export default function FinancialPlanningPage() {
                 <p className="text-sm text-gray-400">A simple budgeting + investing plan</p>
               </div>
             </div>
-            <button
-              type="button"
-              onClick={doLogout}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-full text-sm bg-white/5 border border-white/10 hover:bg-white/10 transition-colors"
-            >
-              <ShieldCheck size={16} />
-              Logout
-            </button>
+            <div className="flex items-center gap-2">
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setExportOpen((o) => !o)}
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-full text-sm bg-white/5 border border-white/10 hover:bg-white/10 transition-colors"
+                >
+                  <FileDown size={16} />
+                  Export
+                </button>
+                {exportOpen && (
+                  <>
+                    <div className="fixed inset-0 z-40" onClick={() => setExportOpen(false)} />
+                    <div className="absolute right-0 mt-2 w-44 bg-slate-900 border border-white/10 rounded-xl shadow-xl z-50 overflow-hidden">
+                      <button
+                        type="button"
+                        onClick={exportJSON}
+                        className="w-full text-left px-4 py-3 text-sm hover:bg-white/5 transition-colors flex items-center gap-2"
+                      >
+                        <FileDown size={14} className="text-blue-400" />
+                        Download JSON
+                      </button>
+                      <button
+                        type="button"
+                        onClick={exportCSV}
+                        className="w-full text-left px-4 py-3 text-sm hover:bg-white/5 transition-colors flex items-center gap-2 border-t border-white/5"
+                      >
+                        <FileDown size={14} className="text-green-400" />
+                        Download CSV
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={doLogout}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-full text-sm bg-white/5 border border-white/10 hover:bg-white/10 transition-colors"
+              >
+                <ShieldCheck size={16} />
+                Logout
+              </button>
+            </div>
           </div>
         </div>
       </header>
