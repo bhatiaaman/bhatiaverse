@@ -382,6 +382,7 @@ export default function FinancialPlanningPage() {
   const setSection = useCallback((id) => {
     setActiveSection(id);
     loadSection(id);
+    try { localStorage.setItem('bv-financial-plan-tab', id); } catch {}
   }, [loadSection]);
 
   const computed = useMemo(() => {
@@ -593,14 +594,6 @@ export default function FinancialPlanningPage() {
     }
   };
 
-  const setSection = (id) => {
-    setActiveSection(id);
-    try {
-      localStorage.setItem('bv-financial-plan-tab', id);
-    } catch {
-      // ignore
-    }
-  };
 
   const activeMonthData = useMemo(() => {
     const saved = monthly.months[monthly.activeMonth];
