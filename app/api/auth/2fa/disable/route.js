@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
-import { authenticator } from 'otplib';
 import { redis } from '@/app/lib/redis';
 import { getSessionUserId } from '@/app/lib/finplan-auth';
+import { verifyTotp } from '@/app/lib/totp';
 
 const NS = process.env.FINPLAN_REDIS_NAMESPACE || 'bv-finance';
 
@@ -15,8 +15,9 @@ export async function POST(req) {
   const secret = await redis.get(`${NS}:totp:${userId}`);
   if (!secret) return NextResponse.json({ error: '2FA is not enabled.' }, { status: 400 });
 
-  const isValid = authenticator.verify({ token: String(code).replace(/\s/g, ''), secret });
-  if (!isValid) return NextResponse.json({ error: 'Invalid code.' }, { status: 401 });
+  if (!verifyTotp(code, secret)) {
+    return NextResponse.json({ error: 'Invalid code.' }, { status: 401 });
+  }
 
   await redis.del(`${NS}:totp:${userId}`);
   return NextResponse.json({ success: true });

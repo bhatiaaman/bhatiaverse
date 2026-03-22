@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
-import { authenticator } from 'otplib';
 import crypto from 'crypto';
 import { redis } from '@/app/lib/redis';
+import { verifyTotp } from '@/app/lib/totp';
 
 const NS                  = process.env.FINPLAN_REDIS_NAMESPACE || 'bv-finance';
 const SESSION_TTL_SECONDS = Number(process.env.FINPLAN_SESSION_TTL_SECONDS) || (7 * 24 * 60 * 60);
@@ -23,8 +23,8 @@ function makeToken() {
 }
 
 export async function POST(req) {
-  const cookies    = parseCookies(req.headers.get('cookie') || '');
-  const preToken   = cookies[PREAUTH_COOKIE];
+  const cookies  = parseCookies(req.headers.get('cookie') || '');
+  const preToken = cookies[PREAUTH_COOKIE];
 
   if (!preToken || !/^[A-Za-z0-9_-]{20,200}$/.test(preToken)) {
     return NextResponse.json({ success: false, error: 'No pre-auth session found. Please log in again.' }, { status: 401 });
@@ -41,8 +41,9 @@ export async function POST(req) {
   const secret = await redis.get(`${NS}:totp:${userId}`);
   if (!secret) return NextResponse.json({ success: false, error: '2FA not configured.' }, { status: 400 });
 
-  const isValid = authenticator.verify({ token: String(code).replace(/\s/g, ''), secret });
-  if (!isValid) return NextResponse.json({ success: false, error: 'Invalid code. Try again.' }, { status: 401 });
+  if (!verifyTotp(code, secret)) {
+    return NextResponse.json({ success: false, error: 'Invalid code. Try again.' }, { status: 401 });
+  }
 
   // Issue full session
   const sessionToken = makeToken();
@@ -54,7 +55,6 @@ export async function POST(req) {
   res.headers.append('Set-Cookie',
     `${SESSION_COOKIE}=${encodeURIComponent(sessionToken)}; HttpOnly; Path=/; Max-Age=${SESSION_TTL_SECONDS}; SameSite=Lax${secure}`
   );
-  // Clear preauth cookie
   res.headers.append('Set-Cookie',
     `${PREAUTH_COOKIE}=; HttpOnly; Path=/; Max-Age=0; SameSite=Lax${secure}`
   );

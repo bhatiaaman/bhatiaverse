@@ -1,14 +1,14 @@
 import { NextResponse } from 'next/server';
-import { authenticator } from 'otplib';
 import QRCode from 'qrcode';
 import { redis } from '@/app/lib/redis';
 import { getSessionUserId } from '@/app/lib/finplan-auth';
+import { generateSecret, keyuri, verifyTotp } from '@/app/lib/totp';
 
-const NS = process.env.FINPLAN_REDIS_NAMESPACE || 'bv-finance';
+const NS       = process.env.FINPLAN_REDIS_NAMESPACE || 'bv-finance';
 const APP_NAME = process.env.FINPLAN_APP_NAME || 'BhatiaVerse Finance';
 
-const totpKey       = (uid) => `${NS}:totp:${uid}`;
-const pendingKey    = (uid) => `${NS}:totp_pending:${uid}`;
+const totpKey    = (uid) => `${NS}:totp:${uid}`;
+const pendingKey = (uid) => `${NS}:totp_pending:${uid}`;
 
 // GET — return setup info (QR + secret) or { enabled: true } if already active
 export async function GET(req) {
@@ -21,11 +21,11 @@ export async function GET(req) {
   // Reuse or generate pending secret (10-min window to complete setup)
   let secret = await redis.get(pendingKey(userId));
   if (!secret) {
-    secret = authenticator.generateSecret();
+    secret = generateSecret();
     await redis.set(pendingKey(userId), secret, { ex: 600 });
   }
 
-  const otpauthUrl = authenticator.keyuri(userId, APP_NAME, secret);
+  const otpauthUrl = keyuri(userId, APP_NAME, secret);
   const qrDataUrl  = await QRCode.toDataURL(otpauthUrl, { width: 220, margin: 2 });
 
   return NextResponse.json({ enabled: false, secret, qrDataUrl });
@@ -42,8 +42,9 @@ export async function POST(req) {
   const secret = await redis.get(pendingKey(userId));
   if (!secret) return NextResponse.json({ error: 'Setup session expired. Start again.' }, { status: 400 });
 
-  const isValid = authenticator.verify({ token: String(code).replace(/\s/g, ''), secret });
-  if (!isValid) return NextResponse.json({ error: 'Invalid code. Check your authenticator app and try again.' }, { status: 400 });
+  if (!verifyTotp(code, secret)) {
+    return NextResponse.json({ error: 'Invalid code. Check your authenticator app and try again.' }, { status: 400 });
+  }
 
   await redis.set(totpKey(userId), secret);
   await redis.del(pendingKey(userId));
