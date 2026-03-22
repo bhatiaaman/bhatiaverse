@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { redis } from '@/app/lib/redis';
 import { getSessionUserId, planKey } from '@/app/lib/finplan-auth';
 
-const ALLOWED = new Set(['home', 'kids', 'retirement', 'monthly']);
+const ALLOWED = new Set(['home', 'kids', 'retirement', 'monthly', 'insurance']);
 
 export async function GET(req, { params }) {
   const { section } = await params;

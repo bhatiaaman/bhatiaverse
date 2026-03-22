@@ -13,14 +13,26 @@ import {
   Landmark,
   CalendarDays,
   FileDown,
+  Shield,
 } from 'lucide-react';
 
 const SECTIONS = [
-  { id: 'home', label: 'Home', icon: Home },
-  { id: 'kids', label: 'Kids', icon: Baby },
-  { id: 'retirement', label: 'Retirement', icon: Landmark },
-  { id: 'monthly', label: 'Monthly View', icon: CalendarDays },
+  { id: 'home',       label: 'Home',        icon: Home },
+  { id: 'kids',       label: 'Kids',        icon: Baby },
+  { id: 'retirement', label: 'Retirement',  icon: Landmark },
+  { id: 'monthly',    label: 'Monthly View',icon: CalendarDays },
+  { id: 'insurance',  label: 'Insurance',   icon: Shield },
 ];
+
+const RETIREMENT_SECTIONS = [
+  { label: 'EPF',          key: 'epfItems',     accentColor: 'blue' },
+  { label: 'NPS',          key: 'npsItems',     accentColor: 'purple' },
+  { label: 'Pension Fund', key: 'pensionItems', accentColor: 'emerald' },
+  { label: 'FD',           key: 'fdItems',      accentColor: 'amber' },
+  { label: 'Other',        key: 'otherItems',   accentColor: 'slate' },
+];
+
+const INSURANCE_TYPES = ['Term', 'Life', 'Health', 'Vehicle', 'Property', 'Other'];
 
 const DEFAULT_KIDS = {
   budgetOpen: true,
@@ -146,10 +158,15 @@ const DEFAULT_RETIREMENT = {
   retireAge: 60,
   monthlyExpenseToday: 80000,
   inflationPct: 6,
-  currentCorpus: 5000000,
-  monthlyContribution: 50000,
   expectedReturnPct: 9,
+  epfItems: [],
+  npsItems: [],
+  pensionItems: [],
+  fdItems: [],
+  otherItems: [],
 };
+
+const DEFAULT_INSURANCE = { policies: [] };
 
 const DEFAULT_PLAN = {
   monthlyIncome: 200000,
@@ -188,7 +205,10 @@ export default function FinancialPlanningPage() {
   const [monthly, setMonthly] = useState(DEFAULT_MONTHLY);
   const [monthlySaveState, setMonthlySaveState] = useState({ status: 'idle', message: '' });
   const [retSaveState, setRetSaveState] = useState({ status: 'idle', message: '' });
+  const [insurance, setInsurance] = useState(DEFAULT_INSURANCE);
+  const [insuranceSaveState, setInsuranceSaveState] = useState({ status: 'idle', message: '' });
   const [dataLoading, setDataLoading] = useState(false);
+  const [retSectionPanel, setRetSectionPanel] = useState(null); // RETIREMENT_SECTIONS key | null
 
   useEffect(() => {
     let alive = true;
@@ -217,41 +237,29 @@ export default function FinancialPlanningPage() {
     setDataLoading(true);
     (async () => {
       try {
-        const [homeRes, kidsRes, retRes, monthlyRes] = await Promise.all([
+        const [homeRes, kidsRes, retRes, monthlyRes, insRes] = await Promise.all([
           fetch('/api/plan/home',       { credentials: 'include' }),
           fetch('/api/plan/kids',       { credentials: 'include' }),
           fetch('/api/plan/retirement', { credentials: 'include' }),
           fetch('/api/plan/monthly',    { credentials: 'include' }),
+          fetch('/api/plan/insurance',  { credentials: 'include' }),
         ]);
-        const [homeJson, kidsJson, retJson, monthlyJson] = await Promise.all([
-          homeRes.json(), kidsRes.json(), retRes.json(), monthlyRes.json(),
+        const [homeJson, kidsJson, retJson, monthlyJson, insJson] = await Promise.all([
+          homeRes.json(), kidsRes.json(), retRes.json(), monthlyRes.json(), insRes.json(),
         ]);
         if (!alive) return;
 
-        // API data takes priority; fall back to localStorage if API returned null
-        if (homeJson.data) {
-          setPlan((prev) => ({ ...prev, ...homeJson.data }));
-        } else {
-          try { const r = localStorage.getItem('bv-financial-plan'); if (r) setPlan((prev) => ({ ...prev, ...JSON.parse(r) })); } catch {}
-        }
-        if (kidsJson.data) {
-          setKids((prev) => ({ ...prev, ...kidsJson.data }));
-        } else {
-          try { const r = localStorage.getItem('bv-financial-plan-kids'); if (r) setKids((prev) => ({ ...prev, ...JSON.parse(r) })); } catch {}
-        }
-        if (retJson.data) {
-          setRetirement((prev) => ({ ...prev, ...retJson.data }));
-        } else {
-          try { const r = localStorage.getItem('bv-financial-plan-retirement'); if (r) setRetirement((prev) => ({ ...prev, ...JSON.parse(r) })); } catch {}
-        }
-        if (monthlyJson.data) {
-          setMonthly((prev) => ({ ...prev, ...monthlyJson.data }));
-        } else {
-          try { const r = localStorage.getItem('bv-financial-plan-monthly'); if (r) setMonthly((prev) => ({ ...prev, ...JSON.parse(r) })); } catch {}
-        }
+        if (homeJson.data)    setPlan((prev)       => ({ ...prev, ...homeJson.data }));
+        else { try { const r = localStorage.getItem('bv-financial-plan'); if (r) setPlan((prev) => ({ ...prev, ...JSON.parse(r) })); } catch {} }
+        if (kidsJson.data)    setKids((prev)       => ({ ...prev, ...kidsJson.data }));
+        else { try { const r = localStorage.getItem('bv-financial-plan-kids'); if (r) setKids((prev) => ({ ...prev, ...JSON.parse(r) })); } catch {} }
+        if (retJson.data)     setRetirement((prev) => ({ ...prev, ...retJson.data }));
+        else { try { const r = localStorage.getItem('bv-financial-plan-retirement'); if (r) setRetirement((prev) => ({ ...prev, ...JSON.parse(r) })); } catch {} }
+        if (monthlyJson.data) setMonthly((prev)    => ({ ...prev, ...monthlyJson.data }));
+        else { try { const r = localStorage.getItem('bv-financial-plan-monthly'); if (r) setMonthly((prev) => ({ ...prev, ...JSON.parse(r) })); } catch {} }
+        if (insJson.data)     setInsurance((prev)  => ({ ...prev, ...insJson.data }));
       } catch {
         if (!alive) return;
-        // Full fallback to localStorage on network error
         try { const r = localStorage.getItem('bv-financial-plan'); if (r) setPlan((prev) => ({ ...prev, ...JSON.parse(r) })); } catch {}
         try { const r = localStorage.getItem('bv-financial-plan-kids'); if (r) setKids((prev) => ({ ...prev, ...JSON.parse(r) })); } catch {}
         try { const r = localStorage.getItem('bv-financial-plan-retirement'); if (r) setRetirement((prev) => ({ ...prev, ...JSON.parse(r) })); } catch {}
@@ -348,6 +356,21 @@ export default function FinancialPlanningPage() {
       setTimeout(() => setMonthlySaveState({ status: 'idle', message: '' }), 2500);
     } catch {
       setMonthlySaveState({ status: 'error', message: 'Could not save.' });
+    }
+  };
+
+  const saveInsurance = async () => {
+    try {
+      const res = await fetch('/api/plan/insurance', {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(insurance),
+      });
+      if (!res.ok) throw new Error();
+      setInsuranceSaveState({ status: 'saved', message: 'Insurance data saved.' });
+      setTimeout(() => setInsuranceSaveState({ status: 'idle', message: '' }), 2500);
+    } catch {
+      setInsuranceSaveState({ status: 'error', message: 'Could not save.' });
     }
   };
 
@@ -613,6 +636,13 @@ export default function FinancialPlanningPage() {
     }));
   };
 
+  const retirementTotals = useMemo(() => {
+    const keys = RETIREMENT_SECTIONS.map((s) => s.key);
+    const corpus = keys.reduce((s, k) => s + (retirement[k] || []).reduce((ss, i) => ss + (Number(i.currentValue) || 0), 0), 0);
+    const contrib = keys.reduce((s, k) => s + (retirement[k] || []).reduce((ss, i) => ss + (Number(i.monthlyContrib) || 0), 0), 0);
+    return { corpus, contrib };
+  }, [retirement]);
+
   const retirementComputed = useMemo(() => {
     const ageNow = Number(retirement.currentAge) || 0;
     const retireAt = Number(retirement.retireAge) || 0;
@@ -620,11 +650,9 @@ export default function FinancialPlanningPage() {
     const expToday = Number(retirement.monthlyExpenseToday) || 0;
     const infl = (Number(retirement.inflationPct) || 0) / 100;
     const monthlyAtRetire = expToday * (1 + infl) ** yearsLeft;
-    const annualNeed = monthlyAtRetire * 12;
-    const safeWithdrawal = 0.04;
-    const corpusNeeded = annualNeed / safeWithdrawal;
-    const corpus = Number(retirement.currentCorpus) || 0;
-    const contrib = Number(retirement.monthlyContribution) || 0;
+    const corpusNeeded = (monthlyAtRetire * 12) / 0.04;
+    const corpus = retirementTotals.corpus;
+    const contrib = retirementTotals.contrib;
     const retR = (Number(retirement.expectedReturnPct) || 0) / 100 / 12;
     const n = yearsLeft * 12;
     let fvCorpus = corpus;
@@ -633,15 +661,28 @@ export default function FinancialPlanningPage() {
     } else if (n > 0) {
       fvCorpus = corpus + contrib * n;
     }
-    const shortfall = Math.max(0, corpusNeeded - fvCorpus);
-    return {
-      yearsLeft,
-      monthlyAtRetire,
-      corpusNeeded,
-      projectedCorpus: fvCorpus,
-      shortfall,
-    };
-  }, [retirement]);
+    return { yearsLeft, monthlyAtRetire, corpusNeeded, projectedCorpus: fvCorpus, shortfall: Math.max(0, corpusNeeded - fvCorpus) };
+  }, [retirement, retirementTotals]);
+
+  const addRetirementItem = (key) => {
+    setRetirement((r) => ({ ...r, [key]: [...(r[key] || []), { id: Date.now(), name: '', currentValue: 0, monthlyContrib: 0, notes: '' }] }));
+  };
+  const updateRetirementItem = (key, id, field, value) => {
+    setRetirement((r) => ({ ...r, [key]: (r[key] || []).map((item) => item.id === id ? { ...item, [field]: value } : item) }));
+  };
+  const removeRetirementItem = (key, id) => {
+    setRetirement((r) => ({ ...r, [key]: (r[key] || []).filter((item) => item.id !== id) }));
+  };
+
+  const addPolicy = () => {
+    setInsurance((prev) => ({ ...prev, policies: [...prev.policies, { id: Date.now(), type: 'Term', insurer: '', sumAssured: 0, premium: 0, policyNo: '', expiryDate: '', notes: '' }] }));
+  };
+  const updatePolicy = (id, field, value) => {
+    setInsurance((prev) => ({ ...prev, policies: prev.policies.map((p) => p.id === id ? { ...p, [field]: value } : p) }));
+  };
+  const removePolicy = (id) => {
+    setInsurance((prev) => ({ ...prev, policies: prev.policies.filter((p) => p.id !== id) }));
+  };
 
   const [exportOpen, setExportOpen] = useState(false);
 
@@ -655,7 +696,7 @@ export default function FinancialPlanningPage() {
   };
 
   const exportJSON = () => {
-    const data = { home: plan, kids, retirement, monthly, exportedAt: new Date().toISOString() };
+    const data = { home: plan, kids, retirement, monthly, insurance, exportedAt: new Date().toISOString() };
     triggerDownload(
       new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }),
       `financial-plan-${new Date().toISOString().slice(0, 10)}.json`
@@ -678,15 +719,32 @@ export default function FinancialPlanningPage() {
     row('Home Plan', 'Invest % of Surplus', plan.investPercent);
     blank();
 
-    // Retirement
+    // Retirement calculator inputs
     row('Retirement', 'Current Age', retirement.currentAge);
     row('Retirement', 'Retire Age', retirement.retireAge);
     row('Retirement', 'Monthly Expense Today', retirement.monthlyExpenseToday);
     row('Retirement', 'Inflation %', retirement.inflationPct);
-    row('Retirement', 'Current Corpus', retirement.currentCorpus);
-    row('Retirement', 'Monthly Contribution', retirement.monthlyContribution);
     row('Retirement', 'Expected Return %', retirement.expectedReturnPct);
+    row('Retirement', 'Total Corpus (computed)', retirementTotals.corpus);
+    row('Retirement', 'Total Monthly Contrib (computed)', retirementTotals.contrib);
     blank();
+    // Retirement holdings
+    for (const sec of RETIREMENT_SECTIONS) {
+      const items = retirement[sec.key] || [];
+      if (items.length) {
+        row(`Retirement ${sec.label}`, 'Name', 'Current Value', 'Monthly Contrib', 'Notes');
+        for (const item of items) row(`Retirement ${sec.label}`, item.name, item.currentValue, item.monthlyContrib, item.notes);
+        blank();
+      }
+    }
+    // Insurance
+    if ((insurance.policies || []).length) {
+      row('Insurance', 'Type', 'Insurer', 'Sum Assured', 'Premium', 'Policy No', 'Expiry', 'Notes');
+      for (const p of insurance.policies) {
+        row('Insurance', p.type, p.insurer, p.sumAssured, p.premium, p.policyNo, p.expiryDate, p.notes);
+      }
+      blank();
+    }
 
     // Kids — budget + running + holdings
     for (const kidId of ['mannat', 'meher']) {
@@ -1732,108 +1790,123 @@ export default function FinancialPlanningPage() {
 
         {!dataLoading && activeSection === 'retirement' && (
           <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+            {/* Left: holdings sections + calculator inputs */}
             <div className="lg:col-span-3 space-y-6">
+              {/* Holdings by section */}
               <section className="bg-slate-900/50 border border-white/10 rounded-2xl p-5">
-                <h2 className="text-lg font-semibold flex items-center gap-2 mb-4">
-                  <Landmark size={18} className="text-emerald-300" /> Retirement
+                <h2 className="text-lg font-semibold flex items-center gap-2 mb-1">
+                  <Landmark size={18} className="text-emerald-300" /> Retirement Holdings
                 </h2>
-                <p className="text-sm text-gray-400 mb-4">
-                  Rough corpus need uses 4% rule on inflated monthly expenses at retirement. Projection compounds current corpus + monthly contributions.
-                </p>
+                <p className="text-xs text-gray-500 mb-4">Click a section to add or edit holdings. Corpus and contributions are summed automatically.</p>
+                <div className="space-y-2">
+                  {RETIREMENT_SECTIONS.map((sec) => {
+                    const items = retirement[sec.key] || [];
+                    const secCorpus = items.reduce((s, i) => s + (Number(i.currentValue) || 0), 0);
+                    const secContrib = items.reduce((s, i) => s + (Number(i.monthlyContrib) || 0), 0);
+                    const accent = {
+                      blue:    'border-blue-500/30 bg-blue-500/8 hover:bg-blue-500/12',
+                      purple:  'border-purple-500/30 bg-purple-500/8 hover:bg-purple-500/12',
+                      emerald: 'border-emerald-500/30 bg-emerald-500/8 hover:bg-emerald-500/12',
+                      amber:   'border-amber-500/30 bg-amber-500/8 hover:bg-amber-500/12',
+                      slate:   'border-slate-500/30 bg-slate-500/8 hover:bg-slate-500/12',
+                    }[sec.accentColor] || 'border-white/10 bg-white/3 hover:bg-white/5';
+                    const labelColor = {
+                      blue: 'text-blue-300', purple: 'text-purple-300', emerald: 'text-emerald-300',
+                      amber: 'text-amber-300', slate: 'text-slate-300',
+                    }[sec.accentColor] || 'text-white';
+                    return (
+                      <button
+                        key={sec.key}
+                        type="button"
+                        onClick={() => setRetSectionPanel(sec.key)}
+                        className={`w-full flex items-center justify-between px-4 py-3.5 rounded-xl border transition-colors text-left ${accent}`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <span className={`font-semibold text-sm ${labelColor}`}>{sec.label}</span>
+                          <span className="text-xs text-gray-500">{items.length} {items.length === 1 ? 'holding' : 'holdings'}</span>
+                        </div>
+                        <div className="flex items-center gap-6 text-sm">
+                          <div className="text-right">
+                            <div className="text-xs text-gray-500">Corpus</div>
+                            <div className="font-semibold text-gray-100">{secCorpus ? formatINR(secCorpus) : '—'}</div>
+                          </div>
+                          <div className="text-right">
+                            <div className="text-xs text-gray-500">Monthly</div>
+                            <div className="font-semibold text-gray-100">{secContrib ? formatINR(secContrib) : '—'}</div>
+                          </div>
+                          <svg className="w-4 h-4 text-gray-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                          </svg>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+                {/* Totals row */}
+                <div className="mt-4 pt-4 border-t border-white/10 flex items-center justify-between text-sm">
+                  <span className="text-gray-400 font-medium">Total</span>
+                  <div className="flex items-center gap-8">
+                    <div className="text-right">
+                      <div className="text-xs text-gray-500">Corpus</div>
+                      <div className="font-bold text-emerald-200 text-base">{formatINR(retirementTotals.corpus)}</div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-xs text-gray-500">Monthly contrib</div>
+                      <div className="font-bold text-emerald-200 text-base">{formatINR(retirementTotals.contrib)}</div>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              {/* Calculator inputs */}
+              <section className="bg-slate-900/50 border border-white/10 rounded-2xl p-5">
+                <h3 className="text-base font-semibold text-gray-300 mb-4">Projection Calculator</h3>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <label className="block">
                     <span className="text-sm text-gray-400">Current age</span>
-                    <input
-                      type="number"
-                      min={18}
-                      max={100}
-                      value={retirement.currentAge}
+                    <input type="number" min={18} max={100} value={retirement.currentAge}
                       onChange={(e) => setRetirement((r) => ({ ...r, currentAge: e.target.value }))}
-                      className="mt-2 w-full px-4 py-2.5 bg-slate-900/50 border border-white/10 rounded-xl text-sm"
-                    />
+                      className="mt-2 w-full px-4 py-2.5 bg-slate-900/50 border border-white/10 rounded-xl text-sm" />
                   </label>
                   <label className="block">
                     <span className="text-sm text-gray-400">Retirement age</span>
-                    <input
-                      type="number"
-                      min={40}
-                      max={75}
-                      value={retirement.retireAge}
+                    <input type="number" min={40} max={75} value={retirement.retireAge}
                       onChange={(e) => setRetirement((r) => ({ ...r, retireAge: e.target.value }))}
-                      className="mt-2 w-full px-4 py-2.5 bg-slate-900/50 border border-white/10 rounded-xl text-sm"
-                    />
+                      className="mt-2 w-full px-4 py-2.5 bg-slate-900/50 border border-white/10 rounded-xl text-sm" />
                   </label>
                   <label className="block">
                     <span className="text-sm text-gray-400">Monthly expenses today (₹)</span>
-                    <input
-                      type="number"
-                      min={0}
-                      value={retirement.monthlyExpenseToday}
+                    <input type="number" min={0} value={retirement.monthlyExpenseToday}
                       onChange={(e) => setRetirement((r) => ({ ...r, monthlyExpenseToday: e.target.value }))}
-                      className="mt-2 w-full px-4 py-2.5 bg-slate-900/50 border border-white/10 rounded-xl text-sm"
-                    />
+                      className="mt-2 w-full px-4 py-2.5 bg-slate-900/50 border border-white/10 rounded-xl text-sm" />
                   </label>
                   <label className="block">
                     <span className="text-sm text-gray-400">Inflation p.a. (%)</span>
-                    <input
-                      type="number"
-                      min={0}
-                      step={0.5}
-                      value={retirement.inflationPct}
+                    <input type="number" min={0} step={0.5} value={retirement.inflationPct}
                       onChange={(e) => setRetirement((r) => ({ ...r, inflationPct: e.target.value }))}
-                      className="mt-2 w-full px-4 py-2.5 bg-slate-900/50 border border-white/10 rounded-xl text-sm"
-                    />
-                  </label>
-                  <label className="block">
-                    <span className="text-sm text-gray-400">Current retirement corpus (₹)</span>
-                    <input
-                      type="number"
-                      min={0}
-                      value={retirement.currentCorpus}
-                      onChange={(e) => setRetirement((r) => ({ ...r, currentCorpus: e.target.value }))}
-                      className="mt-2 w-full px-4 py-2.5 bg-slate-900/50 border border-white/10 rounded-xl text-sm"
-                    />
-                  </label>
-                  <label className="block">
-                    <span className="text-sm text-gray-400">Monthly contribution (₹)</span>
-                    <input
-                      type="number"
-                      min={0}
-                      value={retirement.monthlyContribution}
-                      onChange={(e) => setRetirement((r) => ({ ...r, monthlyContribution: e.target.value }))}
-                      className="mt-2 w-full px-4 py-2.5 bg-slate-900/50 border border-white/10 rounded-xl text-sm"
-                    />
+                      className="mt-2 w-full px-4 py-2.5 bg-slate-900/50 border border-white/10 rounded-xl text-sm" />
                   </label>
                   <label className="block sm:col-span-2">
                     <span className="text-sm text-gray-400">Expected portfolio return p.a. (%)</span>
-                    <input
-                      type="number"
-                      min={0}
-                      step={0.5}
-                      value={retirement.expectedReturnPct}
+                    <input type="number" min={0} step={0.5} value={retirement.expectedReturnPct}
                       onChange={(e) => setRetirement((r) => ({ ...r, expectedReturnPct: e.target.value }))}
-                      className="mt-2 w-full px-4 py-2.5 bg-slate-900/50 border border-white/10 rounded-xl text-sm"
-                    />
+                      className="mt-2 w-full px-4 py-2.5 bg-slate-900/50 border border-white/10 rounded-xl text-sm" />
                   </label>
                 </div>
                 <div className="mt-5 flex flex-wrap items-center gap-3">
-                  <button
-                    type="button"
-                    onClick={saveRetirement}
-                    className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-500/20 border border-emerald-400/40 text-emerald-100 hover:bg-emerald-500/25 transition-colors"
-                  >
-                    <Save size={16} />
-                    Save retirement plan
+                  <button type="button" onClick={saveRetirement}
+                    className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-500/20 border border-emerald-400/40 text-emerald-100 hover:bg-emerald-500/25 transition-colors">
+                    <Save size={16} /> Save retirement plan
                   </button>
                   {retSaveState.status !== 'idle' && (
-                    <span className={retSaveState.status === 'saved' ? 'text-green-300 text-sm' : 'text-red-300 text-sm'}>
-                      {retSaveState.message}
-                    </span>
+                    <span className={retSaveState.status === 'saved' ? 'text-green-300 text-sm' : 'text-red-300 text-sm'}>{retSaveState.message}</span>
                   )}
                 </div>
-                <p className="mt-4 text-xs text-gray-500">Illustrative only. Not financial advice.</p>
+                <p className="mt-3 text-xs text-gray-500">Illustrative only. Corpus and contributions are auto-populated from your holdings above. Not financial advice.</p>
               </section>
             </div>
+
+            {/* Right: projection results */}
             <div className="lg:col-span-2">
               <section className="bg-slate-900/50 border border-white/10 rounded-2xl p-5">
                 <h2 className="text-lg font-semibold mb-4 text-emerald-200">At retirement</h2>
@@ -1865,11 +1938,7 @@ export default function FinancialPlanningPage() {
                   <div className="p-3 rounded-xl border border-white/5 bg-slate-900/40">
                     <div className="flex items-center justify-between">
                       <span className="text-gray-400 text-sm">Shortfall (if any)</span>
-                      <span
-                        className={
-                          retirementComputed.shortfall > 0 ? 'font-semibold text-red-300' : 'font-semibold text-green-300'
-                        }
-                      >
+                      <span className={retirementComputed.shortfall > 0 ? 'font-semibold text-red-300' : 'font-semibold text-green-300'}>
                         {formatINR(Math.round(retirementComputed.shortfall))}
                       </span>
                     </div>
@@ -1879,7 +1948,218 @@ export default function FinancialPlanningPage() {
             </div>
           </div>
         )}
+
+        {!dataLoading && activeSection === 'insurance' && (
+          <div className="space-y-6">
+            <section className="bg-slate-900/50 border border-white/10 rounded-2xl p-5">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h2 className="text-lg font-semibold flex items-center gap-2">
+                    <Shield size={18} className="text-blue-300" /> Insurance Policies
+                  </h2>
+                  <p className="text-xs text-gray-500 mt-0.5">Track all your insurance policies in one place.</p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <button type="button" onClick={addPolicy}
+                    className="px-3 py-1.5 rounded-lg text-xs border border-white/10 bg-white/5 hover:bg-white/10 text-gray-300 transition-colors">
+                    + Add Policy
+                  </button>
+                  <button type="button" onClick={saveInsurance}
+                    className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-500/20 border border-blue-400/40 text-blue-200 hover:bg-blue-500/25 transition-colors text-sm">
+                    <Save size={14} /> Save
+                  </button>
+                  {insuranceSaveState.status !== 'idle' && (
+                    <span className={insuranceSaveState.status === 'saved' ? 'text-green-300 text-sm' : 'text-red-300 text-sm'}>{insuranceSaveState.message}</span>
+                  )}
+                </div>
+              </div>
+
+              {(insurance.policies || []).length === 0 ? (
+                <div className="py-12 text-center text-gray-500 text-sm">
+                  No policies yet. Click &quot;+ Add Policy&quot; to get started.
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {(insurance.policies || []).map((policy) => (
+                    <div key={policy.id} className="bg-slate-900/60 border border-white/8 rounded-xl p-4 space-y-3">
+                      <div className="flex items-start gap-3">
+                        <div className="flex items-center gap-3 flex-1 flex-wrap">
+                          <select
+                            value={policy.type}
+                            onChange={(e) => updatePolicy(policy.id, 'type', e.target.value)}
+                            className="px-3 py-2 bg-slate-900/80 border border-white/10 rounded-lg text-sm text-blue-200 min-w-[100px]"
+                          >
+                            {INSURANCE_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+                          </select>
+                          <input
+                            value={policy.insurer}
+                            onChange={(e) => updatePolicy(policy.id, 'insurer', e.target.value)}
+                            placeholder="Insurer name"
+                            className="flex-1 min-w-[140px] px-3 py-2 bg-slate-900/60 border border-white/10 rounded-lg text-sm"
+                          />
+                          <input
+                            value={policy.policyNo}
+                            onChange={(e) => updatePolicy(policy.id, 'policyNo', e.target.value)}
+                            placeholder="Policy No."
+                            className="flex-1 min-w-[120px] px-3 py-2 bg-slate-900/60 border border-white/10 rounded-lg text-sm"
+                          />
+                        </div>
+                        <button type="button" onClick={() => removePolicy(policy.id)}
+                          className="p-1.5 rounded-lg text-gray-500 hover:text-red-400 hover:bg-red-500/10 transition-colors flex-shrink-0">
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      </div>
+                      <div className="flex flex-wrap gap-3 items-end">
+                        <label className="flex flex-col gap-1 min-w-[130px]">
+                          <span className="text-xs text-gray-500">Sum Assured (₹)</span>
+                          <input type="number" min={0} value={policy.sumAssured ?? 0}
+                            onChange={(e) => updatePolicy(policy.id, 'sumAssured', e.target.value)}
+                            className="px-3 py-2 bg-slate-900/60 border border-white/10 rounded-lg text-sm" />
+                        </label>
+                        <label className="flex flex-col gap-1 min-w-[110px]">
+                          <span className="text-xs text-gray-500">Annual Premium (₹)</span>
+                          <input type="number" min={0} value={policy.premium ?? 0}
+                            onChange={(e) => updatePolicy(policy.id, 'premium', e.target.value)}
+                            className="px-3 py-2 bg-slate-900/60 border border-white/10 rounded-lg text-sm" />
+                        </label>
+                        <label className="flex flex-col gap-1 min-w-[130px]">
+                          <span className="text-xs text-gray-500">Expiry Date</span>
+                          <input type="date" value={policy.expiryDate || ''}
+                            onChange={(e) => updatePolicy(policy.id, 'expiryDate', e.target.value)}
+                            className="px-3 py-2 bg-slate-900/60 border border-white/10 rounded-lg text-sm text-gray-300" />
+                        </label>
+                        <label className="flex flex-col gap-1 flex-1 min-w-[160px]">
+                          <span className="text-xs text-gray-500">Notes</span>
+                          <input value={policy.notes || ''}
+                            onChange={(e) => updatePolicy(policy.id, 'notes', e.target.value)}
+                            placeholder="Nominee, riders, remarks…"
+                            className="px-3 py-2 bg-slate-900/60 border border-white/10 rounded-lg text-sm" />
+                        </label>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+
+            {/* Summary */}
+            {(insurance.policies || []).length > 0 && (
+              <section className="bg-slate-900/50 border border-white/10 rounded-2xl p-5">
+                <h3 className="text-base font-semibold text-gray-300 mb-3">Summary</h3>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  {INSURANCE_TYPES.filter((t) => (insurance.policies || []).some((p) => p.type === t)).map((t) => {
+                    const typePolicies = (insurance.policies || []).filter((p) => p.type === t);
+                    const totalCover = typePolicies.reduce((s, p) => s + (Number(p.sumAssured) || 0), 0);
+                    const totalPremium = typePolicies.reduce((s, p) => s + (Number(p.premium) || 0), 0);
+                    return (
+                      <div key={t} className="p-3 rounded-xl border border-white/5 bg-slate-900/40">
+                        <div className="text-xs text-gray-500 mb-1">{t}</div>
+                        <div className="font-semibold text-sm text-blue-200">{formatINR(totalCover)}</div>
+                        <div className="text-xs text-gray-500 mt-0.5">₹{(totalPremium).toLocaleString('en-IN')}/yr premium</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+            )}
+          </div>
+        )}
       </main>
+
+      {/* ── Retirement section slide-over panel ──────────────────────────── */}
+      {retSectionPanel && (() => {
+        const sec = RETIREMENT_SECTIONS.find((s) => s.key === retSectionPanel);
+        if (!sec) return null;
+        const items = retirement[sec.key] || [];
+        const secCorpus  = items.reduce((s, i) => s + (Number(i.currentValue)  || 0), 0);
+        const secContrib = items.reduce((s, i) => s + (Number(i.monthlyContrib) || 0), 0);
+        return (
+          <div className="fixed inset-0 z-50 flex items-stretch justify-end">
+            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setRetSectionPanel(null)} />
+            <div className="relative w-full max-w-md bg-slate-900 border-l border-white/10 flex flex-col shadow-2xl">
+              <div className="p-5 border-b border-white/10 flex items-center justify-between flex-shrink-0">
+                <div>
+                  <p className="text-xs text-gray-500 uppercase tracking-wider mb-0.5">Retirement</p>
+                  <h3 className="text-lg font-semibold text-emerald-200">{sec.label} Holdings</h3>
+                </div>
+                <button type="button" onClick={() => setRetSectionPanel(null)}
+                  className="p-2 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-colors">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-5 space-y-3">
+                {items.length === 0 && (
+                  <p className="text-gray-500 text-sm text-center py-10">No entries yet. Click &quot;Add entry&quot; below.</p>
+                )}
+                {items.map((item) => (
+                  <div key={item.id} className="p-3 rounded-xl bg-slate-800/60 border border-white/5 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        value={item.name}
+                        onChange={(e) => updateRetirementItem(sec.key, item.id, 'name', e.target.value)}
+                        placeholder="Name / Description"
+                        className="flex-1 min-w-0 px-3 py-2 bg-slate-900/60 border border-white/10 rounded-lg text-sm"
+                      />
+                      <button type="button" onClick={() => removeRetirementItem(sec.key, item.id)}
+                        className="p-1.5 rounded-lg text-gray-500 hover:text-red-400 hover:bg-red-500/10 transition-colors flex-shrink-0">
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    </div>
+                    <div className="flex gap-2">
+                      <label className="flex-1">
+                        <span className="text-xs text-gray-500 mb-1 block">Current Value (₹)</span>
+                        <input type="number" min={0} value={item.currentValue ?? 0}
+                          onChange={(e) => updateRetirementItem(sec.key, item.id, 'currentValue', e.target.value)}
+                          className="w-full px-3 py-2 bg-slate-900/60 border border-white/10 rounded-lg text-sm" />
+                      </label>
+                      <label className="flex-1">
+                        <span className="text-xs text-gray-500 mb-1 block">Monthly Contrib (₹)</span>
+                        <input type="number" min={0} value={item.monthlyContrib ?? 0}
+                          onChange={(e) => updateRetirementItem(sec.key, item.id, 'monthlyContrib', e.target.value)}
+                          className="w-full px-3 py-2 bg-slate-900/60 border border-white/10 rounded-lg text-sm" />
+                      </label>
+                    </div>
+                    <input type="text" value={item.notes || ''}
+                      onChange={(e) => updateRetirementItem(sec.key, item.id, 'notes', e.target.value)}
+                      placeholder="Notes (account no., bank, maturity date…)"
+                      className="w-full px-3 py-2 bg-slate-900/60 border border-white/10 rounded-lg text-xs text-gray-400 placeholder-slate-600" />
+                  </div>
+                ))}
+                <button type="button" onClick={() => addRetirementItem(sec.key)}
+                  className="w-full py-2.5 rounded-xl border border-dashed border-white/20 text-gray-400 hover:text-white hover:border-white/40 text-sm transition-colors flex items-center justify-center gap-2">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                  Add entry
+                </button>
+              </div>
+
+              <div className="p-5 border-t border-white/10 flex-shrink-0">
+                <div className="flex items-center justify-between mb-2 text-sm">
+                  <span className="text-gray-400">Corpus</span>
+                  <span className="font-bold text-emerald-200">{formatINR(secCorpus)}</span>
+                </div>
+                <div className="flex items-center justify-between mb-4 text-sm">
+                  <span className="text-gray-400">Monthly contrib</span>
+                  <span className="font-bold text-emerald-200">{formatINR(secContrib)}</span>
+                </div>
+                <button type="button" onClick={() => { saveRetirement(); setRetSectionPanel(null); }}
+                  className="w-full py-3 rounded-xl bg-emerald-500/20 border border-emerald-400/40 text-emerald-200 hover:bg-emerald-500/30 font-semibold text-sm transition-colors">
+                  Save &amp; Close
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ── Asset holdings slide-over panel ─────────────────────────────── */}
       {assetPanel && (() => {
