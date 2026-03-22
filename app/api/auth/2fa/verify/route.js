@@ -2,27 +2,27 @@ import { NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { redis } from '@/app/lib/redis';
 import { verifyTotp } from '@/app/lib/totp';
+import { parseCookies } from '@/app/lib/finplan-auth';
+import { checkAuthLimit } from '@/app/lib/finplan-rate-limit';
 
 const NS                  = process.env.FINPLAN_REDIS_NAMESPACE || 'bv-finance';
 const SESSION_TTL_SECONDS = Number(process.env.FINPLAN_SESSION_TTL_SECONDS) || (7 * 24 * 60 * 60);
 const SESSION_COOKIE      = 'bv_finance_session';
 const PREAUTH_COOKIE      = 'bv_preauth';
 
-function parseCookies(header) {
-  const result = {};
-  (header || '').split(';').forEach((pair) => {
-    const idx = pair.indexOf('=');
-    if (idx === -1) return;
-    result[pair.slice(0, idx).trim()] = decodeURIComponent(pair.slice(idx + 1).trim());
-  });
-  return result;
-}
-
 function makeToken() {
   return crypto.randomBytes(48).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
 }
 
 export async function POST(req) {
+  const rl = await checkAuthLimit(req, 'totp-verify');
+  if (rl.limited) {
+    return NextResponse.json(
+      { success: false, error: `Too many attempts. Try again in ${Math.ceil(rl.retryAfter / 60)} minutes.` },
+      { status: 429 }
+    );
+  }
+
   const cookies  = parseCookies(req.headers.get('cookie') || '');
   const preToken = cookies[PREAUTH_COOKIE];
 
@@ -45,18 +45,13 @@ export async function POST(req) {
     return NextResponse.json({ success: false, error: 'Invalid code. Try again.' }, { status: 401 });
   }
 
-  // Issue full session
   const sessionToken = makeToken();
   await redis.set(`${NS}:session:${sessionToken}`, userId, { ex: SESSION_TTL_SECONDS });
   await redis.del(`${NS}:preauth:${preToken}`);
 
   const secure = process.env.NODE_ENV === 'production' ? '; Secure' : '';
   const res = NextResponse.json({ success: true });
-  res.headers.append('Set-Cookie',
-    `${SESSION_COOKIE}=${encodeURIComponent(sessionToken)}; HttpOnly; Path=/; Max-Age=${SESSION_TTL_SECONDS}; SameSite=Lax${secure}`
-  );
-  res.headers.append('Set-Cookie',
-    `${PREAUTH_COOKIE}=; HttpOnly; Path=/; Max-Age=0; SameSite=Lax${secure}`
-  );
+  res.headers.append('Set-Cookie', `${SESSION_COOKIE}=${encodeURIComponent(sessionToken)}; HttpOnly; Path=/; Max-Age=${SESSION_TTL_SECONDS}; SameSite=Strict${secure}`);
+  res.headers.append('Set-Cookie', `${PREAUTH_COOKIE}=; HttpOnly; Path=/; Max-Age=0; SameSite=Strict${secure}`);
   return res;
 }

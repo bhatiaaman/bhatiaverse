@@ -4,7 +4,7 @@ import { SUPER_USER_ID, SUPER_DATA_USER_ID } from '@/app/lib/super-credentials';
 const COOKIE_NAME = 'bv_finance_session';
 const NS = process.env.FINPLAN_REDIS_NAMESPACE || 'bv-finance';
 
-function parseCookies(header) {
+export function parseCookies(header) {
   const result = {};
   (header || '').split(';').forEach((pair) => {
     const idx = pair.indexOf('=');

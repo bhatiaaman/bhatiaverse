@@ -37,8 +37,8 @@ export async function POST(req) {
 
   const secure = process.env.NODE_ENV === 'production' ? '; Secure' : '';
   const res = NextResponse.json({ success: true });
-  res.headers.append('Set-Cookie', `${COOKIE_NAME}=; HttpOnly; Path=/; Max-Age=0; SameSite=Lax${secure}`);
-  res.headers.append('Set-Cookie', `bv_finance_vault=; HttpOnly; Path=/; Max-Age=0; SameSite=Lax${secure}`);
+  res.headers.append('Set-Cookie', `${COOKIE_NAME}=; HttpOnly; Path=/; Max-Age=0; SameSite=Strict${secure}`);
+  res.headers.append('Set-Cookie', `bv_finance_vault=; HttpOnly; Path=/; Max-Age=0; SameSite=Strict${secure}`);
   return res;
 }
 

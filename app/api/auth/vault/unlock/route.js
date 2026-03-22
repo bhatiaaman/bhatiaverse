@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { redis } from '@/app/lib/redis';
 import { getSessionUserId } from '@/app/lib/finplan-auth';
+import { checkAuthLimit } from '@/app/lib/finplan-rate-limit';
 
 const NS           = process.env.FINPLAN_REDIS_NAMESPACE || 'bv-finance';
 const vaultKey     = (uid) => `${NS}:vault_phrase:${uid}`;
@@ -29,6 +30,14 @@ export async function POST(req) {
   const userId = await getSessionUserId(req);
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
+  const rl = await checkAuthLimit(req, `vault-unlock:${userId}`);
+  if (rl.limited) {
+    return NextResponse.json(
+      { success: false, error: `Too many attempts. Try again in ${Math.ceil(rl.retryAfter / 60)} minutes.` },
+      { status: 429 }
+    );
+  }
+
   const { passphrase } = await req.json();
   if (!passphrase) return NextResponse.json({ success: false, error: 'Passphrase required.' }, { status: 400 });
 
@@ -53,7 +62,7 @@ export async function POST(req) {
   const secure = process.env.NODE_ENV === 'production' ? '; Secure' : '';
   const res = NextResponse.json({ success: true });
   res.headers.set('Set-Cookie',
-    `${VAULT_COOKIE}=${encodeURIComponent(token)}; HttpOnly; Path=/; Max-Age=${VAULT_TTL}; SameSite=Lax${secure}`
+    `${VAULT_COOKIE}=${encodeURIComponent(token)}; HttpOnly; Path=/; Max-Age=${VAULT_TTL}; SameSite=Strict${secure}`
   );
   return res;
 }

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import {
   ArrowLeft,
@@ -19,6 +19,10 @@ import {
   ChevronDown,
   ChevronRight,
   Scale,
+  Printer,
+  CheckCircle,
+  Bell,
+  TrendingUp,
 } from 'lucide-react';
 
 const SECTIONS = [
@@ -250,8 +254,13 @@ export default function FinancialPlanningPage() {
   const [vaultSetupConfirm, setVaultSetupConfirm] = useState('');
   const [vaultSetupLoading, setVaultSetupLoading] = useState(false);
   const [vaultSetupError, setVaultSetupError] = useState('');
+  const [vaultTtl, setVaultTtl] = useState(0); // seconds remaining
+  const [disableTotpConfirm, setDisableTotpConfirm] = useState(false);
 
   const [activeSection, setActiveSection] = useState('home');
+  const loadedSectionsRef = useRef(new Set()); // track which sections already fetched
+  const autoSaveTimers = useRef({}); // debounce timers keyed by section
+  const isDirtyRef = useRef(false); // unsaved changes flag
 
   const [plan, setPlan] = useState(DEFAULT_PLAN);
   const [saveState, setSaveState] = useState({ status: 'idle', message: '' });
@@ -312,6 +321,7 @@ export default function FinancialPlanningPage() {
         if (!alive) return;
         setVaultPassphraseSet(!!vaultJson.passphraseSet);
         setVaultLocked(!vaultJson.unlocked);
+        if (vaultJson.ttl) setVaultTtl(vaultJson.ttl);
         setSecurityStatus({ totpEnabled: !!totpJson.enabled, vaultSet: !!vaultJson.passphraseSet });
       } catch {
         if (alive) setVaultLocked(false);
@@ -322,51 +332,57 @@ export default function FinancialPlanningPage() {
     return () => { alive = false; };
   }, [authed]);
 
+  // Lazy-load section data on first visit to each tab
+  const loadSection = useCallback(async (section) => {
+    if (loadedSectionsRef.current.has(section)) return;
+    loadedSectionsRef.current.add(section);
+    const lsKeys = { home: 'bv-financial-plan', kids: 'bv-financial-plan-kids', retirement: 'bv-financial-plan-retirement', monthly: 'bv-financial-plan-monthly' };
+    try {
+      const res = await fetch(`/api/plan/${section}`, { credentials: 'include' });
+      const json = await res.json();
+      if (json.data) {
+        if (section === 'home')       setPlan((p)       => ({ ...p, ...json.data }));
+        if (section === 'kids')       setKids((p)       => ({ ...p, ...json.data }));
+        if (section === 'retirement') setRetirement((p) => ({ ...p, ...json.data }));
+        if (section === 'monthly')    setMonthly((p)    => ({ ...p, ...json.data }));
+        if (section === 'insurance')  setInsurance((p)  => ({ ...p, ...json.data }));
+        if (section === 'funds')      setFunds((p)      => ({ ...p, ...json.data }));
+        if (section === 'goals')      setGoals((p)      => ({ ...p, ...json.data }));
+        if (section === 'balance')    setBalance((p)    => ({ ...p, ...json.data }));
+      } else if (lsKeys[section]) {
+        try { const r = localStorage.getItem(lsKeys[section]); if (r) {
+          const parsed = JSON.parse(r);
+          if (section === 'home')       setPlan((p)       => ({ ...p, ...parsed }));
+          if (section === 'kids')       setKids((p)       => ({ ...p, ...parsed }));
+          if (section === 'retirement') setRetirement((p) => ({ ...p, ...parsed }));
+          if (section === 'monthly')    setMonthly((p)    => ({ ...p, ...parsed }));
+        }} catch {}
+      }
+    } catch {
+      if (lsKeys[section]) {
+        try { const r = localStorage.getItem(lsKeys[section]); if (r) {
+          const parsed = JSON.parse(r);
+          if (section === 'home')       setPlan((p)       => ({ ...p, ...parsed }));
+          if (section === 'kids')       setKids((p)       => ({ ...p, ...parsed }));
+          if (section === 'retirement') setRetirement((p) => ({ ...p, ...parsed }));
+          if (section === 'monthly')    setMonthly((p)    => ({ ...p, ...parsed }));
+        }} catch {}
+      }
+    }
+  }, []);
+
+  // Load initial section + preload insurance/funds for reminder checks
   useEffect(() => {
     if (!authed) return;
-    let alive = true;
-    setDataLoading(true);
-    (async () => {
-      try {
-        const [homeRes, kidsRes, retRes, monthlyRes, insRes, fundsRes, goalsRes, balRes] = await Promise.all([
-          fetch('/api/plan/home',       { credentials: 'include' }),
-          fetch('/api/plan/kids',       { credentials: 'include' }),
-          fetch('/api/plan/retirement', { credentials: 'include' }),
-          fetch('/api/plan/monthly',    { credentials: 'include' }),
-          fetch('/api/plan/insurance',  { credentials: 'include' }),
-          fetch('/api/plan/funds',      { credentials: 'include' }),
-          fetch('/api/plan/goals',      { credentials: 'include' }),
-          fetch('/api/plan/balance',    { credentials: 'include' }),
-        ]);
-        const [homeJson, kidsJson, retJson, monthlyJson, insJson, fundsJson, goalsJson, balJson] = await Promise.all([
-          homeRes.json(), kidsRes.json(), retRes.json(), monthlyRes.json(), insRes.json(), fundsRes.json(), goalsRes.json(), balRes.json(),
-        ]);
-        if (!alive) return;
+    loadSection('home');
+    loadSection('insurance'); // needed for renewal reminders
+  }, [authed, loadSection]);
 
-        if (homeJson.data)    setPlan((prev)       => ({ ...prev, ...homeJson.data }));
-        else { try { const r = localStorage.getItem('bv-financial-plan'); if (r) setPlan((prev) => ({ ...prev, ...JSON.parse(r) })); } catch {} }
-        if (kidsJson.data)    setKids((prev)       => ({ ...prev, ...kidsJson.data }));
-        else { try { const r = localStorage.getItem('bv-financial-plan-kids'); if (r) setKids((prev) => ({ ...prev, ...JSON.parse(r) })); } catch {} }
-        if (retJson.data)     setRetirement((prev) => ({ ...prev, ...retJson.data }));
-        else { try { const r = localStorage.getItem('bv-financial-plan-retirement'); if (r) setRetirement((prev) => ({ ...prev, ...JSON.parse(r) })); } catch {} }
-        if (monthlyJson.data) setMonthly((prev)    => ({ ...prev, ...monthlyJson.data }));
-        else { try { const r = localStorage.getItem('bv-financial-plan-monthly'); if (r) setMonthly((prev) => ({ ...prev, ...JSON.parse(r) })); } catch {} }
-        if (insJson.data)     setInsurance((prev)  => ({ ...prev, ...insJson.data }));
-        if (fundsJson.data)   setFunds((prev)      => ({ ...prev, ...fundsJson.data }));
-        if (goalsJson.data)   setGoals((prev)      => ({ ...prev, ...goalsJson.data }));
-        if (balJson.data)     setBalance((prev)    => ({ ...prev, ...balJson.data }));
-      } catch {
-        if (!alive) return;
-        try { const r = localStorage.getItem('bv-financial-plan'); if (r) setPlan((prev) => ({ ...prev, ...JSON.parse(r) })); } catch {}
-        try { const r = localStorage.getItem('bv-financial-plan-kids'); if (r) setKids((prev) => ({ ...prev, ...JSON.parse(r) })); } catch {}
-        try { const r = localStorage.getItem('bv-financial-plan-retirement'); if (r) setRetirement((prev) => ({ ...prev, ...JSON.parse(r) })); } catch {}
-        try { const r = localStorage.getItem('bv-financial-plan-monthly'); if (r) setMonthly((prev) => ({ ...prev, ...JSON.parse(r) })); } catch {}
-      } finally {
-        if (alive) setDataLoading(false);
-      }
-    })();
-    return () => { alive = false; };
-  }, [authed]);
+  // Load section data when tab switches
+  const setSection = useCallback((id) => {
+    setActiveSection(id);
+    loadSection(id);
+  }, [loadSection]);
 
   const computed = useMemo(() => {
     const monthlyIncome = Number(plan.monthlyIncome) || 0;
@@ -391,6 +407,82 @@ export default function FinancialPlanningPage() {
       investPercent,
     };
   }, [plan]);
+
+  // Auto-save debounce helper — 2s after last change
+  const autoSave = useCallback((section, data, setStateFn, lsKey) => {
+    isDirtyRef.current = true;
+    clearTimeout(autoSaveTimers.current[section]);
+    autoSaveTimers.current[section] = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/plan/${section}`, {
+          method: 'POST', credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data),
+        });
+        if (!res.ok) throw new Error();
+        if (lsKey) try { localStorage.setItem(lsKey, JSON.stringify(data)); } catch {}
+        setStateFn({ status: 'saved', message: 'Auto-saved.' });
+        isDirtyRef.current = false;
+        setTimeout(() => setStateFn({ status: 'idle', message: '' }), 2000);
+      } catch {
+        setStateFn({ status: 'error', message: 'Auto-save failed.' });
+      }
+    }, 2000);
+  }, []);
+
+  // Warn before closing with unsaved changes
+  useEffect(() => {
+    const onBeforeUnload = (e) => {
+      if (isDirtyRef.current) { e.preventDefault(); e.returnValue = ''; }
+    };
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => window.removeEventListener('beforeunload', onBeforeUnload);
+  }, []);
+
+  // Vault countdown ticker
+  useEffect(() => {
+    if (!vaultTtl || vaultLocked) return;
+    const interval = setInterval(() => {
+      setVaultTtl((t) => {
+        if (t <= 1) { clearInterval(interval); setVaultLocked(true); return 0; }
+        return t - 1;
+      });
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [vaultTtl, vaultLocked]);
+
+  // Insurance renewal reminders — policies expiring within 60 days
+  const expiringPolicies = useMemo(() => {
+    const now = new Date();
+    const soon = new Date(now.getTime() + 60 * 24 * 60 * 60 * 1000);
+    return (insurance?.policies ?? []).filter((p) => {
+      if (!p.expiryDate) return false;
+      const d = new Date(p.expiryDate);
+      return d >= now && d <= soon;
+    });
+  }, [insurance]);
+
+  // Retirement readiness score
+  const retirementReadiness = useMemo(() => {
+    const { currentAge, retireAge, monthlyExpenseToday, inflationPct, expectedReturnPct } = retirement;
+    const yearsToRetire = Math.max(0, (retireAge || 60) - (currentAge || 35));
+    const inf = (inflationPct || 6) / 100;
+    const ret = (expectedReturnPct || 9) / 100;
+    const monthlyAtRetirement = (monthlyExpenseToday || 80000) * Math.pow(1 + inf, yearsToRetire);
+    const corpusNeeded = monthlyAtRetirement * 12 * 25; // 25× rule
+    const allItems = ['epfItems', 'npsItems', 'pensionItems', 'fdItems', 'otherItems']
+      .flatMap((k) => retirement[k] ?? []);
+    const currentCorpus = allItems.reduce((s, it) => s + (Number(it.corpus) || 0), 0);
+    const monthlyContrib = allItems.reduce((s, it) => s + (Number(it.monthlyContrib) || 0), 0);
+    // Future value of current corpus + monthly contributions
+    const r = ret / 12;
+    const n = yearsToRetire * 12;
+    const fvCorpus = currentCorpus * Math.pow(1 + r, n);
+    const fvContrib = monthlyContrib * ((Math.pow(1 + r, n) - 1) / r);
+    const projectedCorpus = fvCorpus + fvContrib;
+    const score = corpusNeeded > 0 ? Math.min(100, Math.round((projectedCorpus / corpusNeeded) * 100)) : 0;
+    return { score, corpusNeeded, projectedCorpus, yearsToRetire };
+  }, [retirement]);
 
   const savePlan = async () => {
     try {
@@ -904,6 +996,11 @@ export default function FinancialPlanningPage() {
     setExportOpen(false);
   };
 
+  const exportPDF = () => {
+    setExportOpen(false);
+    window.print();
+  };
+
   const exportCSV = () => {
     const rows = [];
     const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
@@ -1036,14 +1133,18 @@ export default function FinancialPlanningPage() {
   const doLogout = async () => {
     try {
       await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
-    } catch {
-      // ignore
-    }
+    } catch { /* ignore */ }
+    // Clear sensitive data from localStorage on logout
+    ['bv-financial-plan', 'bv-financial-plan-kids', 'bv-financial-plan-retirement', 'bv-financial-plan-monthly']
+      .forEach((k) => { try { localStorage.removeItem(k); } catch {} });
+    loadedSectionsRef.current = new Set();
+    isDirtyRef.current = false;
     setAuthed(false);
     setLoginPassword('');
     setLoginError('');
     setLoginStep('credentials');
     setTotpInput('');
+    setVaultTtl(0);
   };
 
   const doVerify2FA = async () => {
@@ -1086,6 +1187,7 @@ export default function FinancialPlanningPage() {
       }
       setVaultLocked(false);
       setVaultInput('');
+      if (data.expiresIn) setVaultTtl(data.expiresIn);
     } catch {
       setVaultError('Could not unlock. Please try again.');
     } finally {
@@ -1137,6 +1239,8 @@ export default function FinancialPlanningPage() {
   };
 
   const disableTotp = async () => {
+    if (!disableTotpConfirm) { setDisableTotpConfirm(true); return; }
+    setDisableTotpConfirm(false);
     setTotpDisableLoading(true);
     setTotpSetupError('');
     try {
@@ -1244,7 +1348,7 @@ export default function FinancialPlanningPage() {
               <input
                 type="password"
                 value={vaultInput}
-                onChange={(e) => setVaultInput(e.target.value)}
+                onChange={(e) => { setVaultInput(e.target.value); setVaultError(''); }}
                 onKeyDown={(e) => e.key === 'Enter' && doVaultUnlock()}
                 autoFocus
                 placeholder="Secret passphrase…"
@@ -1309,7 +1413,7 @@ export default function FinancialPlanningPage() {
                         <span className="text-sm text-gray-400">User ID</span>
                         <input
                           value={loginUserId}
-                          onChange={(e) => setLoginUserId(e.target.value)}
+                          onChange={(e) => { setLoginUserId(e.target.value); setLoginError(''); }}
                           onKeyDown={(e) => e.key === 'Enter' && doLogin()}
                           className="mt-2 w-full px-4 py-2.5 bg-slate-900/50 border border-white/10 rounded-xl text-sm"
                           placeholder="e.g. admin"
@@ -1321,7 +1425,7 @@ export default function FinancialPlanningPage() {
                         <input
                           type="password"
                           value={loginPassword}
-                          onChange={(e) => setLoginPassword(e.target.value)}
+                          onChange={(e) => { setLoginPassword(e.target.value); setLoginError(''); }}
                           onKeyDown={(e) => e.key === 'Enter' && doLogin()}
                           className="mt-2 w-full px-4 py-2.5 bg-slate-900/50 border border-white/10 rounded-xl text-sm"
                           placeholder="••••••••"
@@ -1429,10 +1533,31 @@ export default function FinancialPlanningPage() {
                         <FileDown size={14} className="text-green-400" />
                         Download CSV
                       </button>
+                      <button
+                        type="button"
+                        onClick={exportPDF}
+                        className="w-full text-left px-4 py-3 text-sm hover:bg-white/5 transition-colors flex items-center gap-2 border-t border-white/5"
+                      >
+                        <Printer size={14} className="text-purple-400" />
+                        Save as PDF
+                      </button>
                     </div>
                   </>
                 )}
               </div>
+              {expiringPolicies.length > 0 && (
+                <button type="button" onClick={() => setSection('insurance')}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm bg-red-500/15 border border-red-400/30 text-red-300 hover:bg-red-500/20 transition-colors"
+                  title={`${expiringPolicies.length} policy expiring soon`}>
+                  <Bell size={14} className="animate-pulse" />
+                  {expiringPolicies.length}
+                </button>
+              )}
+              {vaultTtl > 0 && !vaultLocked && (
+                <span className="text-xs px-2.5 py-1 rounded-full bg-amber-500/10 border border-amber-400/20 text-amber-300 font-mono" title="Vault locks in">
+                  🔒 {Math.floor(vaultTtl / 3600)}h {Math.floor((vaultTtl % 3600) / 60)}m
+                </span>
+              )}
               <button
                 type="button"
                 onClick={() => setSecurityOpen(true)}
@@ -1573,7 +1698,8 @@ export default function FinancialPlanningPage() {
                       <th className="py-2 pr-4 text-right">Budget</th>
                       <th className="py-2 pr-4 text-right">Available</th>
                       <th className="py-2 pr-4 text-right">Spent</th>
-                      <th className="py-2 text-right">Left</th>
+                      <th className="py-2 pr-4 text-right">Left</th>
+                      <th className="py-2 text-right">vs Budget</th>
                       <th className="py-2 w-8" />
                     </tr>
                   </thead>
@@ -1594,9 +1720,17 @@ export default function FinancialPlanningPage() {
                           <td className="py-3 pr-4 text-right text-gray-300">{budget ? formatINR(budget) : <span className="text-gray-600">—</span>}</td>
                           <td className="py-3 pr-4 text-right text-gray-300">{avail ? formatINR(avail) : <span className="text-gray-600">—</span>}</td>
                           <td className="py-3 pr-4 text-right text-gray-300">{spent ? formatINR(spent) : <span className="text-gray-600">—</span>}</td>
-                          <td className={`py-3 text-right font-semibold ${left < 0 ? 'text-red-300' : left === 0 && avail === 0 ? 'text-gray-600' : left === 0 ? 'text-gray-400' : 'text-green-300'}`}>
+                          <td className={`py-3 pr-4 text-right font-semibold ${left < 0 ? 'text-red-300' : left === 0 && avail === 0 ? 'text-gray-600' : left === 0 ? 'text-gray-400' : 'text-green-300'}`}>
                             {avail === 0 ? '—' : `${left < 0 ? '-' : ''}${formatINR(Math.abs(left))}`}
                           </td>
+                          {(() => {
+                            const variance = budget - spent;
+                            return budget === 0 ? <td className="py-3 pr-4 text-right text-gray-600">—</td> : (
+                              <td className={`py-3 pr-4 text-right text-xs font-semibold ${variance < 0 ? 'text-red-300' : 'text-emerald-300'}`}>
+                                {variance < 0 ? '▲ Over ' : '▼ Under '}{formatINR(Math.abs(variance))}
+                              </td>
+                            );
+                          })()}
                           <td className="py-3 text-right">
                             <svg className="w-4 h-4 text-gray-500 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
                           </td>
@@ -1617,7 +1751,8 @@ export default function FinancialPlanningPage() {
                           <td className="py-3 pr-4 text-right text-white">{formatINR(totalBudget)}</td>
                           <td className="py-3 pr-4 text-right text-white">{formatINR(totalAvail)}</td>
                           <td className="py-3 pr-4 text-right text-white">{formatINR(totalSpent)}</td>
-                          <td className={`py-3 text-right ${totalLeft < 0 ? 'text-red-300' : 'text-green-300'}`}>{totalLeft < 0 ? '-' : ''}{formatINR(Math.abs(totalLeft))}</td>
+                          <td className={`py-3 pr-4 text-right ${totalLeft < 0 ? 'text-red-300' : 'text-green-300'}`}>{totalLeft < 0 ? '-' : ''}{formatINR(Math.abs(totalLeft))}</td>
+                          {(() => { const v = totalBudget - totalSpent; return <td className={`py-3 pr-4 text-right text-xs font-bold ${v < 0 ? 'text-red-300' : 'text-emerald-300'}`}>{v < 0 ? '▲ Over ' : '▼ Under '}{formatINR(Math.abs(v))}</td>; })()}
                           <td />
                         </tr>
                       </tfoot>
@@ -2401,6 +2536,23 @@ export default function FinancialPlanningPage() {
                       </span>
                     </div>
                   </div>
+
+                  {/* Readiness Score */}
+                  <div className="p-4 rounded-xl border border-blue-400/20 bg-blue-500/10 mt-2">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm font-semibold text-blue-200 flex items-center gap-1.5"><TrendingUp size={14} /> Readiness Score</span>
+                      <span className={`text-lg font-bold ${retirementReadiness.score >= 80 ? 'text-green-300' : retirementReadiness.score >= 50 ? 'text-amber-300' : 'text-red-300'}`}>
+                        {retirementReadiness.score}%
+                      </span>
+                    </div>
+                    <div className="w-full bg-slate-700/60 rounded-full h-2.5">
+                      <div className={`h-2.5 rounded-full transition-all duration-700 ${retirementReadiness.score >= 80 ? 'bg-green-400' : retirementReadiness.score >= 50 ? 'bg-amber-400' : 'bg-red-400'}`}
+                        style={{ width: `${retirementReadiness.score}%` }} />
+                    </div>
+                    <p className="text-xs text-gray-400 mt-1.5">
+                      {retirementReadiness.score >= 100 ? '🎉 On track — projected surplus!' : retirementReadiness.score >= 80 ? '✅ Looking good. Keep it up.' : retirementReadiness.score >= 50 ? '⚠️ Needs more monthly contribution.' : '🔴 Significant gap — review strategy.'}
+                    </p>
+                  </div>
                 </div>
               </section>
             </div>
@@ -2409,6 +2561,17 @@ export default function FinancialPlanningPage() {
 
         {!dataLoading && activeSection === 'insurance' && (
           <div className="space-y-6">
+            {expiringPolicies.length > 0 && (
+              <div className="flex items-start gap-3 p-4 rounded-xl bg-red-500/10 border border-red-400/30 text-red-200">
+                <Bell size={16} className="mt-0.5 shrink-0 animate-pulse" />
+                <div>
+                  <p className="text-sm font-semibold">Renewal Reminder</p>
+                  <p className="text-xs text-red-300 mt-0.5">
+                    {expiringPolicies.map((p) => `${p.type || 'Policy'} (${p.insurer || p.policyNo || 'unknown'}) expires ${new Date(p.expiryDate).toLocaleDateString('en-IN')}`).join(' · ')}
+                  </p>
+                </div>
+              </div>
+            )}
             <section className="bg-slate-900/50 border border-white/10 rounded-2xl p-5">
               <div className="flex items-center justify-between mb-4">
                 <div>
@@ -3120,9 +3283,14 @@ export default function FinancialPlanningPage() {
                       className="w-full px-4 py-2.5 bg-slate-900/60 border border-white/10 rounded-xl text-sm font-mono tracking-widest text-center"
                     />
                     {totpSetupError && <p className="text-red-300 text-xs">{totpSetupError}</p>}
+                    {disableTotpConfirm && (
+                      <p className="text-xs text-amber-300 bg-amber-500/10 border border-amber-400/20 rounded-lg px-3 py-2">
+                        ⚠️ This will remove 2FA protection. Click again to confirm.
+                      </p>
+                    )}
                     <button type="button" onClick={disableTotp} disabled={totpDisableLoading || totpDisableCode.length !== 6}
-                      className="w-full py-2.5 rounded-xl bg-red-500/15 border border-red-400/30 text-red-300 hover:bg-red-500/25 text-sm font-semibold disabled:opacity-50 transition-colors">
-                      {totpDisableLoading ? 'Disabling…' : 'Disable 2FA'}
+                      className={`w-full py-2.5 rounded-xl text-sm font-semibold disabled:opacity-50 transition-colors ${disableTotpConfirm ? 'bg-red-500/30 border border-red-400/50 text-red-200' : 'bg-red-500/15 border border-red-400/30 text-red-300 hover:bg-red-500/25'}`}>
+                      {totpDisableLoading ? 'Disabling…' : disableTotpConfirm ? 'Confirm — Disable 2FA' : 'Disable 2FA'}
                     </button>
                   </div>
                 )}
