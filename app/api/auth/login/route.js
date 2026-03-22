@@ -82,6 +82,21 @@ export async function POST(req) {
       return NextResponse.json({ success: false, error: 'Invalid user id or password.' }, { status: 401 });
     }
 
+    const secureFlag = process.env.NODE_ENV === 'production' ? '; Secure' : '';
+
+    // Check if TOTP 2FA is enabled for this user
+    const totpSecret = await redis.get(`${NS}:totp:${userId}`);
+    if (totpSecret) {
+      // Issue short-lived pre-auth token — full session issued only after TOTP verify
+      const preToken = crypto.randomBytes(32).toString('base64')
+        .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+      await redis.set(`${NS}:preauth:${preToken}`, userId, { ex: 300 }); // 5 min
+      const cookie = `bv_preauth=${encodeURIComponent(preToken)}; HttpOnly; Path=/; Max-Age=300; SameSite=Lax${secureFlag}`;
+      const res = NextResponse.json({ success: true, requires2FA: true });
+      res.headers.set('Set-Cookie', cookie);
+      return res;
+    }
+
     const token = crypto
       .randomBytes(48)
       .toString('base64')
@@ -91,7 +106,6 @@ export async function POST(req) {
 
     await redis.set(sessionKey(token), userId, { ex: SESSION_TTL_SECONDS });
 
-    const secureFlag = process.env.NODE_ENV === 'production' ? '; Secure' : '';
     const cookie = `${COOKIE_NAME}=${encodeURIComponent(token)}; HttpOnly; Path=/; Max-Age=${SESSION_TTL_SECONDS}; SameSite=Lax${secureFlag}`;
 
     const res = NextResponse.json({ success: true });

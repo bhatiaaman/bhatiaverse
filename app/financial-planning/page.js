@@ -226,6 +226,30 @@ export default function FinancialPlanningPage() {
   const [loginPassword, setLoginPassword] = useState('');
   const [loginError, setLoginError] = useState('');
   const [loginSubmitting, setLoginSubmitting] = useState(false);
+  const [loginStep, setLoginStep] = useState('credentials'); // 'credentials' | '2fa'
+  const [totpInput, setTotpInput] = useState('');
+
+  // Vault state
+  const [vaultLoading, setVaultLoading] = useState(false);
+  const [vaultLocked, setVaultLocked] = useState(false);
+  const [vaultPassphraseSet, setVaultPassphraseSet] = useState(false);
+  const [vaultInput, setVaultInput] = useState('');
+  const [vaultError, setVaultError] = useState('');
+  const [vaultSubmitting, setVaultSubmitting] = useState(false);
+
+  // Security panel state
+  const [securityOpen, setSecurityOpen] = useState(false);
+  const [securityStatus, setSecurityStatus] = useState({ totpEnabled: null, vaultSet: null });
+  const [totpSetupData, setTotpSetupData] = useState(null); // { secret, qrDataUrl } | null
+  const [totpSetupCode, setTotpSetupCode] = useState('');
+  const [totpSetupLoading, setTotpSetupLoading] = useState(false);
+  const [totpSetupError, setTotpSetupError] = useState('');
+  const [totpDisableCode, setTotpDisableCode] = useState('');
+  const [totpDisableLoading, setTotpDisableLoading] = useState(false);
+  const [vaultSetupPassphrase, setVaultSetupPassphrase] = useState('');
+  const [vaultSetupConfirm, setVaultSetupConfirm] = useState('');
+  const [vaultSetupLoading, setVaultSetupLoading] = useState(false);
+  const [vaultSetupError, setVaultSetupError] = useState('');
 
   const [activeSection, setActiveSection] = useState('home');
 
@@ -272,6 +296,31 @@ export default function FinancialPlanningPage() {
       alive = false;
     };
   }, []);
+
+  // Check vault status and TOTP status whenever user authenticates
+  useEffect(() => {
+    if (!authed) return;
+    let alive = true;
+    setVaultLoading(true);
+    (async () => {
+      try {
+        const [vaultRes, totpRes] = await Promise.all([
+          fetch('/api/auth/vault/check',  { credentials: 'include' }),
+          fetch('/api/auth/2fa/setup',    { credentials: 'include' }),
+        ]);
+        const [vaultJson, totpJson] = await Promise.all([vaultRes.json(), totpRes.json()]);
+        if (!alive) return;
+        setVaultPassphraseSet(!!vaultJson.passphraseSet);
+        setVaultLocked(!vaultJson.unlocked);
+        setSecurityStatus({ totpEnabled: !!totpJson.enabled, vaultSet: !!vaultJson.passphraseSet });
+      } catch {
+        if (alive) setVaultLocked(false);
+      } finally {
+        if (alive) setVaultLoading(false);
+      }
+    })();
+    return () => { alive = false; };
+  }, [authed]);
 
   useEffect(() => {
     if (!authed) return;
@@ -993,6 +1042,150 @@ export default function FinancialPlanningPage() {
     setAuthed(false);
     setLoginPassword('');
     setLoginError('');
+    setLoginStep('credentials');
+    setTotpInput('');
+  };
+
+  const doVerify2FA = async () => {
+    setLoginSubmitting(true);
+    setLoginError('');
+    try {
+      const res = await fetch('/api/auth/2fa/verify', {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: totpInput }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.success) {
+        setLoginError(data?.error || 'Invalid code.');
+        return;
+      }
+      setAuthed(true);
+      setLoginStep('credentials');
+      setTotpInput('');
+    } catch {
+      setLoginError('Verification failed. Please try again.');
+    } finally {
+      setLoginSubmitting(false);
+    }
+  };
+
+  const doVaultUnlock = async () => {
+    setVaultSubmitting(true);
+    setVaultError('');
+    try {
+      const res = await fetch('/api/auth/vault/unlock', {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ passphrase: vaultInput }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.success) {
+        setVaultError(data?.error || 'Incorrect passphrase.');
+        return;
+      }
+      setVaultLocked(false);
+      setVaultInput('');
+    } catch {
+      setVaultError('Could not unlock. Please try again.');
+    } finally {
+      setVaultSubmitting(false);
+    }
+  };
+
+  const loadTotpSetup = async () => {
+    setTotpSetupLoading(true);
+    setTotpSetupError('');
+    try {
+      const res = await fetch('/api/auth/2fa/setup', { credentials: 'include' });
+      const data = await res.json();
+      if (data.enabled) {
+        setSecurityStatus((s) => ({ ...s, totpEnabled: true }));
+        setTotpSetupData(null);
+      } else {
+        setTotpSetupData({ secret: data.secret, qrDataUrl: data.qrDataUrl });
+      }
+    } catch {
+      setTotpSetupError('Could not load setup data.');
+    } finally {
+      setTotpSetupLoading(false);
+    }
+  };
+
+  const enableTotp = async () => {
+    setTotpSetupLoading(true);
+    setTotpSetupError('');
+    try {
+      const res = await fetch('/api/auth/2fa/setup', {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: totpSetupCode }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.success) {
+        setTotpSetupError(data?.error || 'Invalid code.');
+        return;
+      }
+      setSecurityStatus((s) => ({ ...s, totpEnabled: true }));
+      setTotpSetupData(null);
+      setTotpSetupCode('');
+    } catch {
+      setTotpSetupError('Could not enable 2FA.');
+    } finally {
+      setTotpSetupLoading(false);
+    }
+  };
+
+  const disableTotp = async () => {
+    setTotpDisableLoading(true);
+    setTotpSetupError('');
+    try {
+      const res = await fetch('/api/auth/2fa/disable', {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: totpDisableCode }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.success) {
+        setTotpSetupError(data?.error || 'Invalid code.');
+        return;
+      }
+      setSecurityStatus((s) => ({ ...s, totpEnabled: false }));
+      setTotpDisableCode('');
+    } catch {
+      setTotpSetupError('Could not disable 2FA.');
+    } finally {
+      setTotpDisableLoading(false);
+    }
+  };
+
+  const setupVaultPassphrase = async () => {
+    if (vaultSetupPassphrase !== vaultSetupConfirm) {
+      setVaultSetupError('Passphrases do not match.');
+      return;
+    }
+    setVaultSetupLoading(true);
+    setVaultSetupError('');
+    try {
+      const res = await fetch('/api/auth/vault/setup', {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ passphrase: vaultSetupPassphrase }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.success) {
+        setVaultSetupError(data?.error || 'Could not set passphrase.');
+        return;
+      }
+      setSecurityStatus((s) => ({ ...s, vaultSet: true }));
+      setVaultPassphraseSet(true);
+      setVaultSetupPassphrase('');
+      setVaultSetupConfirm('');
+    } catch {
+      setVaultSetupError('Could not save passphrase.');
+    } finally {
+      setVaultSetupLoading(false);
+    }
   };
 
   const doLogin = async () => {
@@ -1010,6 +1203,11 @@ export default function FinancialPlanningPage() {
         setLoginError(data?.error || 'Invalid user id or password.');
         return;
       }
+      if (data.requires2FA) {
+        setLoginStep('2fa');
+        setLoginPassword('');
+        return;
+      }
       setAuthed(true);
       setLoginPassword('');
     } catch {
@@ -1019,10 +1217,55 @@ export default function FinancialPlanningPage() {
     }
   };
 
-  if (authLoading) {
+  if (authLoading || (authed && vaultLoading)) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-white">
         <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500" />
+      </div>
+    );
+  }
+
+  // Vault locked overlay — shown after auth, before data
+  if (authed && vaultLocked) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-white flex items-center justify-center">
+        <div className="w-full max-w-md mx-4">
+          <div className="bg-slate-900/70 border border-white/10 rounded-2xl p-8 shadow-2xl">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="p-3 rounded-xl bg-amber-500/15 border border-amber-400/20 text-amber-200">
+                <Lock size={22} />
+              </div>
+              <div>
+                <h2 className="text-lg font-bold">Vault Locked</h2>
+                <p className="text-sm text-gray-400">Enter your secret passphrase to unlock.</p>
+              </div>
+            </div>
+            <div className="space-y-3">
+              <input
+                type="password"
+                value={vaultInput}
+                onChange={(e) => setVaultInput(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && doVaultUnlock()}
+                autoFocus
+                placeholder="Secret passphrase…"
+                className="w-full px-4 py-3 bg-slate-900/60 border border-white/10 rounded-xl text-sm"
+              />
+              {vaultError && (
+                <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-200 text-sm flex items-center gap-2">
+                  <AlertTriangle size={16} /> {vaultError}
+                </div>
+              )}
+              <button type="button" onClick={doVaultUnlock} disabled={vaultSubmitting || !vaultInput}
+                className="w-full py-3.5 rounded-xl font-bold text-white bg-amber-500/70 hover:bg-amber-500 disabled:opacity-50 transition-colors">
+                {vaultSubmitting ? 'Unlocking…' : 'Unlock'}
+              </button>
+            </div>
+            <button type="button" onClick={doLogout} className="mt-5 w-full text-xs text-gray-500 hover:text-gray-300 transition-colors">
+              Log out
+            </button>
+            <p className="mt-2 text-xs text-gray-600 text-center">Vault auto-locks after 4 hours of inactivity.</p>
+          </div>
+        </div>
       </div>
     );
   }
@@ -1057,53 +1300,86 @@ export default function FinancialPlanningPage() {
                 <Lock size={22} />
               </div>
               <div className="flex-1">
-                <h2 className="text-lg font-semibold mb-2">Please login</h2>
-                <p className="text-sm text-gray-400">Use your user id and password to access your plan.</p>
-
-                <div className="mt-5 space-y-3">
-                  <label className="block">
-                    <span className="text-sm text-gray-400">User ID</span>
-                    <input
-                      value={loginUserId}
-                      onChange={(e) => setLoginUserId(e.target.value)}
-                      className="mt-2 w-full px-4 py-2.5 bg-slate-900/50 border border-white/10 rounded-xl text-sm"
-                      placeholder="e.g. admin"
-                      autoComplete="username"
-                    />
-                  </label>
-
-                  <label className="block">
-                    <span className="text-sm text-gray-400">Password</span>
-                    <input
-                      type="password"
-                      value={loginPassword}
-                      onChange={(e) => setLoginPassword(e.target.value)}
-                      className="mt-2 w-full px-4 py-2.5 bg-slate-900/50 border border-white/10 rounded-xl text-sm"
-                      placeholder="••••••••"
-                      autoComplete="current-password"
-                    />
-                  </label>
-
-                  {loginError && (
-                    <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-200 text-sm flex items-center gap-2">
-                      <AlertTriangle size={16} />
-                      {loginError}
+                {loginStep === 'credentials' ? (
+                  <>
+                    <h2 className="text-lg font-semibold mb-2">Please login</h2>
+                    <p className="text-sm text-gray-400">Use your user id and password to access your plan.</p>
+                    <div className="mt-5 space-y-3">
+                      <label className="block">
+                        <span className="text-sm text-gray-400">User ID</span>
+                        <input
+                          value={loginUserId}
+                          onChange={(e) => setLoginUserId(e.target.value)}
+                          onKeyDown={(e) => e.key === 'Enter' && doLogin()}
+                          className="mt-2 w-full px-4 py-2.5 bg-slate-900/50 border border-white/10 rounded-xl text-sm"
+                          placeholder="e.g. admin"
+                          autoComplete="username"
+                        />
+                      </label>
+                      <label className="block">
+                        <span className="text-sm text-gray-400">Password</span>
+                        <input
+                          type="password"
+                          value={loginPassword}
+                          onChange={(e) => setLoginPassword(e.target.value)}
+                          onKeyDown={(e) => e.key === 'Enter' && doLogin()}
+                          className="mt-2 w-full px-4 py-2.5 bg-slate-900/50 border border-white/10 rounded-xl text-sm"
+                          placeholder="••••••••"
+                          autoComplete="current-password"
+                        />
+                      </label>
+                      {loginError && (
+                        <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-200 text-sm flex items-center gap-2">
+                          <AlertTriangle size={16} /> {loginError}
+                        </div>
+                      )}
+                      <button type="button" onClick={doLogin} disabled={loginSubmitting}
+                        className="w-full py-3.5 rounded-xl font-bold text-white bg-blue-500/70 hover:bg-blue-500 disabled:opacity-50 transition-colors">
+                        {loginSubmitting ? 'Signing in...' : 'Sign in'}
+                      </button>
                     </div>
-                  )}
-
-                  <button
-                    type="button"
-                    onClick={doLogin}
-                    disabled={loginSubmitting}
-                    className="w-full py-3.5 rounded-xl font-bold text-white bg-blue-500/70 hover:bg-blue-500 disabled:opacity-50 transition-colors"
-                  >
-                    {loginSubmitting ? 'Signing in...' : 'Sign in'}
-                  </button>
-                </div>
-
-                <p className="mt-4 text-xs text-gray-500">
-                  The default user is created from env vars: `FINPLAN_ADMIN_USER_ID` and `FINPLAN_ADMIN_PASSWORD`.
-                </p>
+                    <p className="mt-4 text-xs text-gray-500">
+                      The default user is created from env vars: `FINPLAN_ADMIN_USER_ID` and `FINPLAN_ADMIN_PASSWORD`.
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <div className="flex items-center gap-2 mb-3">
+                      <button type="button" onClick={() => { setLoginStep('credentials'); setLoginError(''); setTotpInput(''); }}
+                        className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 transition-colors text-gray-400">
+                        <ArrowLeft size={16} />
+                      </button>
+                      <h2 className="text-lg font-semibold">Two-Factor Authentication</h2>
+                    </div>
+                    <p className="text-sm text-gray-400 mb-5">Open your authenticator app and enter the 6-digit code.</p>
+                    <div className="space-y-3">
+                      <label className="block">
+                        <span className="text-sm text-gray-400">Authenticator code</span>
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          maxLength={6}
+                          value={totpInput}
+                          onChange={(e) => setTotpInput(e.target.value.replace(/\D/g, ''))}
+                          onKeyDown={(e) => e.key === 'Enter' && doVerify2FA()}
+                          autoFocus
+                          className="mt-2 w-full px-4 py-3 bg-slate-900/50 border border-white/10 rounded-xl text-xl font-mono tracking-[0.4em] text-center"
+                          placeholder="000000"
+                        />
+                      </label>
+                      {loginError && (
+                        <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-200 text-sm flex items-center gap-2">
+                          <AlertTriangle size={16} /> {loginError}
+                        </div>
+                      )}
+                      <button type="button" onClick={doVerify2FA} disabled={loginSubmitting || totpInput.length !== 6}
+                        className="w-full py-3.5 rounded-xl font-bold text-white bg-blue-500/70 hover:bg-blue-500 disabled:opacity-50 transition-colors">
+                        {loginSubmitting ? 'Verifying...' : 'Verify'}
+                      </button>
+                    </div>
+                    <p className="mt-4 text-xs text-gray-500">The code refreshes every 30 seconds.</p>
+                  </>
+                )}
               </div>
             </div>
           </div>
@@ -1160,6 +1436,15 @@ export default function FinancialPlanningPage() {
                   </>
                 )}
               </div>
+              <button
+                type="button"
+                onClick={() => setSecurityOpen(true)}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-full text-sm bg-white/5 border border-white/10 hover:bg-white/10 transition-colors"
+                title="Security settings"
+              >
+                <Lock size={16} />
+                {securityStatus.totpEnabled ? <span className="w-1.5 h-1.5 rounded-full bg-green-400 inline-block" /> : null}
+              </button>
               <button
                 type="button"
                 onClick={doLogout}
@@ -2757,6 +3042,158 @@ export default function FinancialPlanningPage() {
           </div>
         );
       })()}
+
+      {/* ── Security settings slide-over ─────────────────────────────────── */}
+      {securityOpen && (
+        <div className="fixed inset-0 z-50 flex items-stretch justify-end">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setSecurityOpen(false)} />
+          <div className="relative w-full max-w-md bg-slate-900 border-l border-white/10 flex flex-col shadow-2xl overflow-y-auto">
+            <div className="p-5 border-b border-white/10 flex items-center justify-between flex-shrink-0">
+              <div className="flex items-center gap-3">
+                <Lock size={18} className="text-amber-300" />
+                <h3 className="text-lg font-semibold">Security Settings</h3>
+              </div>
+              <button type="button" onClick={() => setSecurityOpen(false)}
+                className="p-2 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-colors">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="flex-1 p-5 space-y-6">
+              {/* ── TOTP 2FA ──────────────────────────────── */}
+              <section className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="font-semibold text-sm">Two-Factor Authentication (TOTP)</h4>
+                    <p className="text-xs text-gray-500 mt-0.5">Google Authenticator / Authy / 1Password</p>
+                  </div>
+                  <span className={`text-xs px-2.5 py-1 rounded-full border font-medium ${securityStatus.totpEnabled ? 'bg-green-500/15 border-green-400/30 text-green-300' : 'bg-slate-700/50 border-white/10 text-gray-400'}`}>
+                    {securityStatus.totpEnabled ? '● Enabled' : '○ Disabled'}
+                  </span>
+                </div>
+
+                {!securityStatus.totpEnabled ? (
+                  // Setup flow
+                  totpSetupData ? (
+                    <div className="space-y-3 bg-slate-800/50 border border-white/8 rounded-xl p-4">
+                      <p className="text-xs text-gray-400">Scan this QR code with your authenticator app, then enter the 6-digit code to confirm.</p>
+                      <div className="flex justify-center">
+                        <img src={totpSetupData.qrDataUrl} alt="TOTP QR Code" className="rounded-xl w-48 h-48" />
+                      </div>
+                      <div className="text-center">
+                        <p className="text-xs text-gray-500 mb-1">Or enter this key manually:</p>
+                        <code className="text-xs font-mono text-blue-300 bg-slate-900/60 px-3 py-1.5 rounded-lg break-all">{totpSetupData.secret}</code>
+                      </div>
+                      <input
+                        type="text" inputMode="numeric" maxLength={6}
+                        value={totpSetupCode}
+                        onChange={(e) => setTotpSetupCode(e.target.value.replace(/\D/g, ''))}
+                        placeholder="Enter 6-digit code"
+                        className="w-full px-4 py-2.5 bg-slate-900/60 border border-white/10 rounded-xl text-sm font-mono tracking-widest text-center"
+                      />
+                      {totpSetupError && <p className="text-red-300 text-xs">{totpSetupError}</p>}
+                      <div className="flex gap-2">
+                        <button type="button" onClick={() => { setTotpSetupData(null); setTotpSetupCode(''); setTotpSetupError(''); }}
+                          className="flex-1 py-2 rounded-xl border border-white/10 text-sm text-gray-400 hover:bg-white/5 transition-colors">
+                          Cancel
+                        </button>
+                        <button type="button" onClick={enableTotp} disabled={totpSetupLoading || totpSetupCode.length !== 6}
+                          className="flex-1 py-2 rounded-xl bg-green-500/20 border border-green-400/40 text-green-200 hover:bg-green-500/30 text-sm font-semibold disabled:opacity-50 transition-colors">
+                          {totpSetupLoading ? 'Verifying…' : 'Enable 2FA'}
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button type="button" onClick={loadTotpSetup} disabled={totpSetupLoading}
+                      className="w-full py-2.5 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 text-sm text-gray-300 transition-colors disabled:opacity-50">
+                      {totpSetupLoading ? 'Loading…' : 'Set up 2FA →'}
+                    </button>
+                  )
+                ) : (
+                  // Disable flow
+                  <div className="space-y-2 bg-slate-800/50 border border-white/8 rounded-xl p-4">
+                    <p className="text-xs text-gray-400">Enter a current code from your authenticator app to disable 2FA.</p>
+                    <input
+                      type="text" inputMode="numeric" maxLength={6}
+                      value={totpDisableCode}
+                      onChange={(e) => setTotpDisableCode(e.target.value.replace(/\D/g, ''))}
+                      placeholder="6-digit code"
+                      className="w-full px-4 py-2.5 bg-slate-900/60 border border-white/10 rounded-xl text-sm font-mono tracking-widest text-center"
+                    />
+                    {totpSetupError && <p className="text-red-300 text-xs">{totpSetupError}</p>}
+                    <button type="button" onClick={disableTotp} disabled={totpDisableLoading || totpDisableCode.length !== 6}
+                      className="w-full py-2.5 rounded-xl bg-red-500/15 border border-red-400/30 text-red-300 hover:bg-red-500/25 text-sm font-semibold disabled:opacity-50 transition-colors">
+                      {totpDisableLoading ? 'Disabling…' : 'Disable 2FA'}
+                    </button>
+                  </div>
+                )}
+              </section>
+
+              <div className="border-t border-white/8" />
+
+              {/* ── Vault Passphrase ──────────────────────────────── */}
+              <section className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="font-semibold text-sm">Vault Passphrase</h4>
+                    <p className="text-xs text-gray-500 mt-0.5">A second secret that locks all financial data. Expires every 4 hours.</p>
+                  </div>
+                  <span className={`text-xs px-2.5 py-1 rounded-full border font-medium ${securityStatus.vaultSet ? 'bg-amber-500/15 border-amber-400/30 text-amber-300' : 'bg-slate-700/50 border-white/10 text-gray-400'}`}>
+                    {securityStatus.vaultSet ? '● Set' : '○ Not set'}
+                  </span>
+                </div>
+                <div className="space-y-2 bg-slate-800/50 border border-white/8 rounded-xl p-4">
+                  <p className="text-xs text-gray-400">{securityStatus.vaultSet ? 'Enter a new passphrase to change it.' : 'Set a passphrase (min. 8 characters). Use a phrase, not just a word.'}</p>
+                  <input
+                    type="password" value={vaultSetupPassphrase}
+                    onChange={(e) => setVaultSetupPassphrase(e.target.value)}
+                    placeholder="New passphrase (min. 8 chars)"
+                    className="w-full px-3 py-2.5 bg-slate-900/60 border border-white/10 rounded-xl text-sm"
+                  />
+                  <input
+                    type="password" value={vaultSetupConfirm}
+                    onChange={(e) => setVaultSetupConfirm(e.target.value)}
+                    placeholder="Confirm passphrase"
+                    className="w-full px-3 py-2.5 bg-slate-900/60 border border-white/10 rounded-xl text-sm"
+                  />
+                  {vaultSetupError && <p className="text-red-300 text-xs">{vaultSetupError}</p>}
+                  <button type="button" onClick={setupVaultPassphrase}
+                    disabled={vaultSetupLoading || vaultSetupPassphrase.length < 8 || vaultSetupPassphrase !== vaultSetupConfirm}
+                    className="w-full py-2.5 rounded-xl bg-amber-500/20 border border-amber-400/40 text-amber-200 hover:bg-amber-500/30 text-sm font-semibold disabled:opacity-50 transition-colors">
+                    {vaultSetupLoading ? 'Saving…' : securityStatus.vaultSet ? 'Change Passphrase' : 'Set Passphrase'}
+                  </button>
+                  {vaultPassphraseSet && !vaultLocked && (
+                    <button type="button" onClick={() => { setVaultLocked(true); setSecurityOpen(false); }}
+                      className="w-full py-2 rounded-xl border border-white/10 text-xs text-gray-400 hover:bg-white/5 transition-colors">
+                      Lock vault now
+                    </button>
+                  )}
+                </div>
+              </section>
+
+              <div className="border-t border-white/8" />
+
+              {/* Security summary */}
+              <section className="space-y-2 text-xs text-gray-500">
+                <p className="font-medium text-gray-400">Security layers active</p>
+                <div className="flex items-center gap-2">
+                  <span className="text-green-400">✓</span> Password (PBKDF2, 120k iterations)
+                </div>
+                <div className="flex items-center gap-2">
+                  {securityStatus.totpEnabled ? <span className="text-green-400">✓</span> : <span className="text-gray-600">○</span>}
+                  TOTP 2FA (authenticator app)
+                </div>
+                <div className="flex items-center gap-2">
+                  {securityStatus.vaultSet ? <span className="text-green-400">✓</span> : <span className="text-gray-600">○</span>}
+                  Vault passphrase (4-hour session)
+                </div>
+              </section>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Asset holdings slide-over panel ─────────────────────────────── */}
       {assetPanel && (() => {
