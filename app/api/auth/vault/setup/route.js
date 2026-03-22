@@ -3,8 +3,8 @@ import crypto from 'crypto';
 import { redis } from '@/app/lib/redis';
 import { getSessionUserId } from '@/app/lib/finplan-auth';
 
-const NS        = process.env.FINPLAN_REDIS_NAMESPACE || 'bv-finance';
-const VAULT_KEY = `${NS}:vault_phrase`;
+const NS         = process.env.FINPLAN_REDIS_NAMESPACE || 'bv-finance';
+const vaultKey   = (uid) => `${NS}:vault_phrase:${uid}`;
 const ITERATIONS = 120000;
 
 function pbkdf2Hex(phrase, saltHex) {
@@ -17,7 +17,7 @@ export async function GET(req) {
   const userId = await getSessionUserId(req);
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const existing = await redis.get(VAULT_KEY);
+  const existing = await redis.get(vaultKey(userId));
   return NextResponse.json({ set: !!existing });
 }
 
@@ -33,7 +33,7 @@ export async function POST(req) {
 
   const salt = crypto.randomBytes(16).toString('hex');
   const hash = pbkdf2Hex(String(passphrase), salt);
-  await redis.set(VAULT_KEY, { salt, hash });
+  await redis.set(vaultKey(userId), { salt, hash });
 
   return NextResponse.json({ success: true });
 }

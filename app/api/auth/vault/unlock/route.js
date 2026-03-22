@@ -4,7 +4,7 @@ import { redis } from '@/app/lib/redis';
 import { getSessionUserId } from '@/app/lib/finplan-auth';
 
 const NS           = process.env.FINPLAN_REDIS_NAMESPACE || 'bv-finance';
-const VAULT_KEY    = `${NS}:vault_phrase`;
+const vaultKey     = (uid) => `${NS}:vault_phrase:${uid}`;
 const VAULT_COOKIE = 'bv_finance_vault';
 const VAULT_TTL    = 4 * 60 * 60; // 4 hours
 const ITERATIONS   = 120000;
@@ -32,7 +32,7 @@ export async function POST(req) {
   const { passphrase } = await req.json();
   if (!passphrase) return NextResponse.json({ success: false, error: 'Passphrase required.' }, { status: 400 });
 
-  let record = await redis.get(VAULT_KEY);
+  let record = await redis.get(vaultKey(userId));
   if (!record) return NextResponse.json({ success: false, error: 'Vault not configured.' }, { status: 400 });
 
   if (typeof record === 'string') {

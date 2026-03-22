@@ -53,13 +53,23 @@ export async function POST(req) {
       }
     }
 
-    // Seed first user from env (optional but required to make login usable).
+    // Seed users from env on first login (admin + optional guest).
     if (!userRecord) {
       const seedUser = normalizeUserId(process.env.FINPLAN_ADMIN_USER_ID);
       const seedPass = process.env.FINPLAN_ADMIN_PASSWORD;
+      const guestUser = normalizeUserId(process.env.FINPLAN_GUEST_USER_ID);
+      const guestPass = process.env.FINPLAN_GUEST_PASSWORD;
+
+      let seedId, seedPw;
       if (userId && seedUser && userId === seedUser && typeof seedPass === 'string' && seedPass.length > 0) {
+        seedId = seedUser; seedPw = seedPass;
+      } else if (userId && guestUser && userId === guestUser && typeof guestPass === 'string' && guestPass.length > 0) {
+        seedId = guestUser; seedPw = guestPass;
+      }
+
+      if (seedId) {
         const salt = crypto.randomBytes(16).toString('hex');
-        const hash = pbkdf2Hex(seedPass, salt, PBKDF2_ITERATIONS);
+        const hash = pbkdf2Hex(seedPw, salt, PBKDF2_ITERATIONS);
         userRecord = { salt, hash, iterations: PBKDF2_ITERATIONS };
         await redis.set(userKey(userId), userRecord);
       } else {

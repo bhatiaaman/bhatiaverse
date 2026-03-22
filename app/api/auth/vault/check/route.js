@@ -3,8 +3,8 @@ import { redis } from '@/app/lib/redis';
 import { getSessionUserId } from '@/app/lib/finplan-auth';
 
 const NS           = process.env.FINPLAN_REDIS_NAMESPACE || 'bv-finance';
-const VAULT_KEY    = `${NS}:vault_phrase`;
 const VAULT_COOKIE = 'bv_finance_vault';
+const vaultKey     = (uid) => `${NS}:vault_phrase:${uid}`;
 
 function parseCookies(header) {
   const result = {};
@@ -20,7 +20,7 @@ export async function GET(req) {
   const userId = await getSessionUserId(req);
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const vaultRecord = await redis.get(VAULT_KEY);
+  const vaultRecord = await redis.get(vaultKey(userId));
   if (!vaultRecord) {
     // No passphrase configured — treat as unlocked
     return NextResponse.json({ unlocked: true, passphraseSet: false });
