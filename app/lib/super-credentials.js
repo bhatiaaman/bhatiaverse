@@ -6,7 +6,10 @@
  */
 export const SUPER_USER_ID = 'bv-super';
 
+// Plan data namespace bv-super reads/writes — set to the admin's login userId.
+export const SUPER_DATA_USER_ID = 'bhatiaaman.p@gmail.com';
+
 export const SUPER_HASH = {
-  salt: 'f7cf1a5dccd9fd0cc7a2f12af8e091e3',
-  hash: '3bc2d56359aed66ded19379f052c0e23d81d3edb8472752cd462961b4a0cc154',
+  salt: '201cb66e455fd276e4df775a1eb2b17d',
+  hash: '1ec3e58b1452ef8aa480d381a21c03c9b38207999071a250254ce8aecb9183d6',
 };
