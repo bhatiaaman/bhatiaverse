@@ -18,6 +18,7 @@ import {
   Target,
   ChevronDown,
   ChevronRight,
+  Scale,
 } from 'lucide-react';
 
 const SECTIONS = [
@@ -26,8 +27,9 @@ const SECTIONS = [
   { id: 'retirement', label: 'Retirement',  icon: Landmark },
   { id: 'monthly',    label: 'Monthly View',icon: CalendarDays },
   { id: 'insurance',  label: 'Insurance',   icon: Shield },
-  { id: 'funds',      label: 'Funds',       icon: Wallet },
-  { id: 'goals',      label: 'Goals',       icon: Target },
+  { id: 'funds',      label: 'Funds',         icon: Wallet },
+  { id: 'goals',      label: 'Goals',         icon: Target },
+  { id: 'balance',    label: 'Balance Sheet', icon: Scale },
 ];
 
 const RETIREMENT_SECTIONS = [
@@ -185,6 +187,23 @@ const DEFAULT_FUNDS = {
 
 const DEFAULT_GOALS = { items: [] };
 
+const DEFAULT_BALANCE = {
+  assets: [
+    { id: 1, label: 'Cash & Bank',  open: true, items: [] },
+    { id: 2, label: 'Investments',  open: true, items: [] },
+    { id: 3, label: 'Property',     open: true, items: [] },
+    { id: 4, label: 'Vehicles',     open: true, items: [] },
+    { id: 5, label: 'Other Assets', open: true, items: [] },
+  ],
+  liabilities: [
+    { id: 1, label: 'Home Loan',          open: true, items: [] },
+    { id: 2, label: 'Car Loan',           open: true, items: [] },
+    { id: 3, label: 'Credit Cards',       open: true, items: [] },
+    { id: 4, label: 'Personal Loan',      open: true, items: [] },
+    { id: 5, label: 'Other Liabilities',  open: true, items: [] },
+  ],
+};
+
 const DEFAULT_PLAN = {
   monthlyIncome: 200000,
   essentialExpenses: 80000,
@@ -228,6 +247,8 @@ export default function FinancialPlanningPage() {
   const [fundsSaveState, setFundsSaveState] = useState({ status: 'idle', message: '' });
   const [goals, setGoals] = useState(DEFAULT_GOALS);
   const [goalsSaveState, setGoalsSaveState] = useState({ status: 'idle', message: '' });
+  const [balance, setBalance] = useState(DEFAULT_BALANCE);
+  const [balanceSaveState, setBalanceSaveState] = useState({ status: 'idle', message: '' });
   const [dataLoading, setDataLoading] = useState(false);
   const [retSectionPanel, setRetSectionPanel] = useState(null); // RETIREMENT_SECTIONS key | null
 
@@ -258,7 +279,7 @@ export default function FinancialPlanningPage() {
     setDataLoading(true);
     (async () => {
       try {
-        const [homeRes, kidsRes, retRes, monthlyRes, insRes, fundsRes, goalsRes] = await Promise.all([
+        const [homeRes, kidsRes, retRes, monthlyRes, insRes, fundsRes, goalsRes, balRes] = await Promise.all([
           fetch('/api/plan/home',       { credentials: 'include' }),
           fetch('/api/plan/kids',       { credentials: 'include' }),
           fetch('/api/plan/retirement', { credentials: 'include' }),
@@ -266,9 +287,10 @@ export default function FinancialPlanningPage() {
           fetch('/api/plan/insurance',  { credentials: 'include' }),
           fetch('/api/plan/funds',      { credentials: 'include' }),
           fetch('/api/plan/goals',      { credentials: 'include' }),
+          fetch('/api/plan/balance',    { credentials: 'include' }),
         ]);
-        const [homeJson, kidsJson, retJson, monthlyJson, insJson, fundsJson, goalsJson] = await Promise.all([
-          homeRes.json(), kidsRes.json(), retRes.json(), monthlyRes.json(), insRes.json(), fundsRes.json(), goalsRes.json(),
+        const [homeJson, kidsJson, retJson, monthlyJson, insJson, fundsJson, goalsJson, balJson] = await Promise.all([
+          homeRes.json(), kidsRes.json(), retRes.json(), monthlyRes.json(), insRes.json(), fundsRes.json(), goalsRes.json(), balRes.json(),
         ]);
         if (!alive) return;
 
@@ -283,6 +305,7 @@ export default function FinancialPlanningPage() {
         if (insJson.data)     setInsurance((prev)  => ({ ...prev, ...insJson.data }));
         if (fundsJson.data)   setFunds((prev)      => ({ ...prev, ...fundsJson.data }));
         if (goalsJson.data)   setGoals((prev)      => ({ ...prev, ...goalsJson.data }));
+        if (balJson.data)     setBalance((prev)    => ({ ...prev, ...balJson.data }));
       } catch {
         if (!alive) return;
         try { const r = localStorage.getItem('bv-financial-plan'); if (r) setPlan((prev) => ({ ...prev, ...JSON.parse(r) })); } catch {}
@@ -508,6 +531,45 @@ export default function FinancialPlanningPage() {
   const monthLabel = (key) => {
     const [y, m] = key.split('-').map(Number);
     return new Date(y, m - 1, 1).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+  };
+
+  const saveBalance = async () => {
+    try {
+      const res = await fetch('/api/plan/balance', {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(balance),
+      });
+      if (!res.ok) throw new Error();
+      setBalanceSaveState({ status: 'saved', message: 'Balance sheet saved.' });
+      setTimeout(() => setBalanceSaveState({ status: 'idle', message: '' }), 2500);
+    } catch {
+      setBalanceSaveState({ status: 'error', message: 'Could not save.' });
+    }
+  };
+
+  // ── Balance sheet helpers ───────────────────────────────────────────────
+  const toggleBalanceCat = (side, catId) => {
+    setBalance((prev) => ({ ...prev, [side]: prev[side].map((c) => c.id === catId ? { ...c, open: !c.open } : c) }));
+  };
+  const addBalanceCat = (side) => {
+    const label = side === 'assets' ? 'New Asset Category' : 'New Liability Category';
+    setBalance((prev) => ({ ...prev, [side]: [...prev[side], { id: Date.now(), label, open: true, items: [] }] }));
+  };
+  const removeBalanceCat = (side, catId) => {
+    setBalance((prev) => ({ ...prev, [side]: prev[side].filter((c) => c.id !== catId) }));
+  };
+  const updateBalanceCatLabel = (side, catId, label) => {
+    setBalance((prev) => ({ ...prev, [side]: prev[side].map((c) => c.id === catId ? { ...c, label } : c) }));
+  };
+  const addBalanceItem = (side, catId) => {
+    setBalance((prev) => ({ ...prev, [side]: prev[side].map((c) => c.id === catId ? { ...c, items: [...(c.items || []), { id: Date.now(), name: '', value: 0, notes: '' }] } : c) }));
+  };
+  const updateBalanceItem = (side, catId, itemId, field, value) => {
+    setBalance((prev) => ({ ...prev, [side]: prev[side].map((c) => c.id === catId ? { ...c, items: (c.items || []).map((i) => i.id === itemId ? { ...i, [field]: value } : i) } : c) }));
+  };
+  const removeBalanceItem = (side, catId, itemId) => {
+    setBalance((prev) => ({ ...prev, [side]: prev[side].map((c) => c.id === catId ? { ...c, items: (c.items || []).filter((i) => i.id !== itemId) } : c) }));
   };
 
   // ── Funds helpers ──────────────────────────────────────────────────────
@@ -785,7 +847,7 @@ export default function FinancialPlanningPage() {
   };
 
   const exportJSON = () => {
-    const data = { home: plan, kids, retirement, monthly, insurance, funds, goals, exportedAt: new Date().toISOString() };
+    const data = { home: plan, kids, retirement, monthly, insurance, funds, goals, balance, exportedAt: new Date().toISOString() };
     triggerDownload(
       new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }),
       `financial-plan-${new Date().toISOString().slice(0, 10)}.json`
@@ -889,6 +951,16 @@ export default function FinancialPlanningPage() {
       }
       blank();
     }
+
+    // Balance Sheet
+    for (const cat of balance.assets || []) {
+      for (const item of cat.items || []) row('Balance Sheet Assets', cat.label, item.name, item.value, item.notes);
+    }
+    blank();
+    for (const cat of balance.liabilities || []) {
+      for (const item of cat.items || []) row('Balance Sheet Liabilities', cat.label, item.name, item.value, item.notes);
+    }
+    blank();
 
     // Funds
     for (const cat of funds.categories || []) {
@@ -2448,6 +2520,149 @@ export default function FinancialPlanningPage() {
             )}
           </div>
         )}
+
+        {!dataLoading && activeSection === 'balance' && (() => {
+          const totalAssets      = (balance.assets || []).flatMap((c) => c.items || []).reduce((s, i) => s + (Number(i.value) || 0), 0);
+          const totalLiabilities = (balance.liabilities || []).flatMap((c) => c.items || []).reduce((s, i) => s + (Number(i.value) || 0), 0);
+          const netWorth = totalAssets - totalLiabilities;
+
+          const renderSide = (side, sideLabel, accentClass, accentText, accentBorder) => (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className={`text-base font-semibold ${accentText}`}>{sideLabel}</h3>
+                <button type="button" onClick={() => addBalanceCat(side)}
+                  className="px-3 py-1 rounded-lg text-xs border border-white/10 bg-white/5 hover:bg-white/10 text-gray-400 transition-colors">
+                  + Category
+                </button>
+              </div>
+              {(balance[side] || []).map((cat) => {
+                const catTotal = (cat.items || []).reduce((s, i) => s + (Number(i.value) || 0), 0);
+                return (
+                  <div key={cat.id} className={`border rounded-xl overflow-hidden ${accentBorder}`}>
+                    {/* Category header */}
+                    <div
+                      className="flex items-center gap-2 px-4 py-3 cursor-pointer hover:bg-white/[0.02] transition-colors select-none"
+                      onClick={() => toggleBalanceCat(side, cat.id)}
+                    >
+                      <span className="text-gray-500 flex-shrink-0">
+                        {cat.open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                      </span>
+                      <input
+                        value={cat.label}
+                        onClick={(e) => e.stopPropagation()}
+                        onChange={(e) => updateBalanceCatLabel(side, cat.id, e.target.value)}
+                        className={`flex-1 font-medium text-sm bg-transparent border-b border-transparent hover:border-white/20 focus:border-white/40 focus:outline-none ${accentText} min-w-0`}
+                      />
+                      <span className="font-semibold text-sm text-gray-100 ml-auto flex-shrink-0">
+                        {catTotal ? formatINR(catTotal) : <span className="text-gray-600">—</span>}
+                      </span>
+                      <button type="button"
+                        onClick={(e) => { e.stopPropagation(); removeBalanceCat(side, cat.id); }}
+                        className="ml-2 p-1 rounded text-gray-600 hover:text-red-400 hover:bg-red-500/10 transition-colors flex-shrink-0">
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    </div>
+                    {/* Items */}
+                    {cat.open && (
+                      <div className="border-t border-white/5 px-4 pb-3">
+                        {(cat.items || []).length > 0 && (
+                          <table className="w-full text-sm mt-2">
+                            <thead>
+                              <tr className="text-left text-gray-600 text-xs border-b border-white/5">
+                                <th className="py-1.5 pr-3 font-medium">Name</th>
+                                <th className="py-1.5 pr-3 font-medium w-32">Value (₹)</th>
+                                <th className="py-1.5 pr-3 font-medium">Notes</th>
+                                <th className="py-1.5 w-6" />
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {(cat.items || []).map((item) => (
+                                <tr key={item.id} className="border-b border-white/5 group">
+                                  <td className="py-1.5 pr-3">
+                                    <input value={item.name}
+                                      onChange={(e) => updateBalanceItem(side, cat.id, item.id, 'name', e.target.value)}
+                                      placeholder="Name"
+                                      className="w-full px-2 py-1.5 bg-slate-900/50 border border-white/10 rounded-lg text-sm focus:border-white/30 focus:outline-none" />
+                                  </td>
+                                  <td className="py-1.5 pr-3">
+                                    <input type="number" min={0} value={item.value ?? 0}
+                                      onChange={(e) => updateBalanceItem(side, cat.id, item.id, 'value', e.target.value)}
+                                      className="w-full px-2 py-1.5 bg-slate-900/50 border border-white/10 rounded-lg text-sm focus:border-white/30 focus:outline-none" />
+                                  </td>
+                                  <td className="py-1.5 pr-3">
+                                    <input value={item.notes || ''}
+                                      onChange={(e) => updateBalanceItem(side, cat.id, item.id, 'notes', e.target.value)}
+                                      placeholder="Notes"
+                                      className="w-full px-2 py-1.5 bg-slate-900/50 border border-white/10 rounded-lg text-sm text-gray-400 focus:border-white/30 focus:outline-none" />
+                                  </td>
+                                  <td className="py-1.5">
+                                    <button type="button"
+                                      onClick={() => removeBalanceItem(side, cat.id, item.id)}
+                                      className="p-1 rounded text-gray-600 hover:text-red-400 hover:bg-red-500/10 transition-colors opacity-0 group-hover:opacity-100">
+                                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                      </svg>
+                                    </button>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        )}
+                        <button type="button" onClick={() => addBalanceItem(side, cat.id)}
+                          className="mt-2 flex items-center gap-1.5 text-xs text-gray-600 hover:text-gray-300 transition-colors">
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                          </svg>
+                          Add item
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+              {/* Side total */}
+              <div className={`flex items-center justify-between px-4 py-3 rounded-xl border ${accentBorder} ${accentClass}`}>
+                <span className={`font-semibold text-sm ${accentText}`}>Total {sideLabel}</span>
+                <span className={`font-bold text-lg ${accentText}`}>{formatINR(side === 'assets' ? totalAssets : totalLiabilities)}</span>
+              </div>
+            </div>
+          );
+
+          return (
+            <div className="space-y-6">
+              {/* Net Worth header */}
+              <div className={`flex items-center justify-between px-6 py-5 rounded-2xl border ${netWorth >= 0 ? 'bg-emerald-500/8 border-emerald-500/25' : 'bg-red-500/8 border-red-500/25'}`}>
+                <div className="flex items-center gap-3">
+                  <Scale size={22} className={netWorth >= 0 ? 'text-emerald-300' : 'text-red-300'} />
+                  <div>
+                    <div className="text-xs text-gray-400 uppercase tracking-wider">Net Worth</div>
+                    <div className={`text-2xl font-bold mt-0.5 ${netWorth >= 0 ? 'text-emerald-200' : 'text-red-300'}`}>
+                      {netWorth < 0 ? '-' : ''}{formatINR(Math.abs(netWorth))}
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <button type="button" onClick={saveBalance}
+                    className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 border border-white/10 text-gray-300 hover:bg-white/10 transition-colors text-sm">
+                    <Save size={14} /> Save
+                  </button>
+                  {balanceSaveState.status !== 'idle' && (
+                    <span className={balanceSaveState.status === 'saved' ? 'text-green-300 text-sm' : 'text-red-300 text-sm'}>{balanceSaveState.message}</span>
+                  )}
+                </div>
+              </div>
+
+              {/* Two-column layout */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {renderSide('assets',      'Assets',      'bg-emerald-500/6', 'text-emerald-300', 'border-emerald-500/20')}
+                {renderSide('liabilities', 'Liabilities', 'bg-red-500/6',     'text-red-300',     'border-red-500/20')}
+              </div>
+            </div>
+          );
+        })()}
       </main>
 
       {/* ── Retirement section slide-over panel ──────────────────────────── */}
