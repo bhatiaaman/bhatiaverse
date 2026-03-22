@@ -3080,7 +3080,7 @@ export default function FinancialPlanningPage() {
                     <div className="space-y-3 bg-slate-800/50 border border-white/8 rounded-xl p-4">
                       <p className="text-xs text-gray-400">Scan this QR code with your authenticator app, then enter the 6-digit code to confirm.</p>
                       <div className="flex justify-center">
-                        <img src={totpSetupData.qrDataUrl} alt="TOTP QR Code" className="rounded-xl w-48 h-48" />
+                        <img src={totpSetupData.qrDataUrl} alt="TOTP QR Code" className="rounded-xl w-64 h-64" />
                       </div>
                       <div className="text-center">
                         <p className="text-xs text-gray-500 mb-1">Or enter this key manually:</p>

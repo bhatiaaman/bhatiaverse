@@ -18,15 +18,12 @@ export async function GET(req) {
   const existing = await redis.get(totpKey(userId));
   if (existing) return NextResponse.json({ enabled: true });
 
-  // Reuse or generate pending secret (10-min window to complete setup)
-  let secret = await redis.get(pendingKey(userId));
-  if (!secret) {
-    secret = generateSecret();
-    await redis.set(pendingKey(userId), secret, { ex: 600 });
-  }
+  // Always generate a fresh secret so any previously cached invalid secret is replaced
+  const secret = generateSecret();
+  await redis.set(pendingKey(userId), secret, { ex: 600 });
 
   const otpauthUrl = keyuri(userId, APP_NAME, secret);
-  const qrDataUrl  = await QRCode.toDataURL(otpauthUrl, { width: 220, margin: 2 });
+  const qrDataUrl  = await QRCode.toDataURL(otpauthUrl, { width: 400, margin: 4, errorCorrectionLevel: 'H' });
 
   return NextResponse.json({ enabled: false, secret, qrDataUrl });
 }

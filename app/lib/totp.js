@@ -25,8 +25,21 @@ function base32Decode(str) {
 }
 
 function generateSecret(length = 20) {
+  // Properly base32-encode `length` random bytes.
+  // 20 bytes → 32 base32 chars = 160 bits (Google Authenticator requires ≥ 128 bits).
   const bytes = randomBytes(length);
-  return Array.from(bytes).map((b) => BASE32_ALPHABET[b % 32]).join('');
+  let bits = 0, value = 0;
+  const output = [];
+  for (const byte of bytes) {
+    value = (value << 8) | byte;
+    bits += 8;
+    while (bits >= 5) {
+      output.push(BASE32_ALPHABET[(value >>> (bits - 5)) & 31]);
+      bits -= 5;
+    }
+  }
+  if (bits > 0) output.push(BASE32_ALPHABET[(value << (5 - bits)) & 31]);
+  return output.join('');
 }
 
 function hotp(secretBase32, counter) {
@@ -65,8 +78,7 @@ export { generateSecret };
  * Build the otpauth:// URI used to populate QR codes.
  */
 export function keyuri(accountName, issuer, secret) {
-  return (
-    `otpauth://totp/${encodeURIComponent(issuer)}:${encodeURIComponent(accountName)}` +
-    `?secret=${secret}&issuer=${encodeURIComponent(issuer)}&algorithm=SHA1&digits=6&period=30`
-  );
+  // Minimal URI — Google Authenticator rejects URIs with explicit algorithm/digits/period params
+  const label = `${encodeURIComponent(issuer)}:${encodeURIComponent(accountName)}`;
+  return `otpauth://totp/${label}?secret=${secret}&issuer=${encodeURIComponent(issuer)}`;
 }
