@@ -14,6 +14,10 @@ import {
   CalendarDays,
   FileDown,
   Shield,
+  Wallet,
+  Target,
+  ChevronDown,
+  ChevronRight,
 } from 'lucide-react';
 
 const SECTIONS = [
@@ -22,6 +26,8 @@ const SECTIONS = [
   { id: 'retirement', label: 'Retirement',  icon: Landmark },
   { id: 'monthly',    label: 'Monthly View',icon: CalendarDays },
   { id: 'insurance',  label: 'Insurance',   icon: Shield },
+  { id: 'funds',      label: 'Funds',       icon: Wallet },
+  { id: 'goals',      label: 'Goals',       icon: Target },
 ];
 
 const RETIREMENT_SECTIONS = [
@@ -168,6 +174,17 @@ const DEFAULT_RETIREMENT = {
 
 const DEFAULT_INSURANCE = { policies: [] };
 
+const DEFAULT_FUNDS = {
+  categories: [
+    { id: 1, label: 'Travel',   open: true, subs: [] },
+    { id: 2, label: 'Equity',   open: true, subs: [] },
+    { id: 3, label: 'School',   open: true, subs: [] },
+    { id: 4, label: 'Property', open: true, subs: [] },
+  ],
+};
+
+const DEFAULT_GOALS = { items: [] };
+
 const DEFAULT_PLAN = {
   monthlyIncome: 200000,
   essentialExpenses: 80000,
@@ -207,6 +224,10 @@ export default function FinancialPlanningPage() {
   const [retSaveState, setRetSaveState] = useState({ status: 'idle', message: '' });
   const [insurance, setInsurance] = useState(DEFAULT_INSURANCE);
   const [insuranceSaveState, setInsuranceSaveState] = useState({ status: 'idle', message: '' });
+  const [funds, setFunds] = useState(DEFAULT_FUNDS);
+  const [fundsSaveState, setFundsSaveState] = useState({ status: 'idle', message: '' });
+  const [goals, setGoals] = useState(DEFAULT_GOALS);
+  const [goalsSaveState, setGoalsSaveState] = useState({ status: 'idle', message: '' });
   const [dataLoading, setDataLoading] = useState(false);
   const [retSectionPanel, setRetSectionPanel] = useState(null); // RETIREMENT_SECTIONS key | null
 
@@ -237,15 +258,17 @@ export default function FinancialPlanningPage() {
     setDataLoading(true);
     (async () => {
       try {
-        const [homeRes, kidsRes, retRes, monthlyRes, insRes] = await Promise.all([
+        const [homeRes, kidsRes, retRes, monthlyRes, insRes, fundsRes, goalsRes] = await Promise.all([
           fetch('/api/plan/home',       { credentials: 'include' }),
           fetch('/api/plan/kids',       { credentials: 'include' }),
           fetch('/api/plan/retirement', { credentials: 'include' }),
           fetch('/api/plan/monthly',    { credentials: 'include' }),
           fetch('/api/plan/insurance',  { credentials: 'include' }),
+          fetch('/api/plan/funds',      { credentials: 'include' }),
+          fetch('/api/plan/goals',      { credentials: 'include' }),
         ]);
-        const [homeJson, kidsJson, retJson, monthlyJson, insJson] = await Promise.all([
-          homeRes.json(), kidsRes.json(), retRes.json(), monthlyRes.json(), insRes.json(),
+        const [homeJson, kidsJson, retJson, monthlyJson, insJson, fundsJson, goalsJson] = await Promise.all([
+          homeRes.json(), kidsRes.json(), retRes.json(), monthlyRes.json(), insRes.json(), fundsRes.json(), goalsRes.json(),
         ]);
         if (!alive) return;
 
@@ -258,6 +281,8 @@ export default function FinancialPlanningPage() {
         if (monthlyJson.data) setMonthly((prev)    => ({ ...prev, ...monthlyJson.data }));
         else { try { const r = localStorage.getItem('bv-financial-plan-monthly'); if (r) setMonthly((prev) => ({ ...prev, ...JSON.parse(r) })); } catch {} }
         if (insJson.data)     setInsurance((prev)  => ({ ...prev, ...insJson.data }));
+        if (fundsJson.data)   setFunds((prev)      => ({ ...prev, ...fundsJson.data }));
+        if (goalsJson.data)   setGoals((prev)      => ({ ...prev, ...goalsJson.data }));
       } catch {
         if (!alive) return;
         try { const r = localStorage.getItem('bv-financial-plan'); if (r) setPlan((prev) => ({ ...prev, ...JSON.parse(r) })); } catch {}
@@ -374,6 +399,36 @@ export default function FinancialPlanningPage() {
     }
   };
 
+  const saveFunds = async () => {
+    try {
+      const res = await fetch('/api/plan/funds', {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(funds),
+      });
+      if (!res.ok) throw new Error();
+      setFundsSaveState({ status: 'saved', message: 'Funds saved.' });
+      setTimeout(() => setFundsSaveState({ status: 'idle', message: '' }), 2500);
+    } catch {
+      setFundsSaveState({ status: 'error', message: 'Could not save.' });
+    }
+  };
+
+  const saveGoals = async () => {
+    try {
+      const res = await fetch('/api/plan/goals', {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(goals),
+      });
+      if (!res.ok) throw new Error();
+      setGoalsSaveState({ status: 'saved', message: 'Goals saved.' });
+      setTimeout(() => setGoalsSaveState({ status: 'idle', message: '' }), 2500);
+    } catch {
+      setGoalsSaveState({ status: 'error', message: 'Could not save.' });
+    }
+  };
+
   const setSection = (id) => {
     setActiveSection(id);
     try {
@@ -453,6 +508,40 @@ export default function FinancialPlanningPage() {
   const monthLabel = (key) => {
     const [y, m] = key.split('-').map(Number);
     return new Date(y, m - 1, 1).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+  };
+
+  // ── Funds helpers ──────────────────────────────────────────────────────
+  const toggleFundCat = (catId) => {
+    setFunds((prev) => ({ ...prev, categories: prev.categories.map((c) => c.id === catId ? { ...c, open: !c.open } : c) }));
+  };
+  const addFundCategory = () => {
+    setFunds((prev) => ({ ...prev, categories: [...prev.categories, { id: Date.now(), label: 'New Category', open: true, subs: [] }] }));
+  };
+  const removeFundCategory = (catId) => {
+    setFunds((prev) => ({ ...prev, categories: prev.categories.filter((c) => c.id !== catId) }));
+  };
+  const updateFundCatLabel = (catId, label) => {
+    setFunds((prev) => ({ ...prev, categories: prev.categories.map((c) => c.id === catId ? { ...c, label } : c) }));
+  };
+  const addFundSub = (catId) => {
+    setFunds((prev) => ({ ...prev, categories: prev.categories.map((c) => c.id === catId ? { ...c, subs: [...(c.subs || []), { id: Date.now(), label: '', available: 0, spent: 0, notes: '' }] } : c) }));
+  };
+  const updateFundSub = (catId, subId, field, value) => {
+    setFunds((prev) => ({ ...prev, categories: prev.categories.map((c) => c.id === catId ? { ...c, subs: (c.subs || []).map((s) => s.id === subId ? { ...s, [field]: value } : s) } : c) }));
+  };
+  const removeFundSub = (catId, subId) => {
+    setFunds((prev) => ({ ...prev, categories: prev.categories.map((c) => c.id === catId ? { ...c, subs: (c.subs || []).filter((s) => s.id !== subId) } : c) }));
+  };
+
+  // ── Goals helpers ───────────────────────────────────────────────────────
+  const addGoal = () => {
+    setGoals((prev) => ({ ...prev, items: [...(prev.items || []), { id: Date.now(), title: '', targetAmount: 0, savedAmount: 0, targetDate: '', category: '', notes: '' }] }));
+  };
+  const updateGoal = (id, field, value) => {
+    setGoals((prev) => ({ ...prev, items: (prev.items || []).map((g) => g.id === id ? { ...g, [field]: value } : g) }));
+  };
+  const removeGoal = (id) => {
+    setGoals((prev) => ({ ...prev, items: (prev.items || []).filter((g) => g.id !== id) }));
   };
 
   const activeKidData = kids[kids.activeKid] || kids.mannat;
@@ -696,7 +785,7 @@ export default function FinancialPlanningPage() {
   };
 
   const exportJSON = () => {
-    const data = { home: plan, kids, retirement, monthly, insurance, exportedAt: new Date().toISOString() };
+    const data = { home: plan, kids, retirement, monthly, insurance, funds, goals, exportedAt: new Date().toISOString() };
     triggerDownload(
       new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }),
       `financial-plan-${new Date().toISOString().slice(0, 10)}.json`
@@ -798,6 +887,21 @@ export default function FinancialPlanningPage() {
           row(`Monthly ${mlabel}`, cat.label, sub.label, sub.budget ?? 0, sub.runAvail ?? 0, sub.runSpent ?? 0);
         }
       }
+      blank();
+    }
+
+    // Funds
+    for (const cat of funds.categories || []) {
+      for (const sub of cat.subs || []) {
+        row(`Funds`, cat.label, sub.label, sub.available ?? 0, sub.spent ?? 0, sub.notes);
+      }
+      blank();
+    }
+
+    // Goals
+    if ((goals.items || []).length) {
+      row('Goals', 'Title', 'Target (₹)', 'Saved (₹)', 'Target Date', 'Category', 'Notes');
+      for (const g of goals.items) row('Goals', g.title, g.targetAmount, g.savedAmount, g.targetDate, g.category, g.notes);
       blank();
     }
 
@@ -2063,6 +2167,284 @@ export default function FinancialPlanningPage() {
                   })}
                 </div>
               </section>
+            )}
+          </div>
+        )}
+
+        {!dataLoading && activeSection === 'funds' && (
+          <div className="space-y-4">
+            {/* Page header */}
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-bold flex items-center gap-2"><Wallet size={20} className="text-teal-300" /> Funds</h2>
+                <p className="text-sm text-gray-400 mt-0.5">Allocate money pools across major categories and track how they&apos;re distributed.</p>
+              </div>
+              <div className="flex items-center gap-3">
+                <button type="button" onClick={addFundCategory}
+                  className="px-3 py-1.5 rounded-lg text-xs border border-white/10 bg-white/5 hover:bg-white/10 text-gray-300 transition-colors">
+                  + Add Category
+                </button>
+                <button type="button" onClick={saveFunds}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-teal-500/20 border border-teal-400/40 text-teal-200 hover:bg-teal-500/25 transition-colors text-sm">
+                  <Save size={14} /> Save
+                </button>
+                {fundsSaveState.status !== 'idle' && (
+                  <span className={fundsSaveState.status === 'saved' ? 'text-green-300 text-sm' : 'text-red-300 text-sm'}>{fundsSaveState.message}</span>
+                )}
+              </div>
+            </div>
+
+            {/* Accordion cards */}
+            {(funds.categories || []).map((cat) => {
+              const subs = cat.subs || [];
+              const totalAvail = subs.reduce((s, sub) => s + (Number(sub.available) || 0), 0);
+              const totalSpent = subs.reduce((s, sub) => s + (Number(sub.spent)     || 0), 0);
+              const totalLeft  = totalAvail - totalSpent;
+              return (
+                <div key={cat.id} className="bg-slate-900/50 border border-white/10 rounded-2xl overflow-hidden">
+                  {/* Header */}
+                  <div
+                    className="flex items-center gap-3 px-5 py-4 cursor-pointer hover:bg-white/[0.02] transition-colors select-none"
+                    onClick={() => toggleFundCat(cat.id)}
+                  >
+                    <span className="text-gray-400 flex-shrink-0">
+                      {cat.open ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                    </span>
+                    <input
+                      value={cat.label}
+                      onClick={(e) => e.stopPropagation()}
+                      onChange={(e) => updateFundCatLabel(cat.id, e.target.value)}
+                      className="font-semibold text-base bg-transparent border-b border-transparent hover:border-white/20 focus:border-white/40 focus:outline-none text-white flex-1 min-w-0"
+                    />
+                    <div className="ml-auto flex items-center gap-6 text-sm flex-shrink-0">
+                      <div className="text-right hidden sm:block">
+                        <div className="text-xs text-gray-500">Available</div>
+                        <div className="font-semibold text-gray-200">{totalAvail ? formatINR(totalAvail) : <span className="text-gray-600">—</span>}</div>
+                      </div>
+                      <div className="text-right hidden sm:block">
+                        <div className="text-xs text-gray-500">Spent</div>
+                        <div className="font-semibold text-gray-200">{totalSpent ? formatINR(totalSpent) : <span className="text-gray-600">—</span>}</div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-xs text-gray-500">Left</div>
+                        <div className={`font-bold ${totalLeft < 0 ? 'text-red-300' : totalAvail === 0 ? 'text-gray-600' : 'text-teal-300'}`}>
+                          {totalAvail === 0 ? '—' : `${totalLeft < 0 ? '-' : ''}${formatINR(Math.abs(totalLeft))}`}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); removeFundCategory(cat.id); }}
+                        className="p-1.5 rounded-lg text-gray-600 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Body */}
+                  {cat.open && (
+                    <div className="border-t border-white/5 px-5 pb-5">
+                      {subs.length > 0 && (
+                        <div className="overflow-x-auto mt-3">
+                          <table className="w-full text-sm">
+                            <thead>
+                              <tr className="text-left text-gray-500 text-xs border-b border-white/8">
+                                <th className="py-2 pr-3 font-medium">Sub-category</th>
+                                <th className="py-2 pr-3 font-medium w-36">Available (₹)</th>
+                                <th className="py-2 pr-3 font-medium w-36">Spent (₹)</th>
+                                <th className="py-2 pr-3 font-medium w-28 text-right">Left</th>
+                                <th className="py-2 pr-3 font-medium">Notes</th>
+                                <th className="py-2 w-8" />
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {subs.map((sub) => {
+                                const avail = Number(sub.available) || 0;
+                                const spent = Number(sub.spent) || 0;
+                                const left  = avail - spent;
+                                return (
+                                  <tr key={sub.id} className="border-b border-white/5 group">
+                                    <td className="py-2 pr-3">
+                                      <input value={sub.label}
+                                        onChange={(e) => updateFundSub(cat.id, sub.id, 'label', e.target.value)}
+                                        placeholder="Sub-category"
+                                        className="w-full px-2 py-1.5 bg-slate-900/50 border border-white/10 rounded-lg text-sm focus:border-teal-400/40 focus:outline-none" />
+                                    </td>
+                                    <td className="py-2 pr-3">
+                                      <input type="number" min={0} value={sub.available ?? 0}
+                                        onChange={(e) => updateFundSub(cat.id, sub.id, 'available', e.target.value)}
+                                        className="w-full px-2 py-1.5 bg-slate-900/50 border border-white/10 rounded-lg text-sm focus:border-teal-400/40 focus:outline-none" />
+                                    </td>
+                                    <td className="py-2 pr-3">
+                                      <input type="number" min={0} value={sub.spent ?? 0}
+                                        onChange={(e) => updateFundSub(cat.id, sub.id, 'spent', e.target.value)}
+                                        className="w-full px-2 py-1.5 bg-slate-900/50 border border-white/10 rounded-lg text-sm focus:border-teal-400/40 focus:outline-none" />
+                                    </td>
+                                    <td className={`py-2 pr-3 text-right font-semibold text-sm ${left < 0 ? 'text-red-300' : avail === 0 ? 'text-gray-600' : 'text-teal-300'}`}>
+                                      {avail === 0 ? '—' : `${left < 0 ? '-' : ''}${formatINR(Math.abs(left))}`}
+                                    </td>
+                                    <td className="py-2 pr-3">
+                                      <input value={sub.notes || ''}
+                                        onChange={(e) => updateFundSub(cat.id, sub.id, 'notes', e.target.value)}
+                                        placeholder="Notes"
+                                        className="w-full px-2 py-1.5 bg-slate-900/50 border border-white/10 rounded-lg text-sm text-gray-400 focus:border-teal-400/40 focus:outline-none" />
+                                    </td>
+                                    <td className="py-2">
+                                      <button type="button" onClick={() => removeFundSub(cat.id, sub.id)}
+                                        className="p-1.5 rounded text-gray-600 hover:text-red-400 hover:bg-red-500/10 transition-colors opacity-0 group-hover:opacity-100">
+                                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                        </svg>
+                                      </button>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                      <button type="button" onClick={() => addFundSub(cat.id)}
+                        className="mt-3 flex items-center gap-2 text-sm text-gray-500 hover:text-teal-300 transition-colors">
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                        </svg>
+                        Add row
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+
+            {/* Overall totals footer */}
+            {(funds.categories || []).length > 0 && (() => {
+              const allSubs = (funds.categories || []).flatMap((c) => c.subs || []);
+              const grandAvail = allSubs.reduce((s, sub) => s + (Number(sub.available) || 0), 0);
+              const grandSpent = allSubs.reduce((s, sub) => s + (Number(sub.spent) || 0), 0);
+              const grandLeft  = grandAvail - grandSpent;
+              return (
+                <div className="flex items-center justify-end gap-8 px-5 py-4 bg-slate-900/30 border border-white/5 rounded-2xl text-sm">
+                  <div className="text-right">
+                    <div className="text-xs text-gray-500">Total Available</div>
+                    <div className="font-bold text-white text-base">{formatINR(grandAvail)}</div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-xs text-gray-500">Total Spent</div>
+                    <div className="font-bold text-white text-base">{formatINR(grandSpent)}</div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-xs text-gray-500">Total Left</div>
+                    <div className={`font-bold text-base ${grandLeft < 0 ? 'text-red-300' : 'text-teal-300'}`}>{grandLeft < 0 ? '-' : ''}{formatINR(Math.abs(grandLeft))}</div>
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+        )}
+
+        {!dataLoading && activeSection === 'goals' && (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-bold flex items-center gap-2"><Target size={20} className="text-violet-300" /> Goals</h2>
+                <p className="text-sm text-gray-400 mt-0.5">Track financial goals with target amounts and progress.</p>
+              </div>
+              <div className="flex items-center gap-3">
+                <button type="button" onClick={addGoal}
+                  className="px-3 py-1.5 rounded-lg text-xs border border-white/10 bg-white/5 hover:bg-white/10 text-gray-300 transition-colors">
+                  + Add Goal
+                </button>
+                <button type="button" onClick={saveGoals}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-violet-500/20 border border-violet-400/40 text-violet-200 hover:bg-violet-500/25 transition-colors text-sm">
+                  <Save size={14} /> Save
+                </button>
+                {goalsSaveState.status !== 'idle' && (
+                  <span className={goalsSaveState.status === 'saved' ? 'text-green-300 text-sm' : 'text-red-300 text-sm'}>{goalsSaveState.message}</span>
+                )}
+              </div>
+            </div>
+
+            {(goals.items || []).length === 0 ? (
+              <div className="text-center py-16 text-gray-500 text-sm bg-slate-900/30 border border-white/5 rounded-2xl">
+                No goals yet. Click &quot;+ Add Goal&quot; to get started.
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {(goals.items || []).map((goal) => {
+                  const target = Number(goal.targetAmount) || 0;
+                  const saved  = Number(goal.savedAmount)  || 0;
+                  const pct    = target > 0 ? Math.min(100, Math.round((saved / target) * 100)) : 0;
+                  const left   = Math.max(0, target - saved);
+                  return (
+                    <div key={goal.id} className="bg-slate-900/50 border border-white/10 rounded-2xl p-5 space-y-4">
+                      {/* Title row */}
+                      <div className="flex items-start gap-2">
+                        <input value={goal.title}
+                          onChange={(e) => updateGoal(goal.id, 'title', e.target.value)}
+                          placeholder="Goal name"
+                          className="flex-1 font-semibold text-base bg-transparent border-b border-transparent hover:border-white/20 focus:border-violet-400/40 focus:outline-none text-white min-w-0 py-0.5" />
+                        <button type="button" onClick={() => removeGoal(goal.id)}
+                          className="p-1.5 rounded-lg text-gray-600 hover:text-red-400 hover:bg-red-500/10 transition-colors flex-shrink-0 mt-0.5">
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      </div>
+
+                      {/* Progress bar */}
+                      <div>
+                        <div className="h-2 bg-slate-800 rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-violet-500 rounded-full transition-all duration-300"
+                            style={{ width: `${pct}%` }}
+                          />
+                        </div>
+                        <div className="flex justify-between text-xs text-gray-500 mt-1.5">
+                          <span>{formatINR(saved)} saved</span>
+                          <span className="font-medium text-violet-300">{pct}%</span>
+                          <span>{formatINR(left)} left</span>
+                        </div>
+                      </div>
+
+                      {/* Fields */}
+                      <div className="grid grid-cols-2 gap-3">
+                        <label className="flex flex-col gap-1">
+                          <span className="text-xs text-gray-500">Target (₹)</span>
+                          <input type="number" min={0} value={goal.targetAmount ?? 0}
+                            onChange={(e) => updateGoal(goal.id, 'targetAmount', e.target.value)}
+                            className="px-3 py-2 bg-slate-900/60 border border-white/10 rounded-lg text-sm focus:border-violet-400/40 focus:outline-none" />
+                        </label>
+                        <label className="flex flex-col gap-1">
+                          <span className="text-xs text-gray-500">Saved so far (₹)</span>
+                          <input type="number" min={0} value={goal.savedAmount ?? 0}
+                            onChange={(e) => updateGoal(goal.id, 'savedAmount', e.target.value)}
+                            className="px-3 py-2 bg-slate-900/60 border border-white/10 rounded-lg text-sm focus:border-violet-400/40 focus:outline-none" />
+                        </label>
+                        <label className="flex flex-col gap-1">
+                          <span className="text-xs text-gray-500">Target date</span>
+                          <input type="date" value={goal.targetDate || ''}
+                            onChange={(e) => updateGoal(goal.id, 'targetDate', e.target.value)}
+                            className="px-3 py-2 bg-slate-900/60 border border-white/10 rounded-lg text-sm text-gray-300 focus:border-violet-400/40 focus:outline-none" />
+                        </label>
+                        <label className="flex flex-col gap-1">
+                          <span className="text-xs text-gray-500">Category</span>
+                          <input value={goal.category || ''}
+                            onChange={(e) => updateGoal(goal.id, 'category', e.target.value)}
+                            placeholder="e.g. Travel, Property"
+                            className="px-3 py-2 bg-slate-900/60 border border-white/10 rounded-lg text-sm focus:border-violet-400/40 focus:outline-none" />
+                        </label>
+                      </div>
+                      <input value={goal.notes || ''}
+                        onChange={(e) => updateGoal(goal.id, 'notes', e.target.value)}
+                        placeholder="Notes"
+                        className="w-full px-3 py-2 bg-slate-900/60 border border-white/10 rounded-lg text-sm text-gray-400 focus:border-violet-400/40 focus:outline-none" />
+                    </div>
+                  );
+                })}
+              </div>
             )}
           </div>
         )}
