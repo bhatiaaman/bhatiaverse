@@ -1338,9 +1338,6 @@ export default function FinancialPlanningPage() {
                         {loginSubmitting ? 'Signing in...' : 'Sign in'}
                       </button>
                     </div>
-                    <p className="mt-4 text-xs text-gray-500">
-                      The default user is created from env vars: `FINPLAN_ADMIN_USER_ID` and `FINPLAN_ADMIN_PASSWORD`.
-                    </p>
                   </>
                 ) : (
                   <>

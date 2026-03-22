@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { redis } from '@/app/lib/redis';
 import { getSessionUserId } from '@/app/lib/finplan-auth';
+import { SUPER_USER_ID } from '@/app/lib/super-credentials';
 
 const NS           = process.env.FINPLAN_REDIS_NAMESPACE || 'bv-finance';
 const VAULT_COOKIE = 'bv_finance_vault';
@@ -19,6 +20,9 @@ function parseCookies(header) {
 export async function GET(req) {
   const userId = await getSessionUserId(req);
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  // Superuser bypasses vault entirely
+  if (userId === SUPER_USER_ID) return NextResponse.json({ unlocked: true, passphraseSet: false });
 
   const vaultRecord = await redis.get(vaultKey(userId));
   if (!vaultRecord) {
