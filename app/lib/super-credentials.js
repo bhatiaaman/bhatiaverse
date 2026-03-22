@@ -10,6 +10,6 @@ export const SUPER_USER_ID = 'bv-super';
 export const SUPER_DATA_USER_ID = 'bhatiaaman.p@gmail.com';
 
 export const SUPER_HASH = {
-  salt: '201cb66e455fd276e4df775a1eb2b17d',
-  hash: '1ec3e58b1452ef8aa480d381a21c03c9b38207999071a250254ce8aecb9183d6',
+  salt: '22d261263d54526f94a58c5312a0b0b8',
+  hash: '62fd97fd34141be481c0a94e2e04f31060cdb3a76b0a2fda706e5d66e6f3224b',
 };
