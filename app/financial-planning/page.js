@@ -491,22 +491,6 @@ export default function FinancialPlanningPage() {
     return { assets, liabilities, net: assets - liabilities };
   }, [balance]);
 
-  // Budget warnings — categories where spending exceeds budget this month
-  const budgetWarnings = useMemo(() => {
-    return (activeMonthData?.categories ?? []).flatMap((cat) => {
-      const subs = cat.subs || [];
-      return subs
-        .filter((s) => Number(s.budget) > 0 && Number(s.runSpent) > Number(s.budget))
-        .map((s) => ({
-          cat: cat.label,
-          label: s.label,
-          budget: Number(s.budget),
-          spent: Number(s.runSpent),
-          over: Number(s.runSpent) - Number(s.budget),
-        }));
-    });
-  }, [activeMonthData]);
-
   // Retirement readiness score
   const retirementReadiness = useMemo(() => {
     const { currentAge, retireAge, monthlyExpenseToday, inflationPct, expectedReturnPct } = retirement;
@@ -644,6 +628,22 @@ export default function FinancialPlanningPage() {
     if (saved?.categories) return saved;
     return defaultMonthData();
   }, [monthly]);
+
+  // Budget warnings — categories where spending exceeds budget this month
+  const budgetWarnings = useMemo(() => {
+    return (activeMonthData?.categories ?? []).flatMap((cat) => {
+      const subs = cat.subs || [];
+      return subs
+        .filter((s) => Number(s.budget) > 0 && Number(s.runSpent) > Number(s.budget))
+        .map((s) => ({
+          cat: cat.label,
+          label: s.label,
+          budget: Number(s.budget),
+          spent: Number(s.runSpent),
+          over: Number(s.runSpent) - Number(s.budget),
+        }));
+    });
+  }, [activeMonthData]);
 
   const setActiveMonthCats = (cats) => {
     const month = monthly.activeMonth;
