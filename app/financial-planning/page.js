@@ -371,11 +371,15 @@ export default function FinancialPlanningPage() {
     }
   }, []);
 
-  // Load initial section + preload insurance/funds for reminder checks
+  // Load initial section + preload all sections needed for home insights
   useEffect(() => {
     if (!authed) return;
     loadSection('home');
-    loadSection('insurance'); // needed for renewal reminders
+    loadSection('insurance');
+    loadSection('goals');
+    loadSection('balance');
+    loadSection('retirement');
+    loadSection('monthly');
   }, [authed, loadSection]);
 
   // Load section data when tab switches
@@ -455,13 +459,53 @@ export default function FinancialPlanningPage() {
   // Insurance renewal reminders — policies expiring within 60 days
   const expiringPolicies = useMemo(() => {
     const now = new Date();
-    const soon = new Date(now.getTime() + 60 * 24 * 60 * 60 * 1000);
-    return (insurance?.policies ?? []).filter((p) => {
-      if (!p.expiryDate) return false;
-      const d = new Date(p.expiryDate);
-      return d >= now && d <= soon;
-    });
+    const soon = new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000);
+    return (insurance?.policies ?? [])
+      .filter((p) => { if (!p.expiryDate) return false; const d = new Date(p.expiryDate); return d >= now && d <= soon; })
+      .map((p) => ({ ...p, daysLeft: Math.ceil((new Date(p.expiryDate) - now) / (1000 * 60 * 60 * 24)) }))
+      .sort((a, b) => a.daysLeft - b.daysLeft);
   }, [insurance]);
+
+  // Goals approaching deadline or behind schedule
+  const goalAlerts = useMemo(() => {
+    const now = new Date();
+    const soon = new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000);
+    return (goals?.items ?? []).filter((g) => {
+      if (!g.targetDate) return false;
+      const d = new Date(g.targetDate);
+      if (d < now) return false; // already past
+      const pct = g.target > 0 ? (Number(g.saved) || 0) / Number(g.target) : 1;
+      return d <= soon || pct < 0.5; // deadline within 90d OR less than 50% saved
+    }).map((g) => ({
+      ...g,
+      daysLeft: Math.ceil((new Date(g.targetDate) - now) / (1000 * 60 * 60 * 24)),
+      pct: g.target > 0 ? Math.round(((Number(g.saved) || 0) / Number(g.target)) * 100) : 0,
+    })).sort((a, b) => a.daysLeft - b.daysLeft);
+  }, [goals]);
+
+  // Net worth from balance sheet
+  const netWorth = useMemo(() => {
+    const sum = (cats) => (cats ?? []).flatMap((c) => c.items ?? []).reduce((s, it) => s + (Number(it.value) || 0), 0);
+    const assets = sum(balance?.assets);
+    const liabilities = sum(balance?.liabilities);
+    return { assets, liabilities, net: assets - liabilities };
+  }, [balance]);
+
+  // Budget warnings — categories where spending exceeds budget this month
+  const budgetWarnings = useMemo(() => {
+    return (activeMonthData?.categories ?? []).flatMap((cat) => {
+      const subs = cat.subs || [];
+      return subs
+        .filter((s) => Number(s.budget) > 0 && Number(s.runSpent) > Number(s.budget))
+        .map((s) => ({
+          cat: cat.label,
+          label: s.label,
+          budget: Number(s.budget),
+          spent: Number(s.runSpent),
+          over: Number(s.runSpent) - Number(s.budget),
+        }));
+    });
+  }, [activeMonthData]);
 
   // Retirement readiness score
   const retirementReadiness = useMemo(() => {
@@ -1601,44 +1645,154 @@ export default function FinancialPlanningPage() {
             <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500" />
           </div>
         )}
-        {!dataLoading && activeSection === 'home' && (
+        {!dataLoading && activeSection === 'home' && (() => {
+          const totalAlerts = expiringPolicies.length + goalAlerts.length + budgetWarnings.length + (retirementReadiness.score < 50 && retirementReadiness.score > 0 ? 1 : 0);
+          return (
           <div className="space-y-6">
-            <section className="bg-slate-900/50 border border-white/10 rounded-2xl p-6">
-              <h2 className="text-2xl font-bold mb-2">Financial Planning Home</h2>
-              <p className="text-gray-400">
-                Welcome to your planning dashboard. Use the sections above to manage monthly cash flow,
-                kids planning, and retirement tracking.
-              </p>
-            </section>
+            {/* Summary strip */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {[
+                { label: 'Net Worth', value: formatINR(Math.round(netWorth.net)), color: netWorth.net >= 0 ? 'text-emerald-300' : 'text-red-300', sub: `Assets ${formatINR(Math.round(netWorth.assets))} · Liabilities ${formatINR(Math.round(netWorth.liabilities))}`, onClick: () => setSection('balance') },
+                { label: 'Monthly Surplus', value: formatINR(Math.round(computed.surplus)), color: computed.surplus >= 0 ? 'text-blue-300' : 'text-red-300', sub: `Income ${formatINR(plan.monthlyIncome)} · Expenses ${formatINR(Math.round(computed.totalExpenses))}`, onClick: () => setSection('monthly') },
+                { label: 'Retirement Ready', value: `${retirementReadiness.score}%`, color: retirementReadiness.score >= 80 ? 'text-green-300' : retirementReadiness.score >= 50 ? 'text-amber-300' : 'text-red-300', sub: `${retirementReadiness.yearsToRetire}y to retire · Projected ${formatINR(Math.round(retirementReadiness.projectedCorpus / 1e7))}Cr`, onClick: () => setSection('retirement') },
+                { label: 'Active Alerts', value: totalAlerts, color: totalAlerts > 0 ? 'text-amber-300' : 'text-green-300', sub: totalAlerts === 0 ? 'All clear' : `${expiringPolicies.length} insurance · ${goalAlerts.length} goals · ${budgetWarnings.length} budget`, onClick: null },
+              ].map(({ label, value, color, sub, onClick }) => (
+                <button key={label} type="button" onClick={onClick ?? undefined}
+                  className={`text-left p-4 rounded-2xl bg-slate-900/50 border border-white/10 transition-colors ${onClick ? 'hover:bg-white/5 cursor-pointer' : 'cursor-default'}`}>
+                  <div className="text-xs text-gray-500 mb-1">{label}</div>
+                  <div className={`text-xl font-bold ${color}`}>{value}</div>
+                  <div className="text-xs text-gray-500 mt-1 truncate">{sub}</div>
+                </button>
+              ))}
+            </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <button
-                type="button"
-                onClick={() => setSection('monthly')}
-                className="text-left p-5 rounded-2xl bg-slate-900/50 border border-white/10 hover:bg-white/5 transition-colors"
-              >
-                <div className="text-blue-300 font-semibold mb-1">Monthly View</div>
-                <p className="text-sm text-gray-400">Track income, expenses, and monthly surplus.</p>
-              </button>
-              <button
-                type="button"
-                onClick={() => setSection('kids')}
-                className="text-left p-5 rounded-2xl bg-slate-900/50 border border-white/10 hover:bg-white/5 transition-colors"
-              >
-                <div className="text-amber-300 font-semibold mb-1">Kids</div>
-                <p className="text-sm text-gray-400">Plan budgets and investments for Mannat and Meher.</p>
-              </button>
-              <button
-                type="button"
-                onClick={() => setSection('retirement')}
-                className="text-left p-5 rounded-2xl bg-slate-900/50 border border-white/10 hover:bg-white/5 transition-colors"
-              >
-                <div className="text-emerald-300 font-semibold mb-1">Retirement</div>
-                <p className="text-sm text-gray-400">Estimate corpus goals and projected shortfall.</p>
-              </button>
+            {/* Insights grid */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+
+              {/* Insurance renewals */}
+              <section className="bg-slate-900/50 border border-white/10 rounded-2xl p-5">
+                <h3 className="text-sm font-semibold text-gray-300 flex items-center gap-2 mb-3">
+                  <Shield size={15} className="text-blue-400" /> Upcoming Insurance Renewals
+                  {expiringPolicies.length > 0 && <span className="ml-auto text-xs px-2 py-0.5 rounded-full bg-red-500/15 border border-red-400/20 text-red-300">{expiringPolicies.length}</span>}
+                </h3>
+                {expiringPolicies.length === 0 ? (
+                  <p className="text-xs text-gray-500 py-3">No renewals due in the next 90 days.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {expiringPolicies.map((p) => (
+                      <div key={p.id} className={`flex items-center justify-between p-3 rounded-xl border text-sm ${p.daysLeft <= 30 ? 'bg-red-500/10 border-red-400/20' : p.daysLeft <= 60 ? 'bg-amber-500/10 border-amber-400/20' : 'bg-slate-800/50 border-white/8'}`}>
+                        <div>
+                          <span className="font-medium text-gray-200">{p.type || 'Policy'}</span>
+                          {p.insurer && <span className="text-gray-400 text-xs ml-2">· {p.insurer}</span>}
+                          {p.premium && <div className="text-xs text-gray-500 mt-0.5">Premium: {formatINR(p.premium)}</div>}
+                        </div>
+                        <div className="text-right shrink-0 ml-3">
+                          <div className={`text-xs font-semibold ${p.daysLeft <= 30 ? 'text-red-300' : p.daysLeft <= 60 ? 'text-amber-300' : 'text-gray-400'}`}>{p.daysLeft}d left</div>
+                          <div className="text-xs text-gray-500">{new Date(p.expiryDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</div>
+                        </div>
+                      </div>
+                    ))}
+                    <button type="button" onClick={() => setSection('insurance')} className="w-full mt-1 text-xs text-blue-400 hover:text-blue-300 text-center py-1 transition-colors">
+                      Manage Insurance →
+                    </button>
+                  </div>
+                )}
+              </section>
+
+              {/* Goal alerts */}
+              <section className="bg-slate-900/50 border border-white/10 rounded-2xl p-5">
+                <h3 className="text-sm font-semibold text-gray-300 flex items-center gap-2 mb-3">
+                  <Target size={15} className="text-violet-400" /> Goal Alerts
+                  {goalAlerts.length > 0 && <span className="ml-auto text-xs px-2 py-0.5 rounded-full bg-amber-500/15 border border-amber-400/20 text-amber-300">{goalAlerts.length}</span>}
+                </h3>
+                {goalAlerts.length === 0 ? (
+                  <p className="text-xs text-gray-500 py-3">No goals need attention right now.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {goalAlerts.slice(0, 5).map((g) => (
+                      <div key={g.id} className={`p-3 rounded-xl border text-sm ${g.daysLeft <= 30 ? 'bg-red-500/10 border-red-400/20' : g.pct < 50 ? 'bg-amber-500/10 border-amber-400/20' : 'bg-slate-800/50 border-white/8'}`}>
+                        <div className="flex items-center justify-between mb-1.5">
+                          <span className="font-medium text-gray-200">{g.label || 'Goal'}</span>
+                          <span className={`text-xs font-semibold ${g.daysLeft <= 30 ? 'text-red-300' : 'text-amber-300'}`}>{g.daysLeft}d left</span>
+                        </div>
+                        <div className="w-full bg-slate-700/50 rounded-full h-1.5 mb-1">
+                          <div className={`h-1.5 rounded-full ${g.pct >= 80 ? 'bg-green-400' : g.pct >= 50 ? 'bg-amber-400' : 'bg-red-400'}`} style={{ width: `${g.pct}%` }} />
+                        </div>
+                        <div className="flex justify-between text-xs text-gray-500">
+                          <span>{formatINR(Number(g.saved) || 0)} saved</span>
+                          <span>{g.pct}% of {formatINR(Number(g.target) || 0)}</span>
+                        </div>
+                      </div>
+                    ))}
+                    <button type="button" onClick={() => setSection('goals')} className="w-full mt-1 text-xs text-violet-400 hover:text-violet-300 text-center py-1 transition-colors">
+                      Manage Goals →
+                    </button>
+                  </div>
+                )}
+              </section>
+
+              {/* Budget warnings */}
+              <section className="bg-slate-900/50 border border-white/10 rounded-2xl p-5">
+                <h3 className="text-sm font-semibold text-gray-300 flex items-center gap-2 mb-3">
+                  <AlertTriangle size={15} className="text-amber-400" /> Budget Overruns · {new Date().toLocaleString('en-IN', { month: 'long', year: 'numeric' })}
+                  {budgetWarnings.length > 0 && <span className="ml-auto text-xs px-2 py-0.5 rounded-full bg-red-500/15 border border-red-400/20 text-red-300">{budgetWarnings.length}</span>}
+                </h3>
+                {budgetWarnings.length === 0 ? (
+                  <p className="text-xs text-gray-500 py-3">All categories within budget this month. 🎉</p>
+                ) : (
+                  <div className="space-y-2">
+                    {budgetWarnings.map((w, i) => (
+                      <div key={i} className="flex items-center justify-between p-3 rounded-xl bg-red-500/10 border border-red-400/20 text-sm">
+                        <div>
+                          <span className="font-medium text-gray-200">{w.label}</span>
+                          <span className="text-xs text-gray-500 ml-2">· {w.cat}</span>
+                          <div className="text-xs text-gray-500 mt-0.5">Budget {formatINR(w.budget)} · Spent {formatINR(w.spent)}</div>
+                        </div>
+                        <div className="text-red-300 text-xs font-semibold shrink-0 ml-3">+{formatINR(w.over)}</div>
+                      </div>
+                    ))}
+                    <button type="button" onClick={() => setSection('monthly')} className="w-full mt-1 text-xs text-purple-400 hover:text-purple-300 text-center py-1 transition-colors">
+                      View Monthly →
+                    </button>
+                  </div>
+                )}
+              </section>
+
+              {/* Retirement health */}
+              <section className="bg-slate-900/50 border border-white/10 rounded-2xl p-5">
+                <h3 className="text-sm font-semibold text-gray-300 flex items-center gap-2 mb-3">
+                  <TrendingUp size={15} className="text-emerald-400" /> Retirement Health
+                </h3>
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-gray-400">Readiness Score</span>
+                    <span className={`text-sm font-bold ${retirementReadiness.score >= 80 ? 'text-green-300' : retirementReadiness.score >= 50 ? 'text-amber-300' : 'text-red-300'}`}>{retirementReadiness.score}%</span>
+                  </div>
+                  <div className="w-full bg-slate-700/50 rounded-full h-2">
+                    <div className={`h-2 rounded-full transition-all duration-700 ${retirementReadiness.score >= 80 ? 'bg-green-400' : retirementReadiness.score >= 50 ? 'bg-amber-400' : 'bg-red-400'}`} style={{ width: `${retirementReadiness.score}%` }} />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    {[
+                      { l: 'Years to retire', v: retirementReadiness.yearsToRetire },
+                      { l: 'Corpus needed', v: formatINR(Math.round(retirementReadiness.corpusNeeded)) },
+                      { l: 'Projected corpus', v: formatINR(Math.round(retirementReadiness.projectedCorpus)) },
+                      { l: 'Status', v: retirementReadiness.score >= 100 ? '🎉 On track' : retirementReadiness.score >= 80 ? '✅ Good' : retirementReadiness.score >= 50 ? '⚠️ Needs work' : '🔴 Critical' },
+                    ].map(({ l, v }) => (
+                      <div key={l} className="p-2 rounded-lg bg-slate-800/50 border border-white/5">
+                        <div className="text-gray-500">{l}</div>
+                        <div className="font-semibold text-gray-200 mt-0.5">{v}</div>
+                      </div>
+                    ))}
+                  </div>
+                  <button type="button" onClick={() => setSection('retirement')} className="w-full text-xs text-emerald-400 hover:text-emerald-300 text-center py-1 transition-colors">
+                    View Retirement →
+                  </button>
+                </div>
+              </section>
             </div>
           </div>
-        )}
+          );
+        })()}
 
         {!dataLoading && activeSection === 'monthly' && (
           <div className="space-y-6">
