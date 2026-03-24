@@ -60,7 +60,7 @@ export async function POST(req) {
   let url;
   try {
     ({ url } = await put(blobPath, encryptedBlob, {
-      access: 'public',   // URL is unguessable; content is encrypted
+      access: 'private',
       contentType: 'application/octet-stream',
     }));
   } catch (err) {

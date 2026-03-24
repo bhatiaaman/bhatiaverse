@@ -208,25 +208,30 @@ export default function VaultSection({ docVaultKey, setDocVaultKey }) {
   const handleDownload = async (file) => {
     setDownloadingId(file.id);
     try {
-      // Get signed URL + crypto params
-      const res  = await fetch(`/api/vault/download?id=${encodeURIComponent(file.id)}`, { credentials: 'include' });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || 'Download failed.');
+      // API proxies the private blob and returns IV/salt/name/mime in headers
+      const res = await fetch(`/api/vault/download?id=${encodeURIComponent(file.id)}`, { credentials: 'include' });
+      if (!res.ok) {
+        let msg = 'Download failed.';
+        try { msg = (await res.json()).error || msg; } catch {}
+        throw new Error(msg);
+      }
 
-      // Fetch encrypted blob from Vercel Blob CDN
-      const blobRes = await fetch(json.url);
-      if (!blobRes.ok) throw new Error('Could not fetch encrypted file.');
-      const encryptedBuffer = await blobRes.arrayBuffer();
+      const iv   = res.headers.get('X-Vault-IV');
+      const salt = res.headers.get('X-Vault-Salt');
+      const name = decodeURIComponent(res.headers.get('X-Vault-Name') || file.name);
+      const mime = res.headers.get('X-Vault-Mime') || 'application/octet-stream';
+
+      const encryptedBuffer = await res.arrayBuffer();
 
       // Decrypt in browser
-      const plainBuffer = await decryptFile(encryptedBuffer, json.iv, json.salt, docVaultKey);
+      const plainBuffer = await decryptFile(encryptedBuffer, iv, salt, docVaultKey);
 
       // Trigger download
-      const blob    = new Blob([plainBuffer], { type: json.mime || 'application/octet-stream' });
-      const url     = URL.createObjectURL(blob);
-      const anchor  = document.createElement('a');
-      anchor.href   = url;
-      anchor.download = json.name || 'decrypted-file';
+      const blob   = new Blob([plainBuffer], { type: mime });
+      const url    = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href  = url;
+      anchor.download = name;
       anchor.click();
       URL.revokeObjectURL(url);
     } catch (err) {
