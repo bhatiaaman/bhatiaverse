@@ -100,8 +100,16 @@ export default function VaultSection({ docVaultKey, setDocVaultKey }) {
   const [uploadErr, setUploadErr] = useState('');
   const [uploadOk, setUploadOk]   = useState('');
 
-  const [deletingId, setDeletingId]   = useState(null);
+  const [deletingId, setDeletingId]       = useState(null);
   const [downloadingId, setDownloadingId] = useState(null);
+
+  // Change passphrase / re-encrypt state
+  const [reEncryptOpen, setReEncryptOpen]       = useState(false);
+  const [newPass, setNewPass]                   = useState('');
+  const [confirmPass, setConfirmPass]           = useState('');
+  const [reEncryptErr, setReEncryptErr]         = useState('');
+  const [reEncryptProgress, setReEncryptProgress] = useState(null); // null | { done, total, step }
+  const [reEncryptDone, setReEncryptDone]       = useState(false);
 
   const fileInputRef = useRef(null);
 
@@ -241,6 +249,78 @@ export default function VaultSection({ docVaultKey, setDocVaultKey }) {
     }
   };
 
+  const handleReEncrypt = async () => {
+    setReEncryptErr('');
+    if (newPass.length < 8) { setReEncryptErr('New passphrase must be at least 8 characters.'); return; }
+    if (newPass !== confirmPass) { setReEncryptErr('Passphrases do not match.'); return; }
+    if (newPass === docVaultKey) { setReEncryptErr('New passphrase is the same as current.'); return; }
+    if (files.length === 0) { setReEncryptErr('No files to re-encrypt.'); return; }
+
+    setReEncryptDone(false);
+    const total = files.length;
+    const completed = [];
+
+    for (let i = 0; i < total; i++) {
+      const file = files[i];
+      setReEncryptProgress({ done: i, total, step: `Downloading "${file.name}"…` });
+      try {
+        // 1. Download encrypted bytes from server
+        const dlRes = await fetch(`/api/vault/download?id=${encodeURIComponent(file.id)}`, { credentials: 'include' });
+        if (!dlRes.ok) throw new Error(`Download failed for "${file.name}"`);
+        const iv   = dlRes.headers.get('X-Vault-IV');
+        const salt = dlRes.headers.get('X-Vault-Salt');
+        const name = decodeURIComponent(dlRes.headers.get('X-Vault-Name') || file.name);
+        const mime = dlRes.headers.get('X-Vault-Mime') || file.mime || 'application/octet-stream';
+        const encBuf = await dlRes.arrayBuffer();
+
+        // 2. Decrypt with current passphrase
+        setReEncryptProgress({ done: i, total, step: `Decrypting "${name}"…` });
+        const plainBuf = await decryptFile(encBuf, iv, salt, docVaultKey);
+
+        // 3. Re-encrypt with new passphrase
+        setReEncryptProgress({ done: i, total, step: `Re-encrypting "${name}"…` });
+        const plainFile = new File([plainBuf], name, { type: mime });
+        const { encryptedBlob, iv: newIv, salt: newSalt } = await encryptFile(plainFile, newPass);
+
+        // 4. Upload new version
+        setReEncryptProgress({ done: i, total, step: `Uploading "${name}"…` });
+        const form = new FormData();
+        form.append('encryptedBlob', encryptedBlob, `${name}.enc`);
+        form.append('iv',   newIv);
+        form.append('salt', newSalt);
+        form.append('name', name);
+        form.append('mime', mime);
+        const upRes  = await fetch('/api/vault/upload', { method: 'POST', credentials: 'include', body: form });
+        let upJson;
+        try { upJson = await upRes.json(); } catch { throw new Error(`Upload failed for "${name}"`); }
+        if (!upRes.ok) throw new Error(upJson.error || `Upload failed for "${name}"`);
+
+        // 5. Delete old version
+        setReEncryptProgress({ done: i, total, step: `Removing old "${name}"…` });
+        await fetch('/api/vault/delete', {
+          method: 'DELETE', credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: file.id }),
+        });
+
+        completed.push(upJson.file);
+      } catch (err) {
+        setReEncryptErr(`Stopped at "${file.name}": ${err.message}. Files processed so far are on the new passphrase; remaining files still use the old one.`);
+        setReEncryptProgress(null);
+        await loadFiles();
+        return;
+      }
+    }
+
+    // All done — switch to new passphrase
+    setDocVaultKey(newPass);
+    setNewPass('');
+    setConfirmPass('');
+    setReEncryptProgress(null);
+    setReEncryptDone(true);
+    await loadFiles();
+  };
+
   // ── Locked UI ────────────────────────────────────────────────────────────────
   if (locked) {
     return (
@@ -310,11 +390,74 @@ export default function VaultSection({ docVaultKey, setDocVaultKey }) {
             </p>
           </div>
         </div>
-        <button onClick={handleLock}
-          className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-white border border-white/10 hover:border-white/30 px-3 py-1.5 rounded-lg transition-colors">
-          <Lock className="w-3.5 h-3.5" /> Lock
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={() => { setReEncryptOpen(true); setReEncryptErr(''); setReEncryptDone(false); setNewPass(''); setConfirmPass(''); }}
+            className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-amber-300 border border-white/10 hover:border-amber-400/40 px-3 py-1.5 rounded-lg transition-colors">
+            <ShieldCheck className="w-3.5 h-3.5" /> Change Passphrase
+          </button>
+          <button onClick={handleLock}
+            className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-white border border-white/10 hover:border-white/30 px-3 py-1.5 rounded-lg transition-colors">
+            <Lock className="w-3.5 h-3.5" /> Lock
+          </button>
+        </div>
       </div>
+
+      {/* ── Change Passphrase modal ── */}
+      {reEncryptOpen && (
+        <div className="bg-slate-800/60 border border-amber-400/20 rounded-xl p-5 space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-semibold text-amber-200">Change Vault Passphrase</p>
+              <p className="text-xs text-gray-400 mt-0.5">All {files.length} file{files.length !== 1 ? 's' : ''} will be re-encrypted in your browser. Nothing leaves your device unencrypted.</p>
+            </div>
+            {!reEncryptProgress && (
+              <button onClick={() => setReEncryptOpen(false)} className="text-gray-500 hover:text-white transition-colors">
+                <X className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+
+          {reEncryptDone ? (
+            <p className="text-sm text-emerald-400 flex items-center gap-2">
+              <ShieldCheck className="w-4 h-4" /> All files re-encrypted. Vault is now using your new passphrase.
+            </p>
+          ) : reEncryptProgress ? (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-xs text-gray-400">
+                <span>{reEncryptProgress.step}</span>
+                <span>{reEncryptProgress.done}/{reEncryptProgress.total}</span>
+              </div>
+              <div className="w-full bg-slate-700 rounded-full h-1.5">
+                <div className="bg-amber-400 h-1.5 rounded-full transition-all"
+                  style={{ width: `${(reEncryptProgress.done / reEncryptProgress.total) * 100}%` }} />
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div className="relative">
+                <input type="password" value={newPass} onChange={(e) => setNewPass(e.target.value)}
+                  placeholder="New passphrase (min. 8 chars)"
+                  className="w-full bg-slate-700 border border-white/10 rounded-lg px-4 py-2.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-amber-500" />
+              </div>
+              <div className="relative">
+                <input type="password" value={confirmPass} onChange={(e) => setConfirmPass(e.target.value)}
+                  placeholder="Confirm new passphrase"
+                  className="w-full bg-slate-700 border border-white/10 rounded-lg px-4 py-2.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-amber-500" />
+              </div>
+              {reEncryptErr && (
+                <p className="text-xs text-red-400 flex items-start gap-1.5">
+                  <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />{reEncryptErr}
+                </p>
+              )}
+              <button onClick={handleReEncrypt} disabled={!newPass || !confirmPass}
+                className="w-full bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-white text-sm font-medium py-2.5 rounded-lg transition-colors flex items-center justify-center gap-2">
+                <RefreshCw className="w-4 h-4" /> Re-encrypt {files.length} file{files.length !== 1 ? 's' : ''} with new passphrase
+              </button>
+              <p className="text-xs text-gray-500 text-center">Old passphrase: current session key · Cannot be undone</p>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Upload area */}
       <div className="bg-slate-800/40 border border-dashed border-white/20 rounded-xl p-6 text-center hover:border-indigo-500/50 transition-colors">
