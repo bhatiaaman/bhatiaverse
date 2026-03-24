@@ -277,7 +277,7 @@ export default function SpiritualityPage() {
         <nav style={{ position:'fixed', top:0, left:0, right:0, zIndex:100, padding:'1.2rem 3rem', display:'flex', alignItems:'center', justifyContent:'space-between', backdropFilter:'blur(20px)', background: T.navBg, borderBottom:`1px solid ${T.navBorder}`, transition:'background 0.4s ease' }}>
           <Link href="/" style={{ fontFamily:"'Syne',sans-serif", fontWeight:800, fontSize:'1.1rem', letterSpacing:'0.2em', textTransform:'uppercase', color:'#c8a96e', textDecoration:'none' }}>Bhatiaverse</Link>
           <ul style={{ display:'flex', gap:'2rem', listStyle:'none', margin:0, padding:0, flexWrap:'wrap', alignItems:'center' }}>
-            {[['Articles','/articles'],['Spirituality','/spirituality'],['Trades','/trades'],['AI Games','/aigames'],['Contact','/#contact']].map(([label, href]) => (
+            {[['Articles','/articles'],['Spirituality','/spirituality'],['Financial Planning','/financial-planning'],['AI Games','/aigames'],['Contact','/#contact']].map(([label, href]) => (
               <li key={label}><Link href={href} style={{ fontFamily:"'DM Mono',monospace", fontSize:'0.72rem', letterSpacing:'0.15em', textTransform:'uppercase', color: label==='Spirituality'?'#7b5ea7': T.navLink, textDecoration:'none' }}>{label}</Link></li>
             ))}
             <li>

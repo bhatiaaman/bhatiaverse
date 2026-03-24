@@ -187,7 +187,7 @@ export default function ArticlesPage() {
           <ul style={{ display:'flex', gap:'2rem', listStyle:'none', margin:0, padding:0, flexWrap:'wrap', alignItems:'center' }}>
             <li><Link href="/articles" style={{ fontFamily:"'DM Mono',monospace", fontSize:'0.72rem', letterSpacing:'0.15em', textTransform:'uppercase', color:'#4a9eff', textDecoration:'none' }}>Articles</Link></li>
             <li><Link href="/spirituality" className="nav-link" style={{ fontFamily:"'DM Mono',monospace", fontSize:'0.72rem', letterSpacing:'0.15em', textTransform:'uppercase', color: T.navLink, textDecoration:'none' }}>Spirituality</Link></li>
-            <li><Link href="/trades" className="nav-link" style={{ fontFamily:"'DM Mono',monospace", fontSize:'0.72rem', letterSpacing:'0.15em', textTransform:'uppercase', color: T.navLink, textDecoration:'none' }}>Trades</Link></li>
+            <li><Link href="/financial-planning" className="nav-link" style={{ fontFamily:"'DM Mono',monospace", fontSize:'0.72rem', letterSpacing:'0.15em', textTransform:'uppercase', color: T.navLink, textDecoration:'none' }}>Financial Planning</Link></li>
             <li><Link href="/aigames" className="nav-link" style={{ fontFamily:"'DM Mono',monospace", fontSize:'0.72rem', letterSpacing:'0.15em', textTransform:'uppercase', color: T.navLink, textDecoration:'none' }}>AI Games</Link></li>
             <li><Link href="/#contact" className="nav-link" style={{ fontFamily:"'DM Mono',monospace", fontSize:'0.72rem', letterSpacing:'0.15em', textTransform:'uppercase', color: T.navLink, textDecoration:'none' }}>Contact</Link></li>
             <li>

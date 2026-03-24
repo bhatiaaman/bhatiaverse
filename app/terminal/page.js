@@ -296,8 +296,8 @@ function TopBar({ indices, kiteConnected }) {
       </div>
 
       <div className="flex items-center gap-3">
-        <Link href="/trades" className="text-xs text-gray-400 dark:text-white/30 hover:text-gray-700 dark:hover:text-white/70 transition-colors hidden sm:inline">
-          ← Trades
+        <Link href="/financial-planning" className="text-xs text-gray-400 dark:text-white/30 hover:text-gray-700 dark:hover:text-white/70 transition-colors hidden sm:inline">
+          ← Financial Planning
         </Link>
         <button
           onClick={toggleTheme}
