@@ -49,14 +49,24 @@ export async function POST(req) {
     return NextResponse.json({ error: `File exceeds ${MAX_MB} MB limit.` }, { status: 413 });
   }
 
+  if (!process.env.BLOB_READ_WRITE_TOKEN) {
+    return NextResponse.json({ error: 'Vault storage is not configured. Add BLOB_READ_WRITE_TOKEN in Vercel environment variables.' }, { status: 503 });
+  }
+
   // Sanitize name — strip path separators and limit length
   const safeName = name.replace(/[/\\]/g, '_').slice(0, 200);
   const blobPath = `vault/${userId}/${Date.now()}-${safeName}.enc`;
 
-  const { url } = await put(blobPath, encryptedBlob, {
-    access: 'public',   // URL is unguessable; content is encrypted
-    contentType: 'application/octet-stream',
-  });
+  let url;
+  try {
+    ({ url } = await put(blobPath, encryptedBlob, {
+      access: 'public',   // URL is unguessable; content is encrypted
+      contentType: 'application/octet-stream',
+    }));
+  } catch (err) {
+    console.error('[vault/upload] Blob put failed:', err?.message);
+    return NextResponse.json({ error: 'File storage failed. Check that BLOB_READ_WRITE_TOKEN is set in Vercel.' }, { status: 502 });
+  }
 
   const fileId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const meta = {

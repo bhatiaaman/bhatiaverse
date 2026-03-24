@@ -173,7 +173,8 @@ export default function VaultSection({ docVaultKey, setDocVaultKey }) {
       form.append('mime', file.type || 'application/octet-stream');
 
       const res  = await fetch('/api/vault/upload', { method: 'POST', credentials: 'include', body: form });
-      const json = await res.json();
+      let json;
+      try { json = await res.json(); } catch { throw new Error('Server error — check that BLOB_READ_WRITE_TOKEN is set in Vercel environment variables.'); }
       if (!res.ok) throw new Error(json.error || 'Upload failed.');
 
       setUploadOk(`"${file.name}" encrypted and stored.`);
