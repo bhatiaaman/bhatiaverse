@@ -59,7 +59,8 @@ export async function POST(req) {
       const token = makeToken();
       await redis.set(sessionKey(token), userId, { ex: SESSION_TTL_SECONDS });
       const res = NextResponse.json({ success: true });
-      res.headers.set('Set-Cookie', `${COOKIE_NAME}=${encodeURIComponent(token)}; HttpOnly; Path=/; Max-Age=${SESSION_TTL_SECONDS}; SameSite=${sameSite}${secure}`);
+      // No Max-Age → session cookie (browser clears it when closed)
+      res.headers.set('Set-Cookie', `${COOKIE_NAME}=${encodeURIComponent(token)}; HttpOnly; Path=/; SameSite=${sameSite}${secure}`);
       return res;
     }
 
@@ -105,7 +106,8 @@ export async function POST(req) {
     const token = makeToken();
     await redis.set(sessionKey(token), userId, { ex: SESSION_TTL_SECONDS });
     const res = NextResponse.json({ success: true });
-    res.headers.set('Set-Cookie', `${COOKIE_NAME}=${encodeURIComponent(token)}; HttpOnly; Path=/; Max-Age=${SESSION_TTL_SECONDS}; SameSite=${sameSite}${secure}`);
+    // No Max-Age → session cookie (browser clears it when closed)
+    res.headers.set('Set-Cookie', `${COOKIE_NAME}=${encodeURIComponent(token)}; HttpOnly; Path=/; SameSite=${sameSite}${secure}`);
     return res;
   } catch {
     return NextResponse.json({ success: false, error: 'Login failed.' }, { status: 500 });

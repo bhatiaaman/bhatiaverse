@@ -84,14 +84,15 @@ function formatDate(iso) {
 
 // ─── VaultSection ─────────────────────────────────────────────────────────────
 
-export default function VaultSection() {
-  const [locked, setLocked]         = useState(true);
+// docVaultKey — passphrase string held in page.js memory (survives section switches).
+// setDocVaultKey — clears it on browser tab hide or logout (handled in page.js).
+export default function VaultSection({ docVaultKey, setDocVaultKey }) {
+  // Derive locked state from whether the parent has a key
+  const locked = !docVaultKey;
+
   const [passphrase, setPassphrase] = useState('');
   const [showPass, setShowPass]     = useState(false);
   const [unlockErr, setUnlockErr]   = useState('');
-
-  // Session passphrase kept only in memory, never in localStorage/cookies
-  const [sessionKey, setSessionKey] = useState(null); // stores passphrase string while unlocked
 
   const [files, setFiles]         = useState([]);
   const [loading, setLoading]     = useState(false);
@@ -104,23 +105,11 @@ export default function VaultSection() {
 
   const fileInputRef = useRef(null);
 
-  // Auto-lock when component unmounts or page is hidden
+  // Load files when unlocked (either first unlock or returning to Vault tab while still unlocked)
   useEffect(() => {
-    const handleVisibility = () => {
-      if (document.visibilityState === 'hidden') {
-        setSessionKey(null);
-        setLocked(true);
-        setPassphrase('');
-      }
-    };
-    document.addEventListener('visibilitychange', handleVisibility);
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibility);
-      // Lock on unmount (tab switch)
-      setSessionKey(null);
-      setLocked(true);
-    };
-  }, []);
+    if (!locked) loadFiles();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [locked]);
 
   const loadFiles = useCallback(async () => {
     setLoading(true);
@@ -149,15 +138,12 @@ export default function VaultSection() {
       setUnlockErr('Your browser does not support the required cryptography. Please use a modern browser.');
       return;
     }
-    setSessionKey(passphrase);
-    setLocked(false);
+    setDocVaultKey(passphrase);
     setPassphrase('');
-    loadFiles();
   };
 
   const handleLock = () => {
-    setSessionKey(null);
-    setLocked(true);
+    setDocVaultKey(null);
     setPassphrase('');
     setFiles([]);
   };
@@ -177,7 +163,7 @@ export default function VaultSection() {
 
     setUploading(true);
     try {
-      const { encryptedBlob, iv, salt } = await encryptFile(file, sessionKey);
+      const { encryptedBlob, iv, salt } = await encryptFile(file, docVaultKey);
 
       const form = new FormData();
       form.append('encryptedBlob', encryptedBlob, `${file.name}.enc`);
@@ -232,7 +218,7 @@ export default function VaultSection() {
       const encryptedBuffer = await blobRes.arrayBuffer();
 
       // Decrypt in browser
-      const plainBuffer = await decryptFile(encryptedBuffer, json.iv, json.salt, sessionKey);
+      const plainBuffer = await decryptFile(encryptedBuffer, json.iv, json.salt, docVaultKey);
 
       // Trigger download
       const blob    = new Blob([plainBuffer], { type: json.mime || 'application/octet-stream' });

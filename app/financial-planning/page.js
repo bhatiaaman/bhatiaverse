@@ -29,6 +29,7 @@ import {
   Download,
   BarChart2,
   CreditCard,
+  Vault,
 } from 'lucide-react';
 import {
   AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
@@ -40,6 +41,7 @@ import SIPSection      from './_components/SIPSection';
 import CashFlowSection from './_components/CashFlowSection';
 import DataImportSection from './_components/DataImportSection';
 import AccountsSection   from './_components/AccountsSection';
+import VaultSection      from './_components/VaultSection';
 
 const SECTIONS = [
   { id: 'home',         label: 'Home',          icon: Home },
@@ -56,6 +58,7 @@ const SECTIONS = [
   { id: 'cashflow',     label: 'Cash Flow',     icon: CalendarClock },
   { id: 'transactions', label: 'Transactions',  icon: Download },
   { id: 'accounts',    label: 'Accounts',      icon: CreditCard },
+  { id: 'vault',      label: 'Vault',         icon: Vault },
 ];
 
 const RETIREMENT_SECTIONS = [
@@ -344,6 +347,16 @@ export default function FinancialPlanningPage() {
   const [accounts, setAccounts] = useState(DEFAULT_ACCOUNTS);
   const [accountsSaveState, setAccountsSaveState] = useState({ status: 'idle', message: '' });
 
+  // Document vault passphrase — held in page memory, survives section switches,
+  // cleared on tab hide (switch to another browser tab) or logout.
+  const [docVaultKey, setDocVaultKey] = useState(null);
+
+  useEffect(() => {
+    const onHide = () => { if (document.visibilityState === 'hidden') setDocVaultKey(null); };
+    document.addEventListener('visibilitychange', onHide);
+    return () => document.removeEventListener('visibilitychange', onHide);
+  }, []);
+
   useEffect(() => {
     let alive = true;
     (async () => {
@@ -351,7 +364,17 @@ export default function FinancialPlanningPage() {
         const res = await fetch('/api/auth/validate', { credentials: 'include' });
         const data = await res.json();
         if (!alive) return;
-        setAuthed(!!data?.authenticated);
+        const authenticated = !!data?.authenticated;
+        // Tab-close guard: sessionStorage is cleared when the tab closes.
+        // If the server says authenticated but this tab hasn't set the flag
+        // (i.e. user opened a fresh tab), silently log out the cookie.
+        if (authenticated && !sessionStorage.getItem('bv_tab_active')) {
+          try { await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' }); } catch {}
+          setAuthed(false);
+          setIsSuperuser(false);
+          return;
+        }
+        setAuthed(authenticated);
         setIsSuperuser(!!data?.isSuperuser);
       } catch {
         if (!alive) return;
@@ -1259,6 +1282,8 @@ export default function FinancialPlanningPage() {
     try {
       await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
     } catch { /* ignore */ }
+    try { sessionStorage.removeItem('bv_tab_active'); } catch {}
+    setDocVaultKey(null);
     // Clear sensitive data from localStorage on logout
     ['bv-financial-plan', 'bv-financial-plan-kids', 'bv-financial-plan-retirement', 'bv-financial-plan-monthly']
       .forEach((k) => { try { localStorage.removeItem(k); } catch {} });
@@ -1287,6 +1312,7 @@ export default function FinancialPlanningPage() {
         setLoginError(data?.error || 'Invalid code.');
         return;
       }
+      sessionStorage.setItem('bv_tab_active', '1');
       setAuthed(true);
       setLoginStep('credentials');
       setTotpInput('');
@@ -1438,6 +1464,7 @@ export default function FinancialPlanningPage() {
         setLoginPassword('');
         return;
       }
+      sessionStorage.setItem('bv_tab_active', '1');
       setAuthed(true);
       setLoginPassword('');
     } catch {
@@ -3592,6 +3619,10 @@ export default function FinancialPlanningPage() {
             accounts={accounts} setAccounts={setAccounts}
             onSave={saveAccounts} saveState={accountsSaveState}
           />
+        )}
+
+        {activeSection === 'vault' && (
+          <VaultSection docVaultKey={docVaultKey} setDocVaultKey={setDocVaultKey} />
         )}
       </main>
 
