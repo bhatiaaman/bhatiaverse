@@ -65,7 +65,7 @@ export async function POST(req) {
     }));
   } catch (err) {
     console.error('[vault/upload] Blob put failed:', err?.message);
-    return NextResponse.json({ error: 'File storage failed. Check that BLOB_READ_WRITE_TOKEN is set in Vercel.' }, { status: 502 });
+    return NextResponse.json({ error: `Blob storage error: ${err?.message || 'unknown'}` }, { status: 502 });
   }
 
   const fileId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
