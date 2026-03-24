@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
-import crypto from 'crypto';
 import { redis } from '@/app/lib/redis';
+import { SUPER_USER_ID } from '@/app/lib/super-credentials';
 
 const COOKIE_NAME = 'bv_finance_session';
 const NS = process.env.FINPLAN_REDIS_NAMESPACE || 'bv-finance';
@@ -39,11 +39,14 @@ export async function GET(req) {
 
   const stored = await redis.get(sessionKey(token));
   const authenticated = !!stored;
+  // Normalize both sides — login normalizes userId to lowercase+trim, env var may not be
+  const normalizedSuper = (SUPER_USER_ID || '').trim().toLowerCase();
+  const isSuperuser = authenticated && !!normalizedSuper && (String(stored).trim().toLowerCase() === normalizedSuper);
 
   return NextResponse.json({
     authenticated,
     userId: authenticated ? stored : null,
-    // Expose TTL hint for UI/debugging (optional)
+    isSuperuser,
     sessionTtlSeconds: authenticated ? SESSION_TTL_SECONDS : null,
   });
 }

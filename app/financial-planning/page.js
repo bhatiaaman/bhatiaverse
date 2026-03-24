@@ -23,17 +23,39 @@ import {
   CheckCircle,
   Bell,
   TrendingUp,
+  Receipt,
+  PiggyBank,
+  CalendarClock,
+  Download,
+  BarChart2,
+  CreditCard,
 } from 'lucide-react';
+import {
+  AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
+  XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend,
+} from 'recharts';
+import TaxSection      from './_components/TaxSection';
+import LoansSection    from './_components/LoansSection';
+import SIPSection      from './_components/SIPSection';
+import CashFlowSection from './_components/CashFlowSection';
+import DataImportSection from './_components/DataImportSection';
+import AccountsSection   from './_components/AccountsSection';
 
 const SECTIONS = [
-  { id: 'home',       label: 'Home',        icon: Home },
-  { id: 'kids',       label: 'Kids',        icon: Baby },
-  { id: 'retirement', label: 'Retirement',  icon: Landmark },
-  { id: 'monthly',    label: 'Monthly View',icon: CalendarDays },
-  { id: 'insurance',  label: 'Insurance',   icon: Shield },
-  { id: 'funds',      label: 'Funds',         icon: Wallet },
-  { id: 'goals',      label: 'Goals',         icon: Target },
-  { id: 'balance',    label: 'Balance Sheet', icon: Scale },
+  { id: 'home',         label: 'Home',          icon: Home },
+  { id: 'kids',         label: 'Kids',          icon: Baby },
+  { id: 'retirement',   label: 'Retirement',    icon: Landmark },
+  { id: 'monthly',      label: 'Monthly View',  icon: CalendarDays },
+  { id: 'insurance',    label: 'Insurance',     icon: Shield },
+  { id: 'funds',        label: 'Funds',         icon: Wallet },
+  { id: 'goals',        label: 'Goals',         icon: Target },
+  { id: 'balance',      label: 'Balance Sheet', icon: Scale },
+  { id: 'tax',          label: 'Tax',           icon: Receipt },
+  { id: 'loans',        label: 'Loans',         icon: PiggyBank },
+  { id: 'sip',          label: 'SIP Tracker',   icon: BarChart2 },
+  { id: 'cashflow',     label: 'Cash Flow',     icon: CalendarClock },
+  { id: 'transactions', label: 'Transactions',  icon: Download },
+  { id: 'accounts',    label: 'Accounts',      icon: CreditCard },
 ];
 
 const RETIREMENT_SECTIONS = [
@@ -216,6 +238,22 @@ const DEFAULT_PLAN = {
   investPercent: 50,
 };
 
+const DEFAULT_TAX = {
+  grossIncome: 0, basic: 0, hraReceived: 0, rentPaid: 0, isMetro: true,
+  ppf: 0, elss: 0, lic: 0, nsc: 0, hlPrincipal: 0, tuition: 0, fd5yr: 0, epf80c: 0, other80c: 0,
+  health80d: 0, parentsHealth80d: 0, nps80ccd: 0, hlInterest: 0,
+};
+
+const DEFAULT_LOANS = { items: [] };
+
+const DEFAULT_SIP = { items: [] };
+
+const DEFAULT_CASHFLOW = { events: [] };
+
+const DEFAULT_TRANSACTIONS = { items: [] };
+
+const DEFAULT_ACCOUNTS = { banks: [], cards: [] };
+
 function formatINR(n) {
   const v = Number(n);
   if (!Number.isFinite(v)) return '₹0';
@@ -225,6 +263,7 @@ function formatINR(n) {
 export default function FinancialPlanningPage() {
   const [authLoading, setAuthLoading] = useState(true);
   const [authed, setAuthed] = useState(false);
+  const [isSuperuser, setIsSuperuser] = useState(false);
 
   const [loginUserId, setLoginUserId] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
@@ -243,6 +282,13 @@ export default function FinancialPlanningPage() {
 
   // Security panel state
   const [securityOpen, setSecurityOpen] = useState(false);
+  // Superuser — admin modal + reset password
+  const [adminOpen, setAdminOpen] = useState(false);
+  const [resetUserId, setResetUserId] = useState('');
+  const [resetPassword, setResetPassword] = useState('');
+  const [resetConfirm, setResetConfirm] = useState('');
+  const [resetLoading, setResetLoading] = useState(false);
+  const [resetMsg, setResetMsg] = useState({ type: '', text: '' });
   const [securityStatus, setSecurityStatus] = useState({ totpEnabled: null, vaultSet: null });
   const [totpSetupData, setTotpSetupData] = useState(null); // { secret, qrDataUrl } | null
   const [totpSetupCode, setTotpSetupCode] = useState('');
@@ -285,6 +331,19 @@ export default function FinancialPlanningPage() {
   const [dataLoading, setDataLoading] = useState(false);
   const [retSectionPanel, setRetSectionPanel] = useState(null); // RETIREMENT_SECTIONS key | null
 
+  const [tax, setTax] = useState(DEFAULT_TAX);
+  const [taxSaveState, setTaxSaveState] = useState({ status: 'idle', message: '' });
+  const [loans, setLoans] = useState(DEFAULT_LOANS);
+  const [loansSaveState, setLoansSaveState] = useState({ status: 'idle', message: '' });
+  const [sip, setSip] = useState(DEFAULT_SIP);
+  const [sipSaveState, setSipSaveState] = useState({ status: 'idle', message: '' });
+  const [cashflow, setCashflow] = useState(DEFAULT_CASHFLOW);
+  const [cashflowSaveState, setCashflowSaveState] = useState({ status: 'idle', message: '' });
+  const [transactions, setTransactions] = useState(DEFAULT_TRANSACTIONS);
+  const [transactionsSaveState, setTransactionsSaveState] = useState({ status: 'idle', message: '' });
+  const [accounts, setAccounts] = useState(DEFAULT_ACCOUNTS);
+  const [accountsSaveState, setAccountsSaveState] = useState({ status: 'idle', message: '' });
+
   useEffect(() => {
     let alive = true;
     (async () => {
@@ -293,9 +352,11 @@ export default function FinancialPlanningPage() {
         const data = await res.json();
         if (!alive) return;
         setAuthed(!!data?.authenticated);
+        setIsSuperuser(!!data?.isSuperuser);
       } catch {
         if (!alive) return;
         setAuthed(false);
+        setIsSuperuser(false);
       } finally {
         if (!alive) return;
         setAuthLoading(false);
@@ -341,14 +402,20 @@ export default function FinancialPlanningPage() {
       const res = await fetch(`/api/plan/${section}`, { credentials: 'include' });
       const json = await res.json();
       if (json.data) {
-        if (section === 'home')       setPlan((p)       => ({ ...p, ...json.data }));
-        if (section === 'kids')       setKids((p)       => ({ ...p, ...json.data }));
-        if (section === 'retirement') setRetirement((p) => ({ ...p, ...json.data }));
-        if (section === 'monthly')    setMonthly((p)    => ({ ...p, ...json.data }));
-        if (section === 'insurance')  setInsurance((p)  => ({ ...p, ...json.data }));
-        if (section === 'funds')      setFunds((p)      => ({ ...p, ...json.data }));
-        if (section === 'goals')      setGoals((p)      => ({ ...p, ...json.data }));
-        if (section === 'balance')    setBalance((p)    => ({ ...p, ...json.data }));
+        if (section === 'home')         setPlan((p)         => ({ ...p, ...json.data }));
+        if (section === 'kids')         setKids((p)         => ({ ...p, ...json.data }));
+        if (section === 'retirement')   setRetirement((p)   => ({ ...p, ...json.data }));
+        if (section === 'monthly')      setMonthly((p)      => ({ ...p, ...json.data }));
+        if (section === 'insurance')    setInsurance((p)    => ({ ...p, ...json.data }));
+        if (section === 'funds')        setFunds((p)        => ({ ...p, ...json.data }));
+        if (section === 'goals')        setGoals((p)        => ({ ...p, ...json.data }));
+        if (section === 'balance')      setBalance((p)      => ({ ...p, ...json.data }));
+        if (section === 'tax')          setTax((p)          => ({ ...p, ...json.data }));
+        if (section === 'loans')        setLoans((p)        => ({ ...p, ...json.data }));
+        if (section === 'sip')          setSip((p)          => ({ ...p, ...json.data }));
+        if (section === 'cashflow')     setCashflow((p)     => ({ ...p, ...json.data }));
+        if (section === 'transactions') setTransactions((p) => ({ ...p, ...json.data }));
+        if (section === 'accounts')    setAccounts((p)     => ({ ...p, ...json.data }));
       } else if (lsKeys[section]) {
         try { const r = localStorage.getItem(lsKeys[section]); if (r) {
           const parsed = JSON.parse(r);
@@ -726,6 +793,27 @@ export default function FinancialPlanningPage() {
     }
   };
 
+  const makeSaver = (section, data, setStateFn, msg) => async () => {
+    try {
+      const res = await fetch(`/api/plan/${section}`, {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) throw new Error();
+      setStateFn({ status: 'saved', message: msg });
+      setTimeout(() => setStateFn({ status: 'idle', message: '' }), 2500);
+    } catch {
+      setStateFn({ status: 'error', message: 'Could not save.' });
+    }
+  };
+  const saveTax          = makeSaver('tax',          tax,          setTaxSaveState,          'Tax plan saved.');
+  const saveLoans        = makeSaver('loans',        loans,        setLoansSaveState,        'Loans saved.');
+  const saveSip          = makeSaver('sip',          sip,          setSipSaveState,          'SIPs saved.');
+  const saveCashflow     = makeSaver('cashflow',     cashflow,     setCashflowSaveState,     'Cash flow saved.');
+  const saveTransactions = makeSaver('transactions', transactions, setTransactionsSaveState, 'Transactions saved.');
+  const saveAccounts     = makeSaver('accounts',     accounts,     setAccountsSaveState,     'Accounts saved.');
+
   // ── Balance sheet helpers ───────────────────────────────────────────────
   const toggleBalanceCat = (side, catId) => {
     setBalance((prev) => ({ ...prev, [side]: prev[side].map((c) => c.id === catId ? { ...c, open: !c.open } : c) }));
@@ -1025,7 +1113,7 @@ export default function FinancialPlanningPage() {
   };
 
   const exportJSON = () => {
-    const data = { home: plan, kids, retirement, monthly, insurance, funds, goals, balance, exportedAt: new Date().toISOString() };
+    const data = { home: plan, kids, retirement, monthly, insurance, funds, goals, balance, tax, loans, sip, cashflow, transactions, accounts, exportedAt: new Date().toISOString() };
     triggerDownload(
       new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }),
       `financial-plan-${new Date().toISOString().slice(0, 10)}.json`
@@ -1177,6 +1265,7 @@ export default function FinancialPlanningPage() {
     loadedSectionsRef.current = new Set();
     isDirtyRef.current = false;
     setAuthed(false);
+    setIsSuperuser(false);
     setLoginPassword('');
     setLoginError('');
     setLoginStep('credentials');
@@ -1595,6 +1684,17 @@ export default function FinancialPlanningPage() {
                   🔒 {Math.floor(vaultTtl / 3600)}h {Math.floor((vaultTtl % 3600) / 60)}m
                 </span>
               )}
+              {isSuperuser && (
+                <button
+                  type="button"
+                  onClick={() => setAdminOpen(true)}
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-full text-sm bg-red-500/20 border border-red-400/40 text-red-300 hover:bg-red-500/30 transition-colors"
+                  title="Admin — Reset passwords"
+                >
+                  <ShieldCheck size={16} />
+                  Admin
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => setSecurityOpen(true)}
@@ -1975,6 +2075,65 @@ export default function FinancialPlanningPage() {
                 </div>
               </section>
             )}
+
+            {/* Spending breakdown chart */}
+            {(() => {
+              const chartData = activeMonthData.categories.map((cat) => ({
+                name: cat.label,
+                spent: (cat.subs || []).reduce((s, sub) => s + (Number(sub.runSpent) || 0), 0),
+                budget: (cat.subs || []).reduce((s, sub) => s + (Number(sub.budget) || 0), 0),
+              })).filter((d) => d.spent > 0 || d.budget > 0);
+              const pieData = chartData.filter((d) => d.spent > 0);
+              const PIE_COLORS = ['#6366f1','#22d3ee','#f59e0b','#34d399','#f87171','#a78bfa','#fb923c','#38bdf8','#4ade80'];
+              if (chartData.length === 0) return null;
+              const CustomTip = ({ active, payload, label }) => {
+                if (!active || !payload?.length) return null;
+                return (
+                  <div className="bg-slate-900 border border-white/10 rounded-xl p-3 text-xs shadow-xl">
+                    <div className="font-semibold text-gray-300 mb-1">{label}</div>
+                    {payload.map((p) => (
+                      <div key={p.name} style={{ color: p.color }} className="flex gap-2">
+                        <span>{p.name}:</span><span className="font-medium text-white">{formatINR(p.value)}</span>
+                      </div>
+                    ))}
+                  </div>
+                );
+              };
+              return (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  <section className="bg-slate-900/50 border border-white/10 rounded-2xl p-5">
+                    <h3 className="text-sm font-semibold text-gray-300 mb-4">Budget vs Spent</h3>
+                    <ResponsiveContainer width="100%" height={200}>
+                      <BarChart data={chartData} margin={{ top: 4, right: 8, bottom: 4, left: 8 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#ffffff08" />
+                        <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#6b7280' }} />
+                        <YAxis tickFormatter={(v) => v >= 1000 ? `${(v/1000).toFixed(0)}k` : v} tick={{ fontSize: 10, fill: '#6b7280' }} />
+                        <Tooltip content={<CustomTip />} />
+                        <Legend wrapperStyle={{ fontSize: 11, color: '#9ca3af' }} />
+                        <Bar dataKey="budget" name="Budget" fill="#6366f1" opacity={0.4} radius={[3,3,0,0]} />
+                        <Bar dataKey="spent" name="Spent" fill="#f87171" opacity={0.85} radius={[3,3,0,0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </section>
+                  {pieData.length > 0 && (
+                    <section className="bg-slate-900/50 border border-white/10 rounded-2xl p-5">
+                      <h3 className="text-sm font-semibold text-gray-300 mb-4">Spending Breakdown</h3>
+                      <ResponsiveContainer width="100%" height={200}>
+                        <PieChart>
+                          <Pie data={pieData} dataKey="spent" nameKey="name" cx="50%" cy="50%" outerRadius={75} innerRadius={40} paddingAngle={2}
+                            label={({ name, percent }) => `${name} ${(percent*100).toFixed(0)}%`}
+                            labelLine={false}
+                          >
+                            {pieData.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
+                          </Pie>
+                          <Tooltip formatter={(v) => formatINR(v)} contentStyle={{ background: '#0f172a', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 12, fontSize: 12 }} />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    </section>
+                  )}
+                </div>
+              );
+            })()}
           </div>
         )}
 
@@ -2529,6 +2688,7 @@ export default function FinancialPlanningPage() {
         )}
 
         {!dataLoading && activeSection === 'retirement' && (
+          <div className="space-y-6">
           <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
             {/* Left: holdings sections + calculator inputs */}
             <div className="lg:col-span-3 space-y-6">
@@ -2703,6 +2863,56 @@ export default function FinancialPlanningPage() {
                 </div>
               </section>
             </div>
+          </div>
+
+          {/* Retirement corpus projection chart */}
+          {(() => {
+            const yearsLeft  = Math.max(0, (Number(retirement.retireAge) || 60) - (Number(retirement.currentAge) || 35));
+            const r          = ((Number(retirement.expectedReturnPct) || 9) / 100) / 12;
+            const allItems   = ['epfItems','npsItems','pensionItems','fdItems','otherItems'].flatMap((k) => retirement[k] ?? []);
+            const corpus0    = allItems.reduce((s, i) => s + (Number(i.currentValue) || 0), 0);
+            const contrib    = allItems.reduce((s, i) => s + (Number(i.monthlyContrib) || 0), 0);
+            if (!corpus0 && !contrib) return null;
+            const data = Array.from({ length: yearsLeft + 1 }, (_, yr) => {
+              const n = yr * 12;
+              const fv = corpus0 * Math.pow(1 + r, n) + (r > 0 ? contrib * ((Math.pow(1 + r, n) - 1) / r) : contrib * n);
+              return { year: `Age ${(Number(retirement.currentAge) || 35) + yr}`, corpus: Math.round(fv) };
+            });
+            const needed = retirementReadiness.corpusNeeded;
+            return (
+              <section className="bg-slate-900/50 border border-white/10 rounded-2xl p-5">
+                <h3 className="text-sm font-semibold text-gray-300 mb-4 flex items-center gap-2">
+                  <TrendingUp size={15} className="text-emerald-400" /> Corpus Projection to Retirement
+                </h3>
+                <ResponsiveContainer width="100%" height={220}>
+                  <AreaChart data={data} margin={{ top: 5, right: 10, bottom: 5, left: 10 }}>
+                    <defs>
+                      <linearGradient id="retCorpus" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#34d399" stopOpacity={0.35} />
+                        <stop offset="95%" stopColor="#34d399" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#ffffff08" />
+                    <XAxis dataKey="year" tick={{ fontSize: 10, fill: '#6b7280' }} interval={Math.floor(yearsLeft / 5)} />
+                    <YAxis tickFormatter={(v) => v >= 1e7 ? `${(v/1e7).toFixed(1)}Cr` : v >= 1e5 ? `${(v/1e5).toFixed(0)}L` : v}
+                      tick={{ fontSize: 10, fill: '#6b7280' }} />
+                    <Tooltip formatter={(v) => formatINR(v)} labelStyle={{ color: '#e2e8f0', fontSize: 12 }}
+                      contentStyle={{ background: '#0f172a', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 12, fontSize: 12 }} />
+                    {needed > 0 && (
+                      <Area type="monotone" dataKey={() => Math.round(needed)} name="Target" stroke="#f59e0b" fill="none" strokeDasharray="5 3" strokeWidth={1.5} dot={false} />
+                    )}
+                    <Area type="monotone" dataKey="corpus" name="Projected Corpus" stroke="#34d399" fill="url(#retCorpus)" strokeWidth={2} dot={false} />
+                  </AreaChart>
+                </ResponsiveContainer>
+                {needed > 0 && (
+                  <div className="flex gap-4 mt-2 text-xs text-gray-500">
+                    <span className="flex items-center gap-1"><span className="w-3 h-0.5 bg-emerald-400 inline-block" /> Projected Corpus</span>
+                    <span className="flex items-center gap-1"><span className="w-3 h-0.5 bg-amber-400 inline-block border-dashed" style={{borderTop:'1px dashed'}} /> Target ({formatINR(Math.round(needed))})</span>
+                  </div>
+                )}
+              </section>
+            );
+          })()}
           </div>
         )}
 
@@ -3105,6 +3315,33 @@ export default function FinancialPlanningPage() {
                         onChange={(e) => updateGoal(goal.id, 'notes', e.target.value)}
                         placeholder="Notes"
                         className="w-full px-3 py-2 bg-slate-900/60 border border-white/10 rounded-lg text-sm text-gray-400 focus:border-violet-400/40 focus:outline-none" />
+
+                      {/* SIP Calculator */}
+                      {(() => {
+                        const tgt   = Number(goal.targetAmount) || 0;
+                        const svd   = Number(goal.savedAmount)  || 0;
+                        const remaining = Math.max(0, tgt - svd);
+                        if (!goal.targetDate || !remaining) return null;
+                        const months = Math.max(1, Math.round((new Date(goal.targetDate) - new Date()) / (1000 * 60 * 60 * 24 * 30.44)));
+                        // SIP needed at 12% p.a. to accumulate `remaining`
+                        const r = 0.12 / 12;
+                        const sipNeeded = Math.ceil(remaining * r / (Math.pow(1 + r, months) - 1));
+                        // Lumpsum needed (simple)
+                        const lumpsumNeeded = Math.round(remaining / Math.pow(1 + 0.12, months / 12));
+                        return (
+                          <div className="bg-violet-500/8 border border-violet-400/20 rounded-xl p-3 text-xs space-y-1.5">
+                            <div className="font-semibold text-violet-300 mb-1">SIP Calculator · {months}m to go</div>
+                            <div className="flex justify-between">
+                              <span className="text-gray-400">Monthly SIP needed <span className="text-gray-600">(12% p.a.)</span></span>
+                              <span className="font-bold text-violet-200">{formatINR(sipNeeded)}/mo</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-gray-400">Lumpsum today <span className="text-gray-600">(12% p.a.)</span></span>
+                              <span className="font-semibold text-violet-300">{formatINR(lumpsumNeeded)}</span>
+                            </div>
+                          </div>
+                        );
+                      })()}
                     </div>
                   );
                 })}
@@ -3252,9 +3489,110 @@ export default function FinancialPlanningPage() {
                 {renderSide('assets',      'Assets',      'bg-emerald-500/6', 'text-emerald-300', 'border-emerald-500/20')}
                 {renderSide('liabilities', 'Liabilities', 'bg-red-500/6',     'text-red-300',     'border-red-500/20')}
               </div>
+
+              {/* Net worth history chart */}
+              {(() => {
+                const history = balance.history || [];
+                const allHistory = [
+                  ...history,
+                  { date: new Date().toISOString().slice(0,7), net: netWorth.net },
+                ].sort((a, b) => a.date.localeCompare(b.date));
+                return (
+                  <div className="space-y-3">
+                    {allHistory.length > 1 && (
+                      <section className="bg-slate-900/50 border border-white/10 rounded-2xl p-5">
+                        <h3 className="text-sm font-semibold text-gray-300 mb-4 flex items-center gap-2">
+                          <TrendingUp size={15} className="text-emerald-400" /> Net Worth Over Time
+                        </h3>
+                        <ResponsiveContainer width="100%" height={180}>
+                          <AreaChart data={allHistory} margin={{ top: 5, right: 10, bottom: 5, left: 10 }}>
+                            <defs>
+                              <linearGradient id="nwGrad" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="5%" stopColor="#34d399" stopOpacity={0.3} />
+                                <stop offset="95%" stopColor="#34d399" stopOpacity={0} />
+                              </linearGradient>
+                            </defs>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#ffffff08" />
+                            <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#6b7280' }} />
+                            <YAxis tickFormatter={(v) => v >= 1e7 ? `${(v/1e7).toFixed(1)}Cr` : v >= 1e5 ? `${(v/1e5).toFixed(0)}L` : v}
+                              tick={{ fontSize: 10, fill: '#6b7280' }} />
+                            <Tooltip formatter={(v) => formatINR(v)} labelStyle={{ color: '#e2e8f0', fontSize: 12 }}
+                              contentStyle={{ background: '#0f172a', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 12, fontSize: 12 }} />
+                            <Area type="monotone" dataKey="net" name="Net Worth" stroke="#34d399" fill="url(#nwGrad)" strokeWidth={2} dot={{ r: 3, fill: '#34d399' }} />
+                          </AreaChart>
+                        </ResponsiveContainer>
+                      </section>
+                    )}
+                    <section className="bg-slate-900/50 border border-white/10 rounded-2xl p-4">
+                      <div className="flex items-center justify-between mb-3">
+                        <span className="text-xs font-semibold text-gray-400">Track Net Worth History</span>
+                        <button type="button"
+                          onClick={() => setBalance((prev) => ({ ...prev, history: [...(prev.history || []), { date: new Date().toISOString().slice(0,7), net: netWorth.net }] }))}
+                          className="px-3 py-1 rounded-lg text-xs border border-emerald-400/30 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/15 transition-colors">
+                          + Snapshot Today ({formatINR(Math.round(netWorth.net))})
+                        </button>
+                      </div>
+                      {history.length > 0 && (
+                        <div className="flex flex-wrap gap-2">
+                          {history.map((h, i) => (
+                            <div key={i} className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-lg bg-slate-800/60 border border-white/5">
+                              <span className="text-gray-500">{h.date}</span>
+                              <span className={`font-semibold ${h.net >= 0 ? 'text-emerald-300' : 'text-red-300'}`}>{formatINR(Math.round(h.net))}</span>
+                              <button type="button" onClick={() => setBalance((prev) => ({ ...prev, history: prev.history.filter((_, j) => j !== i) }))}
+                                className="text-gray-700 hover:text-red-400 ml-0.5">×</button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </section>
+                  </div>
+                );
+              })()}
             </div>
           );
         })()}
+
+        {!dataLoading && activeSection === 'tax' && (
+          <TaxSection
+            tax={tax} setTax={setTax}
+            onSave={saveTax} saveState={taxSaveState}
+          />
+        )}
+
+        {!dataLoading && activeSection === 'loans' && (
+          <LoansSection
+            loans={loans} setLoans={setLoans}
+            onSave={saveLoans} saveState={loansSaveState}
+          />
+        )}
+
+        {!dataLoading && activeSection === 'sip' && (
+          <SIPSection
+            sip={sip} setSip={setSip}
+            onSave={saveSip} saveState={sipSaveState}
+          />
+        )}
+
+        {!dataLoading && activeSection === 'cashflow' && (
+          <CashFlowSection
+            cashflow={cashflow} setCashflow={setCashflow}
+            onSave={saveCashflow} saveState={cashflowSaveState}
+          />
+        )}
+
+        {!dataLoading && activeSection === 'transactions' && (
+          <DataImportSection
+            transactions={transactions} setTransactions={setTransactions}
+            onSave={saveTransactions} saveState={transactionsSaveState}
+          />
+        )}
+
+        {!dataLoading && activeSection === 'accounts' && (
+          <AccountsSection
+            accounts={accounts} setAccounts={setAccounts}
+            onSave={saveAccounts} saveState={accountsSaveState}
+          />
+        )}
       </main>
 
       {/* ── Retirement section slide-over panel ──────────────────────────── */}
@@ -3349,6 +3687,105 @@ export default function FinancialPlanningPage() {
           </div>
         );
       })()}
+
+      {/* ── Admin modal (superuser only) ──────────────────────────────────── */}
+      {adminOpen && isSuperuser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setAdminOpen(false)} />
+          <div className="relative w-full max-w-md bg-slate-900 border border-red-400/30 rounded-2xl shadow-2xl p-6 space-y-5">
+            {/* Header */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-xl bg-red-500/15 border border-red-400/20">
+                  <ShieldCheck size={18} className="text-red-300" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-red-200">Admin Panel</h3>
+                  <p className="text-xs text-gray-500">Superuser access · handle with care</p>
+                </div>
+              </div>
+              <button type="button" onClick={() => setAdminOpen(false)}
+                className="p-2 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-colors">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="border-t border-white/8" />
+
+            {/* Reset password form */}
+            <div className="space-y-3">
+              <h4 className="text-sm font-semibold text-gray-300">Reset User Password</h4>
+              <input
+                type="text"
+                value={resetUserId}
+                onChange={(e) => { setResetUserId(e.target.value); setResetMsg({ type: '', text: '' }); }}
+                placeholder="User ID (e.g. bhatiaaman.p@gmail.com)"
+                className="w-full px-3 py-2.5 bg-slate-800/80 border border-white/10 rounded-xl text-sm focus:border-red-400/40 focus:outline-none"
+                autoComplete="off"
+              />
+              <input
+                type="password"
+                value={resetPassword}
+                onChange={(e) => { setResetPassword(e.target.value); setResetMsg({ type: '', text: '' }); }}
+                placeholder="New password (min. 8 characters)"
+                className="w-full px-3 py-2.5 bg-slate-800/80 border border-white/10 rounded-xl text-sm focus:border-red-400/40 focus:outline-none"
+              />
+              <input
+                type="password"
+                value={resetConfirm}
+                onChange={(e) => { setResetConfirm(e.target.value); setResetMsg({ type: '', text: '' }); }}
+                placeholder="Confirm new password"
+                className="w-full px-3 py-2.5 bg-slate-800/80 border border-white/10 rounded-xl text-sm focus:border-red-400/40 focus:outline-none"
+              />
+
+              {resetPassword.length > 0 && resetPassword.length < 8 && (
+                <p className="text-xs text-amber-400">Password must be at least 8 characters.</p>
+              )}
+              {resetPassword.length >= 8 && resetConfirm.length > 0 && resetPassword !== resetConfirm && (
+                <p className="text-xs text-red-400">Passwords do not match.</p>
+              )}
+              {resetMsg.text && (
+                <div className={`px-3 py-2.5 rounded-xl text-sm ${resetMsg.type === 'ok' ? 'bg-green-500/10 border border-green-400/20 text-green-300' : 'bg-red-500/10 border border-red-400/20 text-red-300'}`}>
+                  {resetMsg.text}
+                </div>
+              )}
+
+              <button
+                type="button"
+                disabled={resetLoading || !resetUserId.trim() || resetPassword.length < 8 || resetPassword !== resetConfirm}
+                onClick={async () => {
+                  setResetLoading(true);
+                  setResetMsg({ type: '', text: '' });
+                  try {
+                    const res = await fetch('/api/auth/reset-password', {
+                      method: 'POST', credentials: 'include',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ userId: resetUserId.trim(), newPassword: resetPassword }),
+                    });
+                    const data = await res.json();
+                    if (!res.ok || !data.success) {
+                      setResetMsg({ type: 'err', text: data.error || 'Reset failed.' });
+                    } else {
+                      setResetMsg({ type: 'ok', text: `✓ Password reset for ${data.userId}` });
+                      setResetPassword('');
+                      setResetConfirm('');
+                    }
+                  } catch {
+                    setResetMsg({ type: 'err', text: 'Network error. Try again.' });
+                  } finally {
+                    setResetLoading(false);
+                  }
+                }}
+                className="w-full py-3 rounded-xl bg-red-500/20 border border-red-400/40 text-red-200 hover:bg-red-500/30 text-sm font-semibold disabled:opacity-40 transition-colors"
+              >
+                {resetLoading ? 'Resetting…' : 'Reset Password'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Security settings slide-over ─────────────────────────────────── */}
       {securityOpen && (
@@ -3484,6 +3921,76 @@ export default function FinancialPlanningPage() {
                   )}
                 </div>
               </section>
+
+              <div className="border-t border-white/8" />
+
+              {/* Superuser — User Management */}
+              {isSuperuser && (
+                <section className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <ShieldCheck size={15} className="text-red-400" />
+                    <h4 className="text-sm font-semibold text-red-300">User Management <span className="text-xs text-gray-500 font-normal">(superuser only)</span></h4>
+                  </div>
+                  <p className="text-xs text-gray-500">Reset the password for any user account stored in Redis.</p>
+                  <div className="space-y-2">
+                    <input
+                      type="text"
+                      value={resetUserId}
+                      onChange={(e) => { setResetUserId(e.target.value); setResetMsg({ type: '', text: '' }); }}
+                      placeholder="User ID (e.g. bhatiaaman.p@gmail.com)"
+                      className="w-full px-3 py-2.5 bg-slate-900/60 border border-white/10 rounded-xl text-sm"
+                    />
+                    <input
+                      type="password"
+                      value={resetPassword}
+                      onChange={(e) => { setResetPassword(e.target.value); setResetMsg({ type: '', text: '' }); }}
+                      placeholder="New password (min. 8 chars)"
+                      className="w-full px-3 py-2.5 bg-slate-900/60 border border-white/10 rounded-xl text-sm"
+                    />
+                    <input
+                      type="password"
+                      value={resetConfirm}
+                      onChange={(e) => { setResetConfirm(e.target.value); setResetMsg({ type: '', text: '' }); }}
+                      placeholder="Confirm new password"
+                      className="w-full px-3 py-2.5 bg-slate-900/60 border border-white/10 rounded-xl text-sm"
+                    />
+                    {resetMsg.text && (
+                      <p className={`text-xs ${resetMsg.type === 'ok' ? 'text-green-300' : 'text-red-300'}`}>{resetMsg.text}</p>
+                    )}
+                    <button
+                      type="button"
+                      disabled={resetLoading || !resetUserId.trim() || resetPassword.length < 8 || resetPassword !== resetConfirm}
+                      onClick={async () => {
+                        setResetLoading(true);
+                        setResetMsg({ type: '', text: '' });
+                        try {
+                          const res = await fetch('/api/auth/reset-password', {
+                            method: 'POST', credentials: 'include',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ userId: resetUserId.trim(), newPassword: resetPassword }),
+                          });
+                          const data = await res.json();
+                          if (!res.ok || !data.success) {
+                            setResetMsg({ type: 'err', text: data.error || 'Reset failed.' });
+                          } else {
+                            setResetMsg({ type: 'ok', text: `✓ Password reset for ${data.userId}` });
+                            setResetUserId('');
+                            setResetPassword('');
+                            setResetConfirm('');
+                          }
+                        } catch {
+                          setResetMsg({ type: 'err', text: 'Network error. Try again.' });
+                        } finally {
+                          setResetLoading(false);
+                        }
+                      }}
+                      className="w-full py-2.5 rounded-xl bg-red-500/20 border border-red-400/40 text-red-200 hover:bg-red-500/30 text-sm font-semibold disabled:opacity-50 transition-colors"
+                    >
+                      {resetLoading ? 'Resetting…' : 'Reset Password'}
+                    </button>
+                  </div>
+                </section>
+              )}
 
               <div className="border-t border-white/8" />
 
