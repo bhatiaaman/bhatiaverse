@@ -1493,8 +1493,8 @@ export default function FinancialPlanningPage() {
                 <Lock size={22} />
               </div>
               <div>
-                <h2 className="text-lg font-bold">Vault Locked</h2>
-                <p className="text-sm text-gray-400">Enter your secret passphrase to unlock.</p>
+                <h2 className="text-lg font-bold">Login Passphrase Required</h2>
+                <p className="text-sm text-gray-400">Enter your login passphrase to unlock financial data.</p>
               </div>
             </div>
             <div className="space-y-3">
@@ -3913,12 +3913,12 @@ export default function FinancialPlanningPage() {
 
               <div className="border-t border-white/8" />
 
-              {/* ── Vault Passphrase ──────────────────────────────── */}
+              {/* ── Login Passphrase ──────────────────────────────── */}
               <section className="space-y-3">
                 <div className="flex items-center justify-between">
                   <div>
-                    <h4 className="font-semibold text-sm">Vault Passphrase</h4>
-                    <p className="text-xs text-gray-500 mt-0.5">A second secret that locks all financial data. Expires every 4 hours.</p>
+                    <h4 className="font-semibold text-sm">Login Passphrase</h4>
+                    <p className="text-xs text-gray-500 mt-0.5">A second secret that locks all financial data after login. Expires every 4 hours.</p>
                   </div>
                   <span className={`text-xs px-2.5 py-1 rounded-full border font-medium ${securityStatus.vaultSet ? 'bg-amber-500/15 border-amber-400/30 text-amber-300' : 'bg-slate-700/50 border-white/10 text-gray-400'}`}>
                     {securityStatus.vaultSet ? '● Set' : '○ Not set'}
