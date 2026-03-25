@@ -249,73 +249,97 @@ export default function VaultSection({ docVaultKey, setDocVaultKey }) {
     }
   };
 
+  // Helper to extract a useful message from any thrown value
+  const errMsg = (err) => {
+    if (!err) return 'Unknown error';
+    if (err.message) return err.message;
+    if (err.name)    return err.name;
+    return String(err);
+  };
+
+  // Download + decrypt a single file, returning { plainBuf, iv, salt, name, mime }
+  const fetchAndDecrypt = async (file, passphrase) => {
+    const dlRes = await fetch(`/api/vault/download?id=${encodeURIComponent(file.id)}`, { credentials: 'include' });
+    if (!dlRes.ok) throw new Error(`Download failed (HTTP ${dlRes.status})`);
+    const iv   = dlRes.headers.get('X-Vault-IV');
+    const salt = dlRes.headers.get('X-Vault-Salt');
+    const name = decodeURIComponent(dlRes.headers.get('X-Vault-Name') || file.name);
+    const mime = dlRes.headers.get('X-Vault-Mime') || file.mime || 'application/octet-stream';
+    const encBuf = await dlRes.arrayBuffer();
+    try {
+      const plainBuf = await decryptFile(encBuf, iv, salt, passphrase);
+      return { plainBuf, iv, salt, name, mime };
+    } catch {
+      throw new Error(`Decryption failed for "${name}" — wrong passphrase or file is corrupted.`);
+    }
+  };
+
   const handleReEncrypt = async () => {
     setReEncryptErr('');
-    if (newPass.length < 8) { setReEncryptErr('New passphrase must be at least 8 characters.'); return; }
-    if (newPass !== confirmPass) { setReEncryptErr('Passphrases do not match.'); return; }
-    if (newPass === docVaultKey) { setReEncryptErr('New passphrase is the same as current.'); return; }
-    if (files.length === 0) { setReEncryptErr('No files to re-encrypt.'); return; }
+    if (newPass.length < 8)       { setReEncryptErr('New passphrase must be at least 8 characters.'); return; }
+    if (newPass !== confirmPass)   { setReEncryptErr('Passphrases do not match.'); return; }
+    if (newPass === docVaultKey)   { setReEncryptErr('New passphrase is the same as current.'); return; }
+    if (files.length === 0)        { setReEncryptErr('No files to re-encrypt.'); return; }
 
     setReEncryptDone(false);
     const total = files.length;
-    const completed = [];
 
+    // ── Phase 1: pre-flight — decrypt every file in memory before touching storage ──
+    setReEncryptProgress({ done: 0, total, step: 'Validating passphrase — decrypting all files…' });
+    const decrypted = [];
     for (let i = 0; i < total; i++) {
       const file = files[i];
-      setReEncryptProgress({ done: i, total, step: `Downloading "${file.name}"…` });
+      setReEncryptProgress({ done: i, total, step: `Validating "${file.name}" (${i + 1}/${total})…` });
       try {
-        // 1. Download encrypted bytes from server
-        const dlRes = await fetch(`/api/vault/download?id=${encodeURIComponent(file.id)}`, { credentials: 'include' });
-        if (!dlRes.ok) throw new Error(`Download failed for "${file.name}"`);
-        const iv   = dlRes.headers.get('X-Vault-IV');
-        const salt = dlRes.headers.get('X-Vault-Salt');
-        const name = decodeURIComponent(dlRes.headers.get('X-Vault-Name') || file.name);
-        const mime = dlRes.headers.get('X-Vault-Mime') || file.mime || 'application/octet-stream';
-        const encBuf = await dlRes.arrayBuffer();
+        const result = await fetchAndDecrypt(file, docVaultKey);
+        decrypted.push({ file, ...result });
+      } catch (err) {
+        setReEncryptErr(`Validation failed on "${file.name}": ${errMsg(err)}`);
+        setReEncryptProgress(null);
+        return;
+      }
+    }
 
-        // 2. Decrypt with current passphrase
-        setReEncryptProgress({ done: i, total, step: `Decrypting "${name}"…` });
-        const plainBuf = await decryptFile(encBuf, iv, salt, docVaultKey);
-
-        // 3. Re-encrypt with new passphrase
-        setReEncryptProgress({ done: i, total, step: `Re-encrypting "${name}"…` });
+    // ── Phase 2: re-encrypt + upload all (no deletes yet) ──
+    const uploaded = []; // { oldId, newId }
+    for (let i = 0; i < total; i++) {
+      const { file, plainBuf, name, mime } = decrypted[i];
+      setReEncryptProgress({ done: i, total, step: `Uploading re-encrypted "${name}" (${i + 1}/${total})…` });
+      try {
         const plainBlob = new Blob([plainBuf], { type: mime });
         const { encryptedBlob, iv: newIv, salt: newSalt } = await encryptFile(plainBlob, newPass);
-
-        // 4. Upload new version
-        setReEncryptProgress({ done: i, total, step: `Uploading "${name}"…` });
         const form = new FormData();
         form.append('encryptedBlob', encryptedBlob, `${name}.enc`);
-        form.append('iv',   newIv);
-        form.append('salt', newSalt);
-        form.append('name', name);
-        form.append('mime', mime);
-        const upRes  = await fetch('/api/vault/upload', { method: 'POST', credentials: 'include', body: form });
+        form.append('iv', newIv); form.append('salt', newSalt);
+        form.append('name', name); form.append('mime', mime);
+        const upRes = await fetch('/api/vault/upload', { method: 'POST', credentials: 'include', body: form });
         let upJson;
-        try { upJson = await upRes.json(); } catch { throw new Error(`Upload failed for "${name}"`); }
-        if (!upRes.ok) throw new Error(upJson.error || `Upload failed for "${name}"`);
-
-        // 5. Delete old version
-        setReEncryptProgress({ done: i, total, step: `Removing old "${name}"…` });
-        await fetch('/api/vault/delete', {
-          method: 'DELETE', credentials: 'include',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id: file.id }),
-        });
-
-        completed.push(upJson.file);
+        try { upJson = await upRes.json(); } catch { throw new Error('Upload response was not JSON'); }
+        if (!upRes.ok) throw new Error(upJson.error || 'Upload failed');
+        uploaded.push({ oldId: file.id, newId: upJson.file.id });
       } catch (err) {
-        setReEncryptErr(`Stopped at "${file.name}": ${err.message}. Files processed so far are on the new passphrase; remaining files still use the old one.`);
+        setReEncryptErr(`Upload failed on "${name}": ${errMsg(err)}. No files have been deleted — originals are intact.`);
         setReEncryptProgress(null);
+        // Clean up any new blobs already uploaded
+        for (const { newId } of uploaded) {
+          await fetch('/api/vault/delete', { method: 'DELETE', credentials: 'include',
+            headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: newId }) }).catch(() => {});
+        }
         await loadFiles();
         return;
       }
     }
 
-    // All done — switch to new passphrase
+    // ── Phase 3: delete old blobs (all new ones are safely uploaded) ──
+    setReEncryptProgress({ done: total, total, step: 'Cleaning up old files…' });
+    for (const { oldId } of uploaded) {
+      await fetch('/api/vault/delete', { method: 'DELETE', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: oldId }) }).catch(() => {});
+    }
+
+    // Done
     setDocVaultKey(newPass);
-    setNewPass('');
-    setConfirmPass('');
+    setNewPass(''); setConfirmPass('');
     setReEncryptProgress(null);
     setReEncryptDone(true);
     await loadFiles();
