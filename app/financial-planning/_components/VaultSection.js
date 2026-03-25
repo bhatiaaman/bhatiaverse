@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Lock, Unlock, Upload, Trash2, Download, FileText, Image,
-  File, ShieldCheck, Eye, EyeOff, AlertTriangle, X, RefreshCw,
+  File as FileGenericIcon, ShieldCheck, Eye, EyeOff, AlertTriangle, X, RefreshCw,
 } from 'lucide-react';
 
 // ─── Crypto helpers (Web Crypto API, runs entirely in browser) ──────────────
@@ -74,7 +74,7 @@ function formatBytes(n) {
 function FileIcon({ mime, className = 'w-5 h-5' }) {
   if (mime?.startsWith('image/')) return <Image className={className} />;
   if (mime?.startsWith('text/') || mime === 'application/pdf') return <FileText className={className} />;
-  return <File className={className} />;
+  return <FileGenericIcon className={className} />;
 }
 
 function formatDate(iso) {
@@ -279,8 +279,8 @@ export default function VaultSection({ docVaultKey, setDocVaultKey }) {
 
         // 3. Re-encrypt with new passphrase
         setReEncryptProgress({ done: i, total, step: `Re-encrypting "${name}"…` });
-        const plainFile = new File([plainBuf], name, { type: mime });
-        const { encryptedBlob, iv: newIv, salt: newSalt } = await encryptFile(plainFile, newPass);
+        const plainBlob = new Blob([plainBuf], { type: mime });
+        const { encryptedBlob, iv: newIv, salt: newSalt } = await encryptFile(plainBlob, newPass);
 
         // 4. Upload new version
         setReEncryptProgress({ done: i, total, step: `Uploading "${name}"…` });
