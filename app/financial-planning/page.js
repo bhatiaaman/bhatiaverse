@@ -352,9 +352,21 @@ export default function FinancialPlanningPage() {
   const [docVaultKey, setDocVaultKey] = useState(null);
 
   useEffect(() => {
-    const onHide = () => { if (document.visibilityState === 'hidden') setDocVaultKey(null); };
-    document.addEventListener('visibilitychange', onHide);
-    return () => document.removeEventListener('visibilitychange', onHide);
+    const SESSION_MAX_MS = 2 * 60 * 60 * 1000; // 2 hours
+    const isSessionExpired = () => {
+      const t = sessionStorage.getItem('bv_session_start');
+      return t && (Date.now() - Number(t)) > SESSION_MAX_MS;
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') { setDocVaultKey(null); return; }
+      // Tab regained focus — check if session has aged out
+      if (isSessionExpired()) doLogout();
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    // Also check immediately in case the page was left open
+    if (isSessionExpired()) doLogout();
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -1282,7 +1294,7 @@ export default function FinancialPlanningPage() {
     try {
       await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
     } catch { /* ignore */ }
-    try { sessionStorage.removeItem('bv_tab_active'); } catch {}
+    try { sessionStorage.removeItem('bv_tab_active'); sessionStorage.removeItem('bv_session_start'); } catch {}
     setDocVaultKey(null);
     // Clear sensitive data from localStorage on logout
     ['bv-financial-plan', 'bv-financial-plan-kids', 'bv-financial-plan-retirement', 'bv-financial-plan-monthly']
@@ -1313,6 +1325,7 @@ export default function FinancialPlanningPage() {
         return;
       }
       sessionStorage.setItem('bv_tab_active', '1');
+      sessionStorage.setItem('bv_session_start', String(Date.now()));
       setAuthed(true);
       setLoginStep('credentials');
       setTotpInput('');
@@ -1465,6 +1478,7 @@ export default function FinancialPlanningPage() {
         return;
       }
       sessionStorage.setItem('bv_tab_active', '1');
+      sessionStorage.setItem('bv_session_start', String(Date.now()));
       setAuthed(true);
       setLoginPassword('');
     } catch {
