@@ -1,5 +1,8 @@
 'use client';
 import { useState, useCallback } from 'react';
+
+// Main categories to sync with Running Budget
+const SYNC_CATEGORIES = ['Home', 'Support', 'Personal', 'Kids', 'Loan'];
 import { Plus, Trash2, ChevronLeft, ChevronRight, Save, ArrowDownCircle, ArrowUpCircle } from 'lucide-react';
 
 const fmt = (n) =>
@@ -29,22 +32,25 @@ function nextMonth(key) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
 
+
 // Default outgo labels — sourced from Monthly Running categories
 const DEFAULT_OUTGO_LABELS = [
   'Home', 'Support', 'Personal', 'Kids', 'Equity Fund', 'Travel Fund',
   'CC Exp', 'Health Fund', 'Savings', 'Brokers', 'Loan Fund', 'Misc',
 ];
 
+// Default ingo labels — can be customized as needed
 const DEFAULT_INGO_LABELS = [
-  'Cash', 'Banks', 'Salary', 'Bonus', 'Reimbursement', 'Interest', 'Misc Src',
+  'Bank', 'Salary', 'Other',
 ];
 
 function defaultOutgo() {
-  return DEFAULT_OUTGO_LABELS.map((label) => ({ id: uid(), label, amount: '' }));
+  return DEFAULT_OUTGO_LABELS.map((label) => ({ id: uid(), label, subs: [] }));
 }
 
 function defaultIngo() {
-  return DEFAULT_INGO_LABELS.map((label) => ({ id: uid(), label, amount: '' }));
+  // Each ingo category starts with one empty subcategory for convenience
+  return DEFAULT_INGO_LABELS.map((label) => ({ id: uid(), label, subs: [{ id: uid(), label: '', amount: '' }] }));
 }
 
 function defaultMonthData() {
@@ -127,24 +133,135 @@ function Panel({ title, icon: Icon, color, items, onChange, total }) {
   );
 }
 
-export default function MonthlyBalanceSection({ monthlyBalance, setMonthlyBalance, onSave, saveState }) {
+
+// Helper to get subcategories from Running Budget (Monthly View)
+function getRunningBudgetCategories(monthly, monthKey) {
+  // Defensive: monthly.months[monthKey]?.categories
+  return (
+    monthly?.months?.[monthKey]?.categories || []
+  );
+}
+
+export default function MonthlyBalanceSection({ monthlyBalance, setMonthlyBalance, onSave, saveState, monthly }) {
   const [activeMonth, setActiveMonth] = useState(currentMonthKey());
 
   // Get or initialise month data
   const monthData = monthlyBalance?.months?.[activeMonth] ?? defaultMonthData();
 
-  const updateMonthData = useCallback((patch) => {
-    setMonthlyBalance((prev) => ({
-      ...prev,
-      months: {
-        ...(prev.months || {}),
-        [activeMonth]: {
-          ...(prev.months?.[activeMonth] ?? defaultMonthData()),
-          ...patch,
+  // Get Running Budget categories for this month
+  const runningBudgetCats = getRunningBudgetCategories(monthly, activeMonth);
+
+  // Build a mapping: { Home: [sub1, sub2, ...], ... }
+  const syncCatMap = {};
+  for (const cat of runningBudgetCats) {
+    if (SYNC_CATEGORIES.includes(cat.label)) {
+      syncCatMap[cat.label] = cat.subs ? cat.subs.map(sub => ({ ...sub })) : [];
+    }
+  }
+
+
+  // For each category, get subcategories (sync with Running Budget for SYNC_CATEGORIES, else use as is)
+  const getOrInitSubcatValues = (catLabel) => {
+    const runningSubs = syncCatMap[catLabel] || [];
+    let outgoCat = (monthData.outgo || []).find(c => c.label === catLabel);
+    if (!outgoCat) {
+      // Initialize
+      if (SYNC_CATEGORIES.includes(catLabel) && runningSubs.length > 0) {
+        outgoCat = { label: catLabel, subs: runningSubs.map(sub => ({ id: sub.id, label: sub.label, amount: '' })) };
+      } else {
+        outgoCat = { label: catLabel, subs: [] };
+      }
+    } else if (SYNC_CATEGORIES.includes(catLabel)) {
+      // For synced categories, merge runningSubs and custom
+      const existing = {};
+      for (const s of outgoCat.subs || []) existing[s.id] = s;
+      const customRows = (outgoCat.subs || []).filter(s => !runningSubs.find(r => r.id === s.id));
+      outgoCat = {
+        ...outgoCat,
+        subs: [
+          ...runningSubs.map(sub => existing[sub.id] ? { ...existing[sub.id], label: sub.label } : { id: sub.id, label: sub.label, amount: '' }),
+          ...customRows
+        ]
+      };
+    }
+    // For custom categories, just return as is
+    return Array.isArray(outgoCat.subs) ? outgoCat.subs : [];
+  };
+
+  // Add custom subcategory row to a main category
+  const addCustomSubcat = (catLabel) => {
+    setMonthlyBalance((prev) => {
+      const prevMonth = prev.months?.[activeMonth] ?? defaultMonthData();
+      let outgo = prevMonth.outgo ? [...prevMonth.outgo] : [];
+      let catIdx = outgo.findIndex(c => c.label === catLabel);
+      let cat = catIdx >= 0 ? { ...outgo[catIdx] } : { label: catLabel, subs: [] };
+      cat.subs = [...(cat.subs || []), { id: uid(), label: '', amount: '' }];
+      if (catIdx >= 0) outgo[catIdx] = cat;
+      else outgo.push(cat);
+      return {
+        ...prev,
+        months: {
+          ...(prev.months || {}),
+          [activeMonth]: {
+            ...prevMonth,
+            outgo,
+          },
         },
-      },
-    }));
-  }, [activeMonth, setMonthlyBalance]);
+      };
+    });
+  };
+
+  // Add a new main category (with empty sub list)
+  const addMainCategory = () => {
+    setMonthlyBalance((prev) => {
+      const prevMonth = prev.months?.[activeMonth] ?? defaultMonthData();
+      let outgo = prevMonth.outgo ? [...prevMonth.outgo] : [];
+      // Add a new main category with a default subcategory
+      outgo.push({ label: '', subs: [{ id: uid(), label: '', amount: '' }] });
+      return {
+        ...prev,
+        months: {
+          ...(prev.months || {}),
+          [activeMonth]: {
+            ...prevMonth,
+            outgo,
+          },
+        },
+      };
+    });
+  };
+
+  // Update handler for subcategory value
+  const updateSubcatAmount = (catLabel, subId, value) => {
+    setMonthlyBalance((prev) => {
+      const prevMonth = prev.months?.[activeMonth] ?? defaultMonthData();
+      let outgo = prevMonth.outgo ? [...prevMonth.outgo] : [];
+      let catIdx = outgo.findIndex(c => c.label === catLabel);
+      let cat = catIdx >= 0 ? { ...outgo[catIdx] } : { label: catLabel, subs: [] };
+      // Sync sub list
+      const runningSubs = syncCatMap[catLabel] || [];
+      const existing = {};
+      for (const s of cat.subs || []) existing[s.id] = s;
+      cat.subs = runningSubs.map(sub => {
+        if (sub.id === subId) {
+          return { id: sub.id, label: sub.label, amount: value };
+        }
+        return existing[sub.id] ? { ...existing[sub.id], label: sub.label } : { id: sub.id, label: sub.label, amount: '' };
+      });
+      if (catIdx >= 0) outgo[catIdx] = cat;
+      else outgo.push(cat);
+      return {
+        ...prev,
+        months: {
+          ...(prev.months || {}),
+          [activeMonth]: {
+            ...prevMonth,
+            outgo,
+          },
+        },
+      };
+    });
+  };
 
   // Copy previous month's labels (amounts reset to 0)
   const copyFromPrev = () => {
@@ -160,14 +277,30 @@ export default function MonthlyBalanceSection({ monthlyBalance, setMonthlyBalanc
   const hasPrevData = !!monthlyBalance?.months?.[prevMonth(activeMonth)];
   const isCurrentOrFuture = activeMonth >= currentMonthKey();
 
-  const outgoTotal = (monthData.outgo || []).reduce((s, r) => s + (Number(r.amount) || 0), 0);
-  const ingoTotal  = (monthData.ingo  || []).reduce((s, r) => s + (Number(r.amount) || 0), 0);
+
+  // Calculate totals for synced categories
+  const outgoTotals = {};
+  let outgoTotal = 0;
+  // Calculate totals for all categories (synced and custom)
+  (monthData.outgo || []).forEach(cat => {
+    const subs = getOrInitSubcatValues(cat.label);
+    const sum = subs.reduce((s, sub) => s + (Number(sub.amount) || 0), 0);
+    outgoTotals[cat.label] = sum;
+    outgoTotal += sum;
+  });
+
+  // Calculate total Ingo by summing all subcategory amounts for each Ingo category
+  const ingoTotal = (monthData.ingo || []).reduce((total, cat) => {
+    const sum = (cat.subs || []).reduce((s, sub) => s + (Number(sub.amount) || 0), 0);
+    return total + sum;
+  }, 0);
   const balance    = ingoTotal - outgoTotal;
   const balanced   = Math.abs(balance) < 1;
 
   return (
     <div className="space-y-5">
-      {/* ── Title bar ───────────────────────────────────────────────── */}
+
+      {/* ── Title bar with Save button ─────────────────────────────── */}
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h2 className="text-xl font-bold text-white flex items-center gap-2">
@@ -178,15 +311,26 @@ export default function MonthlyBalanceSection({ monthlyBalance, setMonthlyBalanc
           </p>
         </div>
 
-        {/* Balance pill */}
-        <div className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold ${
-          balanced
-            ? 'bg-emerald-500/10 text-emerald-300 border border-emerald-500/30'
-            : balance > 0
-              ? 'bg-blue-500/10 text-blue-300 border border-blue-500/30'
-              : 'bg-red-500/10 text-red-300 border border-red-500/30'
-        }`}>
-          {balanced ? '✓ Balanced' : balance > 0 ? `+₹${fmt(balance)} surplus` : `-₹${fmt(Math.abs(balance))} gap`}
+        <div className="flex flex-col items-end gap-2">
+          {/* Save button at top */}
+          <button
+            onClick={onSave}
+            disabled={saveState?.status === 'saving'}
+            className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-sm font-medium rounded-xl transition-colors"
+          >
+            <Save className="w-4 h-4" />
+            {saveState?.status === 'saving' ? 'Saving…' : saveState?.status === 'saved' ? 'Saved ✓' : 'Save'}
+          </button>
+          {/* Balance pill */}
+          <div className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold ${
+            balanced
+              ? 'bg-emerald-500/10 text-emerald-300 border border-emerald-500/30'
+              : balance > 0
+                ? 'bg-blue-500/10 text-blue-300 border border-blue-500/30'
+                : 'bg-red-500/10 text-red-300 border border-red-500/30'
+          }`}>
+            {balanced ? '✓ Balanced' : balance > 0 ? `+₹${fmt(balance)} surplus` : `-₹${fmt(Math.abs(balance))} gap`}
+          </div>
         </div>
       </div>
 
@@ -224,30 +368,361 @@ export default function MonthlyBalanceSection({ monthlyBalance, setMonthlyBalanc
         </div>
       </div>
 
-      {/* ── Two-column layout ───────────────────────────────────────── */}
+
+      {/* ── Outgo and Ingo side by side ── */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* OUTGO */}
+        {/* OUTGO: All categories (synced + custom) */}
         <div className="bg-white/5 rounded-2xl p-5 border border-white/8">
-          <Panel
-            title="Outgo"
-            icon={ArrowUpCircle}
-            color={{ border: 'border-red-500/20', icon: 'text-red-400', text: 'text-red-300' }}
-            items={monthData.outgo || []}
-            total={outgoTotal}
-            onChange={(outgo) => updateMonthData({ outgo })}
-          />
+          <h3 className="text-lg font-semibold text-red-300 mb-4">Outgo (by Subcategory)</h3>
+          {(monthData.outgo || []).map((cat, idx) => {
+            const isSynced = SYNC_CATEGORIES.includes(cat.label);
+            const subs = getOrInitSubcatValues(cat.label);
+            return (
+              <div key={cat.id || (cat.label + idx)} className="mb-6 flex flex-col gap-1">
+                <div className="flex items-center gap-2">
+                  <input
+                    className="font-semibold text-sm text-gray-200 mb-2 bg-transparent border-b border-white/10 focus:border-blue-500 outline-none px-1 flex-1"
+                    value={cat.label}
+                    onChange={e => {
+                      setMonthlyBalance((prev) => {
+                        const prevMonth = prev.months?.[activeMonth] ?? defaultMonthData();
+                        let outgo = prevMonth.outgo ? [...prevMonth.outgo] : [];
+                        outgo = outgo.map(c => c.id === cat.id ? { ...c, label: e.target.value } : c);
+                        return {
+                          ...prev,
+                          months: {
+                            ...(prev.months || {}),
+                            [activeMonth]: {
+                              ...prevMonth,
+                              outgo,
+                            },
+                          },
+                        };
+                      });
+                    }}
+                    placeholder="Category name"
+                  />
+                  <button
+                    onClick={() => {
+                      setMonthlyBalance((prev) => {
+                        const prevMonth = prev.months?.[activeMonth] ?? defaultMonthData();
+                        let outgo = prevMonth.outgo ? [...prevMonth.outgo] : [];
+                        outgo = outgo.filter(c => c.id !== cat.id);
+                        return {
+                          ...prev,
+                          months: {
+                            ...(prev.months || {}),
+                            [activeMonth]: {
+                              ...prevMonth,
+                              outgo,
+                            },
+                          },
+                        };
+                      });
+                    }}
+                    className="opacity-60 hover:opacity-100 transition-opacity text-gray-600 hover:text-red-400 flex-shrink-0"
+                    title="Delete category"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+                <div className="flex flex-col gap-2 mt-2">
+                  {subs.map((sub, subIdx) => (
+                    <div key={sub.id} className="flex items-center gap-2">
+                      <input
+                        className="flex-1 text-gray-300 text-sm bg-transparent border-b border-white/10 focus:border-blue-500 outline-none px-1"
+                        value={sub.label}
+                        onChange={e => {
+                          setMonthlyBalance((prev) => {
+                            const prevMonth = prev.months?.[activeMonth] ?? defaultMonthData();
+                            let outgo = prevMonth.outgo ? [...prevMonth.outgo] : [];
+                            let catIdx = outgo.findIndex(c => c.label === cat.label);
+                            let catObj = catIdx >= 0 ? { ...outgo[catIdx] } : { label: cat.label, subs: [] };
+                            catObj.subs = catObj.subs.map(s => s.id === sub.id ? { ...s, label: e.target.value } : s);
+                            if (catIdx >= 0) outgo[catIdx] = catObj;
+                            else outgo.push(catObj);
+                            return {
+                              ...prev,
+                              months: {
+                                ...(prev.months || {}),
+                                [activeMonth]: {
+                                  ...prevMonth,
+                                  outgo,
+                                },
+                              },
+                            };
+                          });
+                        }}
+                        placeholder="Subcategory name"
+                      />
+                      <input
+                        type="number"
+                        value={sub.amount ?? ''}
+                        onChange={e => {
+                          setMonthlyBalance((prev) => {
+                            const prevMonth = prev.months?.[activeMonth] ?? defaultMonthData();
+                            let outgo = prevMonth.outgo ? [...prevMonth.outgo] : [];
+                            let catIdx = outgo.findIndex(c => c.label === cat.label);
+                            let catObj = catIdx >= 0 ? { ...outgo[catIdx] } : { label: cat.label, subs: [] };
+                            catObj.subs = catObj.subs.map(s => s.id === sub.id ? { ...s, amount: e.target.value } : s);
+                            if (catIdx >= 0) outgo[catIdx] = catObj;
+                            else outgo.push(catObj);
+                            return {
+                              ...prev,
+                              months: {
+                                ...(prev.months || {}),
+                                [activeMonth]: {
+                                  ...prevMonth,
+                                  outgo,
+                                },
+                              },
+                            };
+                          });
+                        }}
+                        className="w-28 text-right bg-transparent border-b border-white/10 focus:border-blue-500 outline-none text-sm text-gray-100 py-1 placeholder-gray-600 transition-colors"
+                        placeholder="0"
+                      />
+                      <button
+                        onClick={() => {
+                          setMonthlyBalance((prev) => {
+                            const prevMonth = prev.months?.[activeMonth] ?? defaultMonthData();
+                            let outgo = prevMonth.outgo ? [...prevMonth.outgo] : [];
+                            let catIdx = outgo.findIndex(c => c.label === cat.label);
+                            let catObj = catIdx >= 0 ? { ...outgo[catIdx] } : { label: cat.label, subs: [] };
+                            catObj.subs = catObj.subs.filter(s => s.id !== sub.id);
+                            if (catIdx >= 0) outgo[catIdx] = catObj;
+                            else outgo.push(catObj);
+                            return {
+                              ...prev,
+                              months: {
+                                ...(prev.months || {}),
+                                [activeMonth]: {
+                                  ...prevMonth,
+                                  outgo,
+                                },
+                              },
+                            };
+                          });
+                        }}
+                        className="opacity-60 hover:opacity-100 transition-opacity text-gray-600 hover:text-red-400 flex-shrink-0"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                <button
+                  onClick={() => addCustomSubcat(cat.label)}
+                  className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-300 transition-colors mt-1"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Add row
+                </button>
+                <div className="flex justify-between items-center pt-2 border-t border-white/10 mt-2">
+                  <span className="text-xs text-gray-400 uppercase tracking-wider">Total</span>
+                  <span className="text-base font-bold text-red-300">₹{fmt(outgoTotals[cat.label] || 0)}</span>
+                </div>
+              </div>
+            );
+          })}
+          <button
+            onClick={addMainCategory}
+            className="flex items-center gap-1.5 text-xs text-blue-400 hover:text-blue-300 transition-colors mt-2"
+          >
+            <Plus className="w-3.5 h-3.5" /> Add Category
+          </button>
         </div>
 
-        {/* INGO */}
+        {/* INGO: All categories (customizable) */}
         <div className="bg-white/5 rounded-2xl p-5 border border-white/8">
-          <Panel
-            title="Ingo"
-            icon={ArrowDownCircle}
-            color={{ border: 'border-emerald-500/20', icon: 'text-emerald-400', text: 'text-emerald-300' }}
-            items={monthData.ingo || []}
-            total={ingoTotal}
-            onChange={(ingo) => updateMonthData({ ingo })}
-          />
+          <h3 className="text-lg font-semibold text-emerald-300 mb-4">Ingo (by Subcategory)</h3>
+          {(monthData.ingo || []).map((cat, idx) => (
+            <div key={cat.id || (cat.label + idx)} className="mb-6 flex flex-col gap-1">
+              <div className="flex items-center gap-2">
+                <input
+                  className="font-semibold text-sm text-gray-200 mb-2 bg-transparent border-b border-white/10 focus:border-emerald-500 outline-none px-1 flex-1"
+                  value={cat.label}
+                  onChange={e => {
+                    setMonthlyBalance((prev) => {
+                      const prevMonth = prev.months?.[activeMonth] ?? defaultMonthData();
+                      let ingo = prevMonth.ingo ? [...prevMonth.ingo] : [];
+                      ingo = ingo.map(c => c.id === cat.id ? { ...c, label: e.target.value } : c);
+                      return {
+                        ...prev,
+                        months: {
+                          ...(prev.months || {}),
+                          [activeMonth]: {
+                            ...prevMonth,
+                            ingo,
+                          },
+                        },
+                      };
+                    });
+                  }}
+                  placeholder="Category name"
+                />
+                <button
+                  onClick={() => {
+                    setMonthlyBalance((prev) => {
+                      const prevMonth = prev.months?.[activeMonth] ?? defaultMonthData();
+                      let ingo = prevMonth.ingo ? [...prevMonth.ingo] : [];
+                      ingo = ingo.filter(c => c.id !== cat.id);
+                      return {
+                        ...prev,
+                        months: {
+                          ...(prev.months || {}),
+                          [activeMonth]: {
+                            ...prevMonth,
+                            ingo,
+                          },
+                        },
+                      };
+                    });
+                  }}
+                  className="opacity-60 hover:opacity-100 transition-opacity text-gray-600 hover:text-red-400 flex-shrink-0"
+                  title="Delete category"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+              <div className="flex flex-col gap-2 mt-2">
+                {(cat.subs || []).map((sub, subIdx) => (
+                  <div key={sub.id} className="flex items-center gap-2">
+                    <input
+                      className="flex-1 text-gray-300 text-sm bg-transparent border-b border-white/10 focus:border-emerald-500 outline-none px-1"
+                      value={sub.label}
+                      onChange={e => {
+                        setMonthlyBalance((prev) => {
+                          const prevMonth = prev.months?.[activeMonth] ?? defaultMonthData();
+                          let ingo = prevMonth.ingo ? [...prevMonth.ingo] : [];
+                          let catIdx = ingo.findIndex(c => c.label === cat.label);
+                          let catObj = catIdx >= 0 ? { ...ingo[catIdx] } : { label: cat.label, subs: [] };
+                          catObj.subs = catObj.subs.map(s => s.id === sub.id ? { ...s, label: e.target.value } : s);
+                          if (catIdx >= 0) ingo[catIdx] = catObj;
+                          else ingo.push(catObj);
+                          return {
+                            ...prev,
+                            months: {
+                              ...(prev.months || {}),
+                              [activeMonth]: {
+                                ...prevMonth,
+                                ingo,
+                              },
+                            },
+                          };
+                        });
+                      }}
+                      placeholder="Subcategory name"
+                    />
+                    <input
+                      type="number"
+                      value={sub.amount ?? ''}
+                      onChange={e => {
+                        setMonthlyBalance((prev) => {
+                          const prevMonth = prev.months?.[activeMonth] ?? defaultMonthData();
+                          let ingo = prevMonth.ingo ? [...prevMonth.ingo] : [];
+                          let catIdx = ingo.findIndex(c => c.label === cat.label);
+                          let catObj = catIdx >= 0 ? { ...ingo[catIdx] } : { label: cat.label, subs: [] };
+                          catObj.subs = catObj.subs.map(s => s.id === sub.id ? { ...s, amount: e.target.value } : s);
+                          if (catIdx >= 0) ingo[catIdx] = catObj;
+                          else ingo.push(catObj);
+                          return {
+                            ...prev,
+                            months: {
+                              ...(prev.months || {}),
+                              [activeMonth]: {
+                                ...prevMonth,
+                                ingo,
+                              },
+                            },
+                          };
+                        });
+                      }}
+                      className="w-28 text-right bg-transparent border-b border-white/10 focus:border-emerald-500 outline-none text-sm text-gray-100 py-1 placeholder-gray-600 transition-colors"
+                      placeholder="0"
+                    />
+                    <button
+                      onClick={() => {
+                        setMonthlyBalance((prev) => {
+                          const prevMonth = prev.months?.[activeMonth] ?? defaultMonthData();
+                          let ingo = prevMonth.ingo ? [...prevMonth.ingo] : [];
+                          let catIdx = ingo.findIndex(c => c.label === cat.label);
+                          let catObj = catIdx >= 0 ? { ...ingo[catIdx] } : { label: cat.label, subs: [] };
+                          catObj.subs = catObj.subs.filter(s => s.id !== sub.id);
+                          if (catIdx >= 0) ingo[catIdx] = catObj;
+                          else ingo.push(catObj);
+                          return {
+                            ...prev,
+                            months: {
+                              ...(prev.months || {}),
+                              [activeMonth]: {
+                                ...prevMonth,
+                                ingo,
+                              },
+                            },
+                          };
+                        });
+                      }}
+                      className="opacity-60 hover:opacity-100 transition-opacity text-gray-600 hover:text-red-400 flex-shrink-0"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <button
+                onClick={() => {
+                  setMonthlyBalance((prev) => {
+                    const prevMonth = prev.months?.[activeMonth] ?? defaultMonthData();
+                    let ingo = prevMonth.ingo ? [...prevMonth.ingo] : [];
+                    let catIdx = ingo.findIndex(c => c.label === cat.label);
+                    let catObj = catIdx >= 0 ? { ...ingo[catIdx] } : { label: cat.label, subs: [] };
+                    catObj.subs = [...(catObj.subs || []), { id: uid(), label: '', amount: '' }];
+                    if (catIdx >= 0) ingo[catIdx] = catObj;
+                    else ingo.push(catObj);
+                    return {
+                      ...prev,
+                      months: {
+                        ...(prev.months || {}),
+                        [activeMonth]: {
+                          ...prevMonth,
+                          ingo,
+                        },
+                      },
+                    };
+                  });
+                }}
+                className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-300 transition-colors mt-1"
+              >
+                <Plus className="w-3.5 h-3.5" /> Add row
+              </button>
+              <div className="flex justify-between items-center pt-2 border-t border-white/10 mt-2">
+                <span className="text-xs text-gray-400 uppercase tracking-wider">Total</span>
+                <span className="text-base font-bold text-emerald-300">₹{fmt((cat.subs || []).reduce((s, sub) => s + (Number(sub.amount) || 0), 0))}</span>
+              </div>
+            </div>
+          ))}
+          <button
+            onClick={() => {
+              setMonthlyBalance((prev) => {
+                const prevMonth = prev.months?.[activeMonth] ?? defaultMonthData();
+                let ingo = prevMonth.ingo ? [...prevMonth.ingo] : [];
+                ingo.push({ id: uid(), label: '', subs: [{ id: uid(), label: '', amount: '' }] });
+                return {
+                  ...prev,
+                  months: {
+                    ...(prev.months || {}),
+                    [activeMonth]: {
+                      ...prevMonth,
+                      ingo,
+                    },
+                  },
+                };
+              });
+            }}
+            className="flex items-center gap-1.5 text-xs text-emerald-400 hover:text-emerald-300 transition-colors mt-2"
+          >
+            <Plus className="w-3.5 h-3.5" /> Add Category
+          </button>
         </div>
       </div>
 
@@ -267,17 +742,8 @@ export default function MonthlyBalanceSection({ monthlyBalance, setMonthlyBalanc
         ))}
       </div>
 
-      {/* ── Save ────────────────────────────────────────────────────── */}
-      <div className="flex justify-end">
-        <button
-          onClick={onSave}
-          disabled={saveState?.status === 'saving'}
-          className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-sm font-medium rounded-xl transition-colors"
-        >
-          <Save className="w-4 h-4" />
-          {saveState?.status === 'saving' ? 'Saving…' : saveState?.status === 'saved' ? 'Saved ✓' : 'Save'}
-        </button>
-      </div>
+
+      {/* Save button moved to top, removed from bottom */}
     </div>
   );
 }

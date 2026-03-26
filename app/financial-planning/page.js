@@ -3652,6 +3652,7 @@ export default function FinancialPlanningPage() {
             setMonthlyBalance={setMonthlyBalance}
             onSave={saveMonthlyBalance}
             saveState={monthlyBalanceSaveState}
+            monthly={monthly}
           />
         )}
       </main>
