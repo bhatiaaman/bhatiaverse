@@ -40,8 +40,9 @@ import LoansSection    from './_components/LoansSection';
 import SIPSection      from './_components/SIPSection';
 import CashFlowSection from './_components/CashFlowSection';
 import DataImportSection from './_components/DataImportSection';
-import AccountsSection   from './_components/AccountsSection';
-import VaultSection      from './_components/VaultSection';
+import AccountsSection         from './_components/AccountsSection';
+import VaultSection            from './_components/VaultSection';
+import MonthlyBalanceSection   from './_components/MonthlyBalanceSection';
 
 const SECTIONS = [
   { id: 'home',         label: 'Home',          icon: Home },
@@ -57,8 +58,9 @@ const SECTIONS = [
   { id: 'sip',          label: 'SIP Tracker',   icon: BarChart2 },
   { id: 'cashflow',     label: 'Cash Flow',     icon: CalendarClock },
   { id: 'transactions', label: 'Transactions',  icon: Download },
-  { id: 'accounts',    label: 'Accounts',      icon: CreditCard },
-  { id: 'vault',      label: 'Vault',         icon: Vault },
+  { id: 'accounts',       label: 'Accounts',         icon: CreditCard },
+  { id: 'vault',          label: 'Vault',            icon: Vault },
+  { id: 'monthlybalance', label: 'Monthly Balance',  icon: Scale },
 ];
 
 const RETIREMENT_SECTIONS = [
@@ -256,6 +258,7 @@ const DEFAULT_CASHFLOW = { events: [] };
 const DEFAULT_TRANSACTIONS = { items: [] };
 
 const DEFAULT_ACCOUNTS = { banks: [], cards: [] };
+const DEFAULT_MONTHLY_BALANCE = { months: {} };
 
 function formatINR(n) {
   const v = Number(n);
@@ -346,6 +349,8 @@ export default function FinancialPlanningPage() {
   const [transactionsSaveState, setTransactionsSaveState] = useState({ status: 'idle', message: '' });
   const [accounts, setAccounts] = useState(DEFAULT_ACCOUNTS);
   const [accountsSaveState, setAccountsSaveState] = useState({ status: 'idle', message: '' });
+  const [monthlyBalance, setMonthlyBalance] = useState(DEFAULT_MONTHLY_BALANCE);
+  const [monthlyBalanceSaveState, setMonthlyBalanceSaveState] = useState({ status: 'idle', message: '' });
 
   // Document vault passphrase — held in page memory, survives section switches,
   // cleared on tab hide (switch to another browser tab) or logout.
@@ -450,7 +455,8 @@ export default function FinancialPlanningPage() {
         if (section === 'sip')          setSip((p)          => ({ ...p, ...json.data }));
         if (section === 'cashflow')     setCashflow((p)     => ({ ...p, ...json.data }));
         if (section === 'transactions') setTransactions((p) => ({ ...p, ...json.data }));
-        if (section === 'accounts')    setAccounts((p)     => ({ ...p, ...json.data }));
+        if (section === 'accounts')        setAccounts((p)        => ({ ...p, ...json.data }));
+        if (section === 'monthlybalance') setMonthlyBalance((p)  => ({ ...p, ...json.data }));
       } else if (lsKeys[section]) {
         try { const r = localStorage.getItem(lsKeys[section]); if (r) {
           const parsed = JSON.parse(r);
@@ -847,7 +853,8 @@ export default function FinancialPlanningPage() {
   const saveSip          = makeSaver('sip',          sip,          setSipSaveState,          'SIPs saved.');
   const saveCashflow     = makeSaver('cashflow',     cashflow,     setCashflowSaveState,     'Cash flow saved.');
   const saveTransactions = makeSaver('transactions', transactions, setTransactionsSaveState, 'Transactions saved.');
-  const saveAccounts     = makeSaver('accounts',     accounts,     setAccountsSaveState,     'Accounts saved.');
+  const saveAccounts        = makeSaver('accounts',        accounts,        setAccountsSaveState,        'Accounts saved.');
+  const saveMonthlyBalance  = makeSaver('monthlybalance',  monthlyBalance,  setMonthlyBalanceSaveState,  'Monthly balance saved.');
 
   // ── Balance sheet helpers ───────────────────────────────────────────────
   const toggleBalanceCat = (side, catId) => {
@@ -3637,6 +3644,15 @@ export default function FinancialPlanningPage() {
 
         {activeSection === 'vault' && (
           <VaultSection docVaultKey={docVaultKey} setDocVaultKey={setDocVaultKey} />
+        )}
+
+        {!dataLoading && activeSection === 'monthlybalance' && (
+          <MonthlyBalanceSection
+            monthlyBalance={monthlyBalance}
+            setMonthlyBalance={setMonthlyBalance}
+            onSave={saveMonthlyBalance}
+            saveState={monthlyBalanceSaveState}
+          />
         )}
       </main>
 

@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { redis } from '@/app/lib/redis';
 import { getDataUserId, planKey } from '@/app/lib/finplan-auth';
 
-const ALLOWED = new Set(['home', 'kids', 'retirement', 'monthly', 'insurance', 'funds', 'goals', 'balance', 'tax', 'loans', 'sip', 'cashflow', 'transactions', 'accounts']);
+const ALLOWED = new Set(['home', 'kids', 'retirement', 'monthly', 'insurance', 'funds', 'goals', 'balance', 'tax', 'loans', 'sip', 'cashflow', 'transactions', 'accounts', 'monthlybalance']);
 
 export async function GET(req, { params }) {
   const { section } = await params;
