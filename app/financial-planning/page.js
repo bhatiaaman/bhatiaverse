@@ -30,6 +30,8 @@ import {
   BarChart2,
   CreditCard,
   Vault,
+  LayoutGrid,
+  X,
 } from 'lucide-react';
 import {
   AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
@@ -43,6 +45,14 @@ import DataImportSection from './_components/DataImportSection';
 import AccountsSection         from './_components/AccountsSection';
 import VaultSection            from './_components/VaultSection';
 import MonthlyBalanceSection   from './_components/MonthlyBalanceSection';
+
+// Bottom nav pinned tabs for mobile (4 primary + More button)
+const MOBILE_NAV = [
+  { id: 'home',         label: 'Home',     icon: Home },
+  { id: 'monthly',      label: 'Monthly',  icon: CalendarDays },
+  { id: 'balance',      label: 'Balance',  icon: Scale },
+  { id: 'vault',        label: 'Vault',    icon: Vault },
+];
 
 const SECTIONS = [
   { id: 'home',         label: 'Home',          icon: Home },
@@ -764,6 +774,46 @@ export default function FinancialPlanningPage() {
     }));
   };
 
+  const updateMonthlyBalanceOutgoFromRunSpent = (catLabel, subLabel, delta) => {
+    if (!catLabel || !subLabel || delta === 0) return;
+    const month = monthly.activeMonth;
+    setMonthlyBalance((prev) => {
+      const prevMonth = prev.months?.[month] ?? defaultMonthData();
+      const outgo = (prevMonth.outgo || []).map((c) => ({ ...c, subs: (c.subs || []).map((s) => ({ ...s })) }));
+
+      const catIdx = outgo.findIndex((c) => c.label === catLabel);
+      if (catIdx === -1) {
+        outgo.push({ id: Date.now(), label: catLabel, subs: [{ id: Date.now() + Math.random(), label: subLabel, amount: String(-(delta)) }] });
+      } else {
+        const cat = { ...outgo[catIdx] };
+        const subIdx = (cat.subs || []).findIndex((s) => s.label === subLabel);
+        if (subIdx === -1) {
+          cat.subs = [...(cat.subs || []), { id: Date.now() + Math.random(), label: subLabel, amount: String(-(delta)) }];
+        } else {
+          const existing = cat.subs[subIdx];
+          const existingAmount = Number(existing.amount) || 0;
+          cat.subs = [
+            ...cat.subs.slice(0, subIdx),
+            { ...existing, amount: String(existingAmount - delta) },
+            ...cat.subs.slice(subIdx + 1),
+          ];
+        }
+        outgo[catIdx] = cat;
+      }
+
+      return {
+        ...prev,
+        months: {
+          ...(prev.months || {}),
+          [month]: {
+            ...prevMonth,
+            outgo,
+          },
+        },
+      };
+    });
+  };
+
   const addMonthSubcat = (catId) => {
     setActiveMonthCats(activeMonthData.categories.map((cat) =>
       cat.id === catId
@@ -773,11 +823,23 @@ export default function FinancialPlanningPage() {
   };
 
   const updateMonthSubcat = (catId, subcatId, field, value) => {
+    const category = activeMonthData.categories.find((cat) => cat.id === catId);
+    const subcat = category?.subs?.find((s) => s.id === subcatId);
+    const oldRunSpent = field === 'runSpent' ? Number(subcat?.runSpent || 0) : 0;
+    const newRunSpent = field === 'runSpent' ? Number(value || 0) : 0;
+
     setActiveMonthCats(activeMonthData.categories.map((cat) =>
       cat.id === catId
         ? { ...cat, subs: (cat.subs || []).map((s) => s.id === subcatId ? { ...s, [field]: value } : s) }
         : cat
     ));
+
+    if (field === 'runSpent' && category && subcat) {
+      const delta = newRunSpent - oldRunSpent;
+      if (delta !== 0) {
+        updateMonthlyBalanceOutgoFromRunSpent(category.label, subcat.label, delta);
+      }
+    }
   };
 
   const removeMonthSubcat = (catId, subcatId) => {
@@ -1144,6 +1206,7 @@ export default function FinancialPlanningPage() {
   };
 
   const [exportOpen, setExportOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
 
   const triggerDownload = (blob, filename) => {
     const url = URL.createObjectURL(blob);
@@ -1666,106 +1729,93 @@ export default function FinancialPlanningPage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-white">
       <header className="sticky top-0 z-40 backdrop-blur-xl bg-gradient-to-r from-slate-900/90 via-slate-800/90 to-slate-900/90 border-b border-white/10">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <Link href="/" className="p-2 rounded-lg bg-white/5 hover:bg-white/10 transition-colors">
-                <ArrowLeft size={20} />
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 sm:py-4">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-3 min-w-0">
+              <Link href="/" className="p-2 rounded-lg bg-white/5 hover:bg-white/10 transition-colors flex-shrink-0">
+                <ArrowLeft size={18} />
               </Link>
-              <div>
-                <h1 className="text-xl font-bold">Financial Planning</h1>
-                <p className="text-sm text-gray-400">A simple budgeting + investing plan</p>
+              <div className="min-w-0">
+                <h1 className="text-base sm:text-xl font-bold leading-tight truncate">Financial Planning</h1>
+                <p className="hidden sm:block text-sm text-gray-400">A simple budgeting + investing plan</p>
               </div>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 flex-shrink-0">
+              {/* Export */}
               <div className="relative">
                 <button
                   type="button"
                   onClick={() => setExportOpen((o) => !o)}
-                  className="flex items-center gap-2 px-3 py-1.5 rounded-full text-sm bg-white/5 border border-white/10 hover:bg-white/10 transition-colors"
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-sm bg-white/5 border border-white/10 hover:bg-white/10 transition-colors"
+                  title="Export"
                 >
                   <FileDown size={16} />
-                  Export
+                  <span className="hidden sm:inline">Export</span>
                 </button>
                 {exportOpen && (
                   <>
                     <div className="fixed inset-0 z-40" onClick={() => setExportOpen(false)} />
                     <div className="absolute right-0 mt-2 w-44 bg-slate-900 border border-white/10 rounded-xl shadow-xl z-50 overflow-hidden">
-                      <button
-                        type="button"
-                        onClick={exportJSON}
-                        className="w-full text-left px-4 py-3 text-sm hover:bg-white/5 transition-colors flex items-center gap-2"
-                      >
-                        <FileDown size={14} className="text-blue-400" />
-                        Download JSON
+                      <button type="button" onClick={exportJSON}
+                        className="w-full text-left px-4 py-3 text-sm hover:bg-white/5 transition-colors flex items-center gap-2">
+                        <FileDown size={14} className="text-blue-400" />Download JSON
                       </button>
-                      <button
-                        type="button"
-                        onClick={exportCSV}
-                        className="w-full text-left px-4 py-3 text-sm hover:bg-white/5 transition-colors flex items-center gap-2 border-t border-white/5"
-                      >
-                        <FileDown size={14} className="text-green-400" />
-                        Download CSV
+                      <button type="button" onClick={exportCSV}
+                        className="w-full text-left px-4 py-3 text-sm hover:bg-white/5 transition-colors flex items-center gap-2 border-t border-white/5">
+                        <FileDown size={14} className="text-green-400" />Download CSV
                       </button>
-                      <button
-                        type="button"
-                        onClick={exportPDF}
-                        className="w-full text-left px-4 py-3 text-sm hover:bg-white/5 transition-colors flex items-center gap-2 border-t border-white/5"
-                      >
-                        <Printer size={14} className="text-purple-400" />
-                        Save as PDF
+                      <button type="button" onClick={exportPDF}
+                        className="w-full text-left px-4 py-3 text-sm hover:bg-white/5 transition-colors flex items-center gap-2 border-t border-white/5">
+                        <Printer size={14} className="text-purple-400" />Save as PDF
                       </button>
                     </div>
                   </>
                 )}
               </div>
+              {/* Insurance alert */}
               {expiringPolicies.length > 0 && (
                 <button type="button" onClick={() => setSection('insurance')}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm bg-red-500/15 border border-red-400/30 text-red-300 hover:bg-red-500/20 transition-colors"
+                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-full text-sm bg-red-500/15 border border-red-400/30 text-red-300 hover:bg-red-500/20 transition-colors"
                   title={`${expiringPolicies.length} policy expiring soon`}>
                   <Bell size={14} className="animate-pulse" />
                   {expiringPolicies.length}
                 </button>
               )}
+              {/* Vault TTL */}
               {vaultTtl > 0 && !vaultLocked && (
-                <span className="text-xs px-2.5 py-1 rounded-full bg-amber-500/10 border border-amber-400/20 text-amber-300 font-mono" title="Vault locks in">
+                <span className="hidden xs:inline text-xs px-2 py-1 rounded-full bg-amber-500/10 border border-amber-400/20 text-amber-300 font-mono" title="Vault locks in">
                   🔒 {Math.floor(vaultTtl / 3600)}h {Math.floor((vaultTtl % 3600) / 60)}m
                 </span>
               )}
+              {/* Admin — desktop only */}
               {isSuperuser && (
-                <button
-                  type="button"
-                  onClick={() => setAdminOpen(true)}
-                  className="flex items-center gap-2 px-3 py-1.5 rounded-full text-sm bg-red-500/20 border border-red-400/40 text-red-300 hover:bg-red-500/30 transition-colors"
-                  title="Admin — Reset passwords"
-                >
+                <button type="button" onClick={() => setAdminOpen(true)}
+                  className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full text-sm bg-red-500/20 border border-red-400/40 text-red-300 hover:bg-red-500/30 transition-colors"
+                  title="Admin — Reset passwords">
                   <ShieldCheck size={16} />
-                  Admin
+                  <span>Admin</span>
                 </button>
               )}
-              <button
-                type="button"
-                onClick={() => setSecurityOpen(true)}
-                className="flex items-center gap-2 px-3 py-1.5 rounded-full text-sm bg-white/5 border border-white/10 hover:bg-white/10 transition-colors"
-                title="Security settings"
-              >
+              {/* Security */}
+              <button type="button" onClick={() => setSecurityOpen(true)}
+                className="p-2 rounded-full bg-white/5 border border-white/10 hover:bg-white/10 transition-colors"
+                title="Security settings">
                 <Lock size={16} />
-                {securityStatus.totpEnabled ? <span className="w-1.5 h-1.5 rounded-full bg-green-400 inline-block" /> : null}
+                {securityStatus.totpEnabled ? <span className="sr-only">2FA on</span> : null}
               </button>
-              <button
-                type="button"
-                onClick={doLogout}
-                className="flex items-center gap-2 px-3 py-1.5 rounded-full text-sm bg-white/5 border border-white/10 hover:bg-white/10 transition-colors"
-              >
+              {/* Logout */}
+              <button type="button" onClick={doLogout}
+                className="p-2 rounded-full bg-white/5 border border-white/10 hover:bg-white/10 transition-colors"
+                title="Logout">
                 <ShieldCheck size={16} />
-                Logout
               </button>
             </div>
           </div>
         </div>
       </header>
 
-      <nav className="border-b border-white/10 bg-slate-900/40">
+      {/* Desktop tab nav — hidden on mobile */}
+      <nav className="hidden sm:block border-b border-white/10 bg-slate-900/40">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex flex-wrap gap-1 py-2">
             {SECTIONS.map(({ id, label, icon: Icon }) => (
@@ -1787,7 +1837,7 @@ export default function FinancialPlanningPage() {
         </div>
       </nav>
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 pb-24 sm:pb-8">
         {dataLoading && (
           <div className="flex items-center justify-center py-20">
             <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500" />
@@ -4221,6 +4271,77 @@ export default function FinancialPlanningPage() {
           </div>
         );
       })()}
+      {/* ── Mobile Bottom Navigation ────────────────────────────────────── */}
+      <nav className="sm:hidden fixed bottom-0 left-0 right-0 z-40 bg-slate-950/95 backdrop-blur-xl border-t border-white/10">
+        <div className="flex items-stretch h-16">
+          {MOBILE_NAV.map(({ id, label, icon: Icon }) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => { setSection(id); setMoreOpen(false); }}
+              className={`flex-1 flex flex-col items-center justify-center gap-1 transition-colors ${
+                activeSection === id && !moreOpen
+                  ? 'text-blue-400'
+                  : 'text-gray-500 active:text-gray-300'
+              }`}
+            >
+              <Icon size={22} />
+              <span className="text-[10px] leading-none font-medium">{label}</span>
+            </button>
+          ))}
+          {/* More button */}
+          <button
+            type="button"
+            onClick={() => setMoreOpen((o) => !o)}
+            className={`flex-1 flex flex-col items-center justify-center gap-1 transition-colors ${
+              moreOpen ? 'text-blue-400' : 'text-gray-500 active:text-gray-300'
+            }`}
+          >
+            <LayoutGrid size={22} />
+            <span className="text-[10px] leading-none font-medium">More</span>
+          </button>
+        </div>
+        {/* safe area spacer for iOS */}
+        <div className="h-safe-bottom bg-slate-950/95" />
+      </nav>
+
+      {/* ── "More" sheet — all sections grid ───────────────────────────── */}
+      {moreOpen && (
+        <div className="sm:hidden fixed inset-0 z-50 flex flex-col justify-end">
+          {/* backdrop */}
+          <div className="absolute inset-0 bg-black/60" onClick={() => setMoreOpen(false)} />
+          {/* sheet */}
+          <div className="relative bg-slate-900 rounded-t-2xl border-t border-white/10 px-4 pt-4 pb-24">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-sm font-semibold text-gray-300 uppercase tracking-wider">All Sections</h2>
+              <button
+                type="button"
+                onClick={() => setMoreOpen(false)}
+                className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-gray-400"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <div className="grid grid-cols-4 gap-2">
+              {SECTIONS.map(({ id, label, icon: Icon }) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => { setSection(id); setMoreOpen(false); }}
+                  className={`flex flex-col items-center gap-1.5 p-3 rounded-xl text-center transition-colors ${
+                    activeSection === id
+                      ? 'bg-blue-500/20 text-blue-300 border border-blue-400/30'
+                      : 'bg-white/5 text-gray-400 border border-white/5 active:bg-white/10 active:text-white'
+                  }`}
+                >
+                  <Icon size={20} />
+                  <span className="text-[10px] leading-tight font-medium">{label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

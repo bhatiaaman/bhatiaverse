@@ -144,6 +144,8 @@ function getRunningBudgetCategories(monthly, monthKey) {
 
 export default function MonthlyBalanceSection({ monthlyBalance, setMonthlyBalance, onSave, saveState, monthly }) {
   const [activeMonth, setActiveMonth] = useState(currentMonthKey());
+  const [showOutgoWarning, setShowOutgoWarning] = useState(false);
+  const [outgoEditOrigin, setOutgoEditOrigin] = useState({});
 
   // Get or initialise month data
   const monthData = monthlyBalance?.months?.[activeMonth] ?? defaultMonthData();
@@ -198,6 +200,39 @@ export default function MonthlyBalanceSection({ monthlyBalance, setMonthlyBalanc
       cat.subs = [...(cat.subs || []), { id: uid(), label: '', amount: '' }];
       if (catIdx >= 0) outgo[catIdx] = cat;
       else outgo.push(cat);
+      return {
+        ...prev,
+        months: {
+          ...(prev.months || {}),
+          [activeMonth]: {
+            ...prevMonth,
+            outgo,
+          },
+        },
+      };
+    });
+  };
+
+  const confirmLinkedOutgoEdit = (catLabel, subLabel) => {
+    const message = `Outgo subcategory '${catLabel} / ${subLabel}' is linked to Monthly View running expense.\n\n` +
+      `Confirm manual update? This may break tracking between sections.`;
+    return window.confirm(message);
+  };
+
+  const applyOutgoAmountChange = (catLabel, subId, newValue) => {
+    setShowOutgoWarning(true);
+    setOutgoAmount(catLabel, subId, newValue);
+  };
+
+  const setOutgoAmount = (catLabel, subId, newValue) => {
+    setMonthlyBalance((prev) => {
+      const prevMonth = prev.months?.[activeMonth] ?? defaultMonthData();
+      let outgo = prevMonth.outgo ? [...prevMonth.outgo] : [];
+      let catIdx = outgo.findIndex(c => c.label === catLabel);
+      let catObj = catIdx >= 0 ? { ...outgo[catIdx] } : { label: catLabel, subs: [] };
+      catObj.subs = catObj.subs.map(s => s.id === subId ? { ...s, amount: newValue } : s);
+      if (catIdx >= 0) outgo[catIdx] = catObj;
+      else outgo.push(catObj);
       return {
         ...prev,
         months: {
@@ -309,6 +344,16 @@ export default function MonthlyBalanceSection({ monthlyBalance, setMonthlyBalanc
           <p className="text-sm text-gray-400 mt-0.5">
             Record actual inflows and outflows for the month.
           </p>
+          {showOutgoWarning && (
+            <div className="mt-3 rounded-lg border border-amber-400/40 bg-amber-500/10 p-3 text-amber-100 text-xs">
+              <strong>Warning:</strong> This outgo subcategory is linked to Monthly View running spend.
+              Manually changing these values may make the linked balance unpredictable.
+              <button
+                onClick={() => setShowOutgoWarning(false)}
+                className="ml-2 text-amber-200 underline"
+              >Dismiss</button>
+            </div>
+          )}
         </div>
 
         <div className="flex flex-col items-end gap-2">
@@ -458,25 +503,28 @@ export default function MonthlyBalanceSection({ monthlyBalance, setMonthlyBalanc
                       <input
                         type="number"
                         value={sub.amount ?? ''}
+                        onFocus={() => {
+                          const key = `${cat.label}::${sub.id}`;
+                          setOutgoEditOrigin((prev) => ({ ...prev, [key]: sub.amount ?? '' }));
+                        }}
                         onChange={e => {
-                          setMonthlyBalance((prev) => {
-                            const prevMonth = prev.months?.[activeMonth] ?? defaultMonthData();
-                            let outgo = prevMonth.outgo ? [...prevMonth.outgo] : [];
-                            let catIdx = outgo.findIndex(c => c.label === cat.label);
-                            let catObj = catIdx >= 0 ? { ...outgo[catIdx] } : { label: cat.label, subs: [] };
-                            catObj.subs = catObj.subs.map(s => s.id === sub.id ? { ...s, amount: e.target.value } : s);
-                            if (catIdx >= 0) outgo[catIdx] = catObj;
-                            else outgo.push(catObj);
-                            return {
-                              ...prev,
-                              months: {
-                                ...(prev.months || {}),
-                                [activeMonth]: {
-                                  ...prevMonth,
-                                  outgo,
-                                },
-                              },
-                            };
+                          setOutgoAmount(cat.label, sub.id, e.target.value);
+                        }}
+                        onBlur={() => {
+                          const key = `${cat.label}::${sub.id}`;
+                          const oldValue = outgoEditOrigin[key];
+                          const currentValue = sub.amount ?? '';
+                          if (oldValue !== undefined && oldValue !== currentValue) {
+                            if (confirmLinkedOutgoEdit(cat.label, sub.label)) {
+                              setShowOutgoWarning(true);
+                            } else {
+                              setOutgoAmount(cat.label, sub.id, oldValue);
+                            }
+                          }
+                          setOutgoEditOrigin((prev) => {
+                            const next = { ...prev };
+                            delete next[key];
+                            return next;
                           });
                         }}
                         className="w-28 text-right bg-transparent border-b border-white/10 focus:border-blue-500 outline-none text-sm text-gray-100 py-1 placeholder-gray-600 transition-colors"
